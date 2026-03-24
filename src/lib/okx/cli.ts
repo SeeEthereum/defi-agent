@@ -75,6 +75,17 @@ export async function runCli<T = unknown>(
         stdout?: string;
       };
 
+      // Always log full details server-side for debugging
+      console.error("[onchainos]", {
+        cmd: subcommands.join(" "),
+        bin: ONCHAINOS_BIN,
+        home: process.env.HOME,
+        exitCode: err.exitCode,
+        code: err.code,
+        stderr: err.stderr,
+        stdout: err.stdout,
+      });
+
       // Exit code 2 = confirming response (not an error)
       if (err.exitCode === 2 && err.stdout) {
         try {
@@ -113,17 +124,21 @@ export async function runCli<T = unknown>(
             parsed.message ??
             "";
         } catch {
-          // stdout wasn't JSON, use it raw if it looks like an error
           if (err.stdout.toLowerCase().includes("error") || err.stdout.toLowerCase().includes("fail")) {
             detail = err.stdout.trim();
           }
         }
       }
 
+      // Include exit code in fallback message for easier diagnosis
+      const fallback = err.code === "ENOENT"
+        ? `Binary not found at: ${ONCHAINOS_BIN}`
+        : `Command execution failed (exit ${err.exitCode ?? "?"}, code: ${err.code ?? "-"})`;
+
       throw new OkxCliError(
         subcommands.join(" "),
         err.exitCode ?? null,
-        detail || "Command execution failed"
+        detail || fallback
       );
     }
   });
