@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
-import { encodeApprove, encodeDeposit, parseAmount } from "@/lib/fluid/ftokens";
+import { encodeDeposit, parseAmount } from "@/lib/fluid/ftokens";
 import { getFToken } from "@/lib/fluid/constants";
 import { FLUID_CHAIN_IDS } from "@/lib/chains";
 import { normalizeAddress } from "@/lib/utils";
@@ -42,18 +42,8 @@ export async function POST(request: NextRequest) {
     const rawAmount = parseAmount(amount, tokenDecimals);
     const wallet = normalizeAddress(walletAddress) as `0x${string}`;
 
-    // Step 1: Approve underlying token for fToken
-    const approveCalldata = encodeApprove(tokenAddress as `0x${string}`, rawAmount);
-
-    const approveResult = await walletContractCall({
-      to: tokenUnderlying,
-      chain: String(chainIndex),
-      inputData: approveCalldata,
-    });
-
-    // Step 2: Deposit into fToken
-    // force:true bypasses OKX backend pre-execution simulation which would fail
-    // because the approve tx hasn't been mined yet at the time of deposit broadcast
+    // Deposit into fToken (approve must have been called first via /api/earn/approve)
+    // force:true bypasses backend pre-simulation — approve may not be mined yet
     const depositCalldata = encodeDeposit(rawAmount, wallet);
 
     const depositResult = await walletContractCall({
@@ -66,7 +56,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        approveTxHash: (approveResult.data as { txHash?: string })?.txHash,
         depositTxHash: (depositResult.data as { txHash?: string })?.txHash,
       },
     });

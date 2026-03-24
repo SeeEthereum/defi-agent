@@ -16,11 +16,13 @@ import { toast } from "sonner";
 interface TxEntry {
   txHash: string;
   txTime: string;
-  direction?: string;    // "IN" | "OUT"
-  txStatus?: string;     // "SUCCESS" | "ERROR" | "PENDING"
-  chainSymbol?: string;  // "ETH", "MATIC", etc.
+  direction?: string;
+  txStatus?: string;
+  chainSymbol?: string;
   symbol?: string;
   amount?: string;
+  isApprove?: boolean;
+  gasFeeEth?: string;
   from?: string;
   to?: string;
   failReason?: string;
@@ -347,20 +349,37 @@ export default function WalletPage() {
                     const isReceive = tx.direction === "IN";
                     const isSuccess = tx.txStatus === "SUCCESS";
                     const isError = tx.txStatus === "ERROR";
-                    const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
                     const stateColor = isSuccess ? "text-emerald-600" : isError ? "text-red-500" : "text-amber-500";
+                    const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
                     const dateStr = tx.txTime
                       ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
                       : "—";
-                    // Build a human-readable label for the action
-                    const actionLabel = isReceive ? "Receive" : "Send";
-                    const tokenLabel = tx.symbol ? ` ${tx.symbol}` : "";
-                    const amountDisplay = tx.amount && parseFloat(tx.amount) > 0
-                      ? `${parseFloat(tx.amount).toFixed(4)} ${tx.symbol ?? ""}`
-                      : tx.symbol ? `— ${tx.symbol}` : "—";
-                    // Chain: use chainSymbol directly (ETH, MATIC, etc.)
-                    const chainDisplay = tx.chainSymbol ?? "—";
-                    // Explorer: best-effort using chainSymbol
+
+                    // Action label: Approve / Receive / Send / Contract
+                    const hasAmount = tx.amount && parseFloat(tx.amount) > 0;
+                    let actionLabel: string;
+                    let iconType: "approve" | "in" | "out" | "contract";
+                    if (tx.isApprove) {
+                      actionLabel = `Approve ${tx.symbol ?? ""}`.trim();
+                      iconType = "approve";
+                    } else if (hasAmount && isReceive) {
+                      actionLabel = `Receive ${tx.symbol ?? ""}`.trim();
+                      iconType = "in";
+                    } else if (hasAmount && !isReceive) {
+                      actionLabel = `Send ${tx.symbol ?? ""}`.trim();
+                      iconType = "out";
+                    } else {
+                      actionLabel = tx.contractName ? `Contract · ${tx.contractName}` : "Contract Call";
+                      iconType = "contract";
+                    }
+
+                    // Amount display
+                    const amountDisplay = hasAmount
+                      ? `${parseFloat(tx.amount!).toFixed(4)} ${tx.symbol ?? ""}`
+                      : tx.gasFeeEth
+                      ? `Gas ${tx.gasFeeEth} ETH`
+                      : "—";
+
                     const explorerBase = tx.chainSymbol === "MATIC"
                       ? "https://polygonscan.com"
                       : tx.chainSymbol === "BSC"
@@ -368,35 +387,54 @@ export default function WalletPage() {
                       : tx.chainSymbol === "SOL"
                       ? "https://solscan.io"
                       : "https://etherscan.io";
+
+                    const iconBg = iconType === "in" ? "bg-emerald-50" : iconType === "approve" ? "bg-amber-50" : iconType === "contract" ? "bg-violet-50" : "bg-indigo-50";
+                    const iconColor = iconType === "in" ? "text-emerald-600" : iconType === "approve" ? "text-amber-600" : iconType === "contract" ? "text-violet-500" : "text-indigo-500";
+
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
-                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isReceive ? "bg-emerald-50" : "bg-indigo-50"}`}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isReceive ? "text-emerald-600" : "text-indigo-500"}>
-                            {isReceive
-                              ? <><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></>
-                              : <><path d="M12 19V5"/><path d="m19 12-7-7-7 7"/></>
-                            }
-                          </svg>
+                        {/* Icon */}
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
+                          {iconType === "approve" ? (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconColor}>
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                          ) : iconType === "contract" ? (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconColor}>
+                              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={iconColor}>
+                              {iconType === "in"
+                                ? <><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></>
+                                : <><path d="M12 19V5"/><path d="m19 12-7-7-7 7"/></>
+                              }
+                            </svg>
+                          )}
                         </div>
+
+                        {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium">{actionLabel}{tokenLabel}</span>
-                            <span className={`text-[11px] font-medium ${stateColor}`}>{stateLabel}</span>
+                            <span className="text-[13px] font-medium truncate">{actionLabel}</span>
+                            <span className={`text-[11px] font-medium shrink-0 ${stateColor}`}>{stateLabel}</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[11px] text-muted-foreground">{chainDisplay}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-[11px] text-muted-foreground">{tx.chainSymbol ?? "—"}</span>
                             <span className="text-[11px] text-muted-foreground">·</span>
                             <span className="text-[11px] text-muted-foreground">{dateStr}</span>
                             {tx.failReason && (
                               <>
                                 <span className="text-[11px] text-muted-foreground">·</span>
-                                <span className="text-[11px] text-red-400 truncate max-w-[120px]">{tx.failReason}</span>
+                                <span className="text-[11px] text-red-400 truncate max-w-[100px]">{tx.failReason}</span>
                               </>
                             )}
                           </div>
                         </div>
+
+                        {/* Amount + link */}
                         <div className="text-right shrink-0">
-                          <p className="text-[13px] font-medium tabular-nums">{amountDisplay}</p>
+                          <p className="text-[12px] font-medium tabular-nums text-foreground/80">{amountDisplay}</p>
                           {tx.txHash && (
                             <a
                               href={`${explorerBase}/tx/${tx.txHash}`}
@@ -490,9 +528,28 @@ export default function WalletPage() {
 
                 {/* Token selector from owned balances */}
                 <div className="space-y-2">
-                  <Label htmlFor="send-token" className="text-[13px] font-medium">
-                    Token
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="send-token" className="text-[13px] font-medium">Token</Label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setRefreshing(true);
+                        try {
+                          await fetch(`/api/wallet/balances?chain=${sendForm.chain}&force=true`);
+                          mutateAll();
+                        } finally {
+                          setRefreshing(false);
+                        }
+                      }}
+                      disabled={refreshing || isLoading}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "animate-spin" : ""}>
+                        <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+                      </svg>
+                      Refresh
+                    </button>
+                  </div>
                   {(() => {
                     const chainBal = balancesByChain[parseInt(sendForm.chain)];
                     const tokens = chainBal?.tokens ?? [];
