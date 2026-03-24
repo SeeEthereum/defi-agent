@@ -16,11 +16,15 @@ import { toast } from "sonner";
 interface TxEntry {
   txHash: string;
   txTime: string;
+  direction?: string;    // "IN" | "OUT"
+  txStatus?: string;     // "SUCCESS" | "ERROR" | "PENDING"
+  chainSymbol?: string;  // "ETH", "MATIC", etc.
   symbol?: string;
   amount?: string;
-  state?: string;
-  chainIndex?: string;
-  txType?: string;
+  from?: string;
+  to?: string;
+  failReason?: string;
+  contractName?: string;
 }
 
 export default function WalletPage() {
@@ -31,7 +35,8 @@ export default function WalletPage() {
     recipient: "",
     amount: "",
     chain: "1",
-    contractToken: "",
+    // tokenKey = "native" or "CONTRACT_ADDRESS"
+    tokenKey: "native",
   });
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -132,6 +137,7 @@ export default function WalletPage() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     setSending(true);
+    const contractToken = sendForm.tokenKey !== "native" ? sendForm.tokenKey : undefined;
     try {
       const res = await fetch("/api/wallet/send", {
         method: "POST",
@@ -140,13 +146,13 @@ export default function WalletPage() {
           amount: sendForm.amount,
           recipient: sendForm.recipient.toLowerCase(),
           chain: parseInt(sendForm.chain),
-          contractToken: sendForm.contractToken || undefined,
+          contractToken,
         }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success(`Transaction sent! Hash: ${data.data?.txHash || "pending"}`);
-        setSendForm({ recipient: "", amount: "", chain: "1", contractToken: "" });
+        setSendForm({ recipient: "", amount: "", chain: "1", tokenKey: "native" });
       } else {
         toast.error(data.error || "Send failed");
       }
@@ -338,11 +344,30 @@ export default function WalletPage() {
               ) : (
                 <div className="space-y-0">
                   {history.map((tx, i) => {
-                    const chainName = Object.values(CHAINS).find(c => String(c.chainIndex) === tx.chainIndex)?.name ?? `Chain ${tx.chainIndex ?? "?"}`;
-                    const isReceive = tx.txType === "1";
-                    const stateLabel = tx.state === "2" ? "Success" : tx.state === "3" ? "Failed" : "Pending";
-                    const stateColor = tx.state === "2" ? "text-emerald-600" : tx.state === "3" ? "text-red-500" : "text-amber-500";
-                    const dateStr = tx.txTime ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                    const isReceive = tx.direction === "IN";
+                    const isSuccess = tx.txStatus === "SUCCESS";
+                    const isError = tx.txStatus === "ERROR";
+                    const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
+                    const stateColor = isSuccess ? "text-emerald-600" : isError ? "text-red-500" : "text-amber-500";
+                    const dateStr = tx.txTime
+                      ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                      : "—";
+                    // Build a human-readable label for the action
+                    const actionLabel = isReceive ? "Receive" : "Send";
+                    const tokenLabel = tx.symbol ? ` ${tx.symbol}` : "";
+                    const amountDisplay = tx.amount && parseFloat(tx.amount) > 0
+                      ? `${parseFloat(tx.amount).toFixed(4)} ${tx.symbol ?? ""}`
+                      : tx.symbol ? `— ${tx.symbol}` : "—";
+                    // Chain: use chainSymbol directly (ETH, MATIC, etc.)
+                    const chainDisplay = tx.chainSymbol ?? "—";
+                    // Explorer: best-effort using chainSymbol
+                    const explorerBase = tx.chainSymbol === "MATIC"
+                      ? "https://polygonscan.com"
+                      : tx.chainSymbol === "BSC"
+                      ? "https://bscscan.com"
+                      : tx.chainSymbol === "SOL"
+                      ? "https://solscan.io"
+                      : "https://etherscan.io";
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
                         <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isReceive ? "bg-emerald-50" : "bg-indigo-50"}`}>
@@ -355,27 +380,31 @@ export default function WalletPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium">{isReceive ? "Receive" : "Send"}{tx.symbol ? ` ${tx.symbol}` : ""}</span>
+                            <span className="text-[13px] font-medium">{actionLabel}{tokenLabel}</span>
                             <span className={`text-[11px] font-medium ${stateColor}`}>{stateLabel}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[11px] text-muted-foreground">{chainName}</span>
+                            <span className="text-[11px] text-muted-foreground">{chainDisplay}</span>
                             <span className="text-[11px] text-muted-foreground">·</span>
                             <span className="text-[11px] text-muted-foreground">{dateStr}</span>
+                            {tx.failReason && (
+                              <>
+                                <span className="text-[11px] text-muted-foreground">·</span>
+                                <span className="text-[11px] text-red-400 truncate max-w-[120px]">{tx.failReason}</span>
+                              </>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[13px] font-medium tabular-nums">
-                            {tx.amount ? `${parseFloat(tx.amount).toFixed(4)} ${tx.symbol ?? ""}` : "—"}
-                          </p>
+                        <div className="text-right shrink-0">
+                          <p className="text-[13px] font-medium tabular-nums">{amountDisplay}</p>
                           {tx.txHash && (
                             <a
-                              href={`${Object.values(CHAINS).find(c => String(c.chainIndex) === tx.chainIndex)?.explorer ?? "https://etherscan.io"}/tx/${tx.txHash}`}
+                              href={`${explorerBase}/tx/${tx.txHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[11px] text-indigo-500 hover:text-indigo-700 font-mono"
                             >
-                              {tx.txHash.slice(0, 6)}...{tx.txHash.slice(-4)}
+                              {tx.txHash.slice(0, 6)}…{tx.txHash.slice(-4)}
                             </a>
                           )}
                         </div>
@@ -438,6 +467,110 @@ export default function WalletPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSend} className="space-y-5">
+                {/* Chain selector */}
+                <div className="space-y-2">
+                  <Label htmlFor="send-chain" className="text-[13px] font-medium">
+                    Chain
+                  </Label>
+                  <select
+                    id="send-chain"
+                    className="flex h-11 w-full rounded-xl border border-border/60 bg-transparent px-3 py-1 text-[14px] outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
+                    value={sendForm.chain}
+                    onChange={(e) =>
+                      setSendForm({ ...sendForm, chain: e.target.value, tokenKey: "native" })
+                    }
+                  >
+                    {Object.values(CHAINS).map((c) => (
+                      <option key={c.chainIndex} value={c.chainIndex}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Token selector from owned balances */}
+                <div className="space-y-2">
+                  <Label htmlFor="send-token" className="text-[13px] font-medium">
+                    Token
+                  </Label>
+                  {(() => {
+                    const chainBal = balancesByChain[parseInt(sendForm.chain)];
+                    const tokens = chainBal?.tokens ?? [];
+                    const chainInfo = Object.values(CHAINS).find(c => String(c.chainIndex) === sendForm.chain);
+                    const nativeSymbol = tokens.find(t => t.isNative)?.symbol ?? chainInfo?.nativeSymbol ?? "ETH";
+                    const selectedBalance = sendForm.tokenKey === "native"
+                      ? tokens.find(t => t.isNative)?.balance ?? "0"
+                      : tokens.find(t => t.tokenAddress === sendForm.tokenKey)?.balance ?? "0";
+                    return (
+                      <div className="space-y-1.5">
+                        <select
+                          id="send-token"
+                          className="flex h-11 w-full rounded-xl border border-border/60 bg-transparent px-3 py-1 text-[14px] outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
+                          value={sendForm.tokenKey}
+                          onChange={(e) =>
+                            setSendForm({ ...sendForm, tokenKey: e.target.value, amount: "" })
+                          }
+                        >
+                          <option value="native">{nativeSymbol} (native)</option>
+                          {tokens
+                            .filter(t => !t.isNative && t.tokenAddress)
+                            .map(t => (
+                              <option key={t.tokenAddress} value={t.tokenAddress!}>
+                                {t.symbol} — {parseFloat(t.balance).toFixed(4)}
+                              </option>
+                            ))}
+                          {tokens.length === 0 && (
+                            <option disabled value="">No tokens found on this chain</option>
+                          )}
+                        </select>
+                        {parseFloat(selectedBalance) > 0 && (
+                          <p className="text-[12px] text-muted-foreground">
+                            Balance: {parseFloat(selectedBalance).toFixed(6)}{" "}
+                            {sendForm.tokenKey === "native"
+                              ? nativeSymbol
+                              : tokens.find(t => t.tokenAddress === sendForm.tokenKey)?.symbol ?? ""}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Amount + MAX */}
+                <div className="space-y-2">
+                  <Label htmlFor="send-amount" className="text-[13px] font-medium">
+                    Amount
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="send-amount"
+                      type="text"
+                      placeholder="0.00"
+                      className="h-11 rounded-xl text-[14px] pr-16"
+                      value={sendForm.amount}
+                      onChange={(e) =>
+                        setSendForm({ ...sendForm, amount: e.target.value })
+                      }
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+                      onClick={() => {
+                        const chainBal = balancesByChain[parseInt(sendForm.chain)];
+                        const tokens = chainBal?.tokens ?? [];
+                        const bal = sendForm.tokenKey === "native"
+                          ? tokens.find(t => t.isNative)?.balance
+                          : tokens.find(t => t.tokenAddress === sendForm.tokenKey)?.balance;
+                        if (bal) setSendForm({ ...sendForm, amount: bal });
+                      }}
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recipient */}
                 <div className="space-y-2">
                   <Label htmlFor="recipient" className="text-[13px] font-medium">
                     Recipient Address
@@ -453,60 +586,7 @@ export default function WalletPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount" className="text-[13px] font-medium">
-                      Amount
-                    </Label>
-                    <Input
-                      id="amount"
-                      type="text"
-                      placeholder="0.01"
-                      className="h-11 rounded-xl text-[14px]"
-                      value={sendForm.amount}
-                      onChange={(e) =>
-                        setSendForm({ ...sendForm, amount: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="chain" className="text-[13px] font-medium">
-                      Chain
-                    </Label>
-                    <select
-                      id="chain"
-                      className="flex h-11 w-full rounded-xl border border-border/60 bg-transparent px-3 py-1 text-[14px] outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
-                      value={sendForm.chain}
-                      onChange={(e) =>
-                        setSendForm({ ...sendForm, chain: e.target.value })
-                      }
-                    >
-                      {Object.values(CHAINS).map((c) => (
-                        <option key={c.chainIndex} value={c.chainIndex}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="token" className="text-[13px] font-medium">
-                    Token Contract (leave empty for native)
-                  </Label>
-                  <Input
-                    id="token"
-                    placeholder="0x... (optional)"
-                    className="h-11 rounded-xl text-[14px]"
-                    value={sendForm.contractToken}
-                    onChange={(e) =>
-                      setSendForm({
-                        ...sendForm,
-                        contractToken: e.target.value,
-                      })
-                    }
-                  />
-                </div>
+
                 <Button
                   type="submit"
                   disabled={sending}
@@ -515,7 +595,7 @@ export default function WalletPage() {
                   {sending ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Sending
+                      Sending…
                     </span>
                   ) : (
                     "Send"

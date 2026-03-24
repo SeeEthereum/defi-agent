@@ -52,12 +52,15 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 2: Deposit into fToken
+    // force:true bypasses OKX backend pre-execution simulation which would fail
+    // because the approve tx hasn't been mined yet at the time of deposit broadcast
     const depositCalldata = encodeDeposit(rawAmount, wallet);
 
     const depositResult = await walletContractCall({
       to: tokenAddress,
       chain: String(chainIndex),
       inputData: depositCalldata,
+      force: true,
     });
 
     return NextResponse.json({
