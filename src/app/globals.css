@@ -197,6 +197,18 @@
   50%       { box-shadow: 0 0 0 3px oklch(0.55 0.28 290 / 0.18), 0 0 12px oklch(0.65 0.2 200 / 0.12); }
 }
 
+/* ── Auth page particles ─────────────────────────────────────────────────── */
+@keyframes auth-particle {
+  0%   { transform: translateY(0px) translateX(0px) scale(1); opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 0.5; }
+  100% { transform: translateY(-80vh) translateX(20px) scale(0.4); opacity: 0; }
+}
+@keyframes auth-card-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Apple-style smooth transitions */
 @layer utilities {
   /* Core */
