@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
       inputData: tx.data,
       value: valueUi,
       mevProtection: useMev,
+      force: true, // Skip backend simulation — approval may not be reflected yet
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

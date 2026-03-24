@@ -20,10 +20,13 @@ export async function POST(request: NextRequest) {
     const { fTokenSymbol, amount, chainIndex, fTokenAddress, underlyingAddress, decimals } =
       schema.parse(body);
 
+    // ALWAYS prefer hardcoded lookup — it's verified on-chain per chain
     const fToken = getFToken(chainIndex, fTokenSymbol);
     const tokenAddress = fToken?.address ?? fTokenAddress;
     const tokenUnderlying = fToken?.underlying ?? underlyingAddress;
     const tokenDecimals = fToken?.underlyingDecimals ?? decimals;
+
+    console.log(`[Earn/Approve] chain=${chainIndex} symbol=${fTokenSymbol} fToken=${tokenAddress} underlying=${tokenUnderlying}`);
 
     if (!tokenAddress || !tokenUnderlying || tokenDecimals === undefined) {
       return NextResponse.json(

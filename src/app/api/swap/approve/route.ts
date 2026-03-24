@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     const { token, amount, chain } = schema.parse(body);
 
     // onchainos swap approve returns the approval TX DATA — not a broadcast
+    // Response shape: { data: [{ data: "0x095ea7b3...", dexContractAddress: "0x...", gasLimit, gasPrice }] }
     const result = await swapApprove({
       token: normalizeAddress(token),
       amount,
@@ -26,10 +27,10 @@ export async function POST(request: NextRequest) {
     const rawData = result.data as any;
     const entry = Array.isArray(rawData) ? rawData[0] : rawData;
 
-    // Extract the tx object (to = token address, data = approve calldata)
-    const tx = entry?.tx ?? entry;
-    const to = tx?.to ?? tx?.tokenAddress ?? normalizeAddress(token);
-    const inputData = tx?.data ?? tx?.inputData;
+    // The response has { data: "0x..calldata", dexContractAddress: "0x..spender" }
+    // The `data` field IS the approve calldata (approve(spender, amount))
+    // The `to` for walletContractCall must be the TOKEN address (we call approve ON the token)
+    const inputData = entry?.data ?? entry?.tx?.data ?? entry?.inputData;
 
     if (!inputData) {
       // If no tx data returned, the allowance might already be sufficient
@@ -47,9 +48,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Actually SEND the approval transaction via walletContractCall
+    // Send the approval transaction: call approve() ON the token contract
     const callResult = await walletContractCall({
-      to: normalizeAddress(to),
+      to: normalizeAddress(token),
       chain: String(chainConfig.chainIndex),
       inputData,
     });

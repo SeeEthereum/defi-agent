@@ -23,11 +23,14 @@ export async function POST(request: NextRequest) {
     const { fTokenSymbol, amount, chainIndex, walletAddress, fTokenAddress, underlyingAddress, decimals } =
       schema.parse(body);
 
-    // Try hardcoded lookup first, fall back to provided addresses
+    // ALWAYS prefer hardcoded lookup — it's verified on-chain per chain
     const fToken = getFToken(chainIndex, fTokenSymbol);
     const tokenAddress = fToken?.address ?? fTokenAddress;
     const tokenUnderlying = fToken?.underlying ?? underlyingAddress;
     const tokenDecimals = fToken?.underlyingDecimals ?? decimals;
+
+    // Safety: log which address we're using to catch address mismatches
+    console.log(`[Earn/Supply] chain=${chainIndex} symbol=${fTokenSymbol} fToken=${tokenAddress} (hardcoded=${fToken?.address ?? "none"}, frontend=${fTokenAddress ?? "none"})`);
 
     if (!tokenAddress || !tokenUnderlying || tokenDecimals === undefined) {
       return NextResponse.json(

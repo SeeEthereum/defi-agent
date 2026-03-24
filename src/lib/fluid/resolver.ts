@@ -37,9 +37,6 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
     8453: "Base",
   };
 
-  // We only care about these underlying symbols
-  const wantedSymbols = new Set(["fUSDC", "fUSDT", "fWETH"]);
-
   for (const chainIndex of FLUID_CHAIN_IDS) {
     const client = getPublicClient(chainIndex);
 
@@ -64,7 +61,6 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
 
       for (const entry of dataArray) {
         const symbol = entry.symbol as string;
-        if (!wantedSymbols.has(symbol)) continue;
 
         const decimals = Number(entry.decimals);
         // Derive underlying symbol from fToken symbol (fUSDC -> USDC)
@@ -106,45 +102,97 @@ export async function getUserPositions(
   const positions: FluidUserPosition[] = [];
 
   for (const chainIndex of FLUID_CHAIN_IDS) {
-    const fTokens = getFTokensForChain(chainIndex);
     const client = getPublicClient(chainIndex);
 
-    for (const ft of fTokens) {
-      try {
-        const result = await client.readContract({
-          address: LENDING_RESOLVER as `0x${string}`,
-          abi: lendingResolverAbi,
-          functionName: "getUserPosition",
-          args: [ft.address, userAddress],
-        });
+    try {
+      // Dynamically discover ALL fTokens on this chain via the resolver
+      const allData = await client.readContract({
+        address: LENDING_RESOLVER as `0x${string}`,
+        abi: lendingResolverAbi,
+        functionName: "getFTokensEntireData",
+      });
 
-        const { fTokenShares, underlyingAssets } = result as {
-          fTokenShares: bigint;
-          underlyingAssets: bigint;
-          underlyingBalance: bigint;
-          allowance: bigint;
-        };
+      const dataArray = allData as Array<{
+        tokenAddress: string;
+        symbol: string;
+        decimals: bigint;
+        asset: string;
+        [key: string]: unknown;
+      }>;
 
-        if (fTokenShares > 0n) {
-          positions.push({
-            chainIndex,
-            fTokenAddress: ft.address,
-            symbol: ft.symbol,
-            underlyingSymbol: ft.underlyingSymbol,
-            underlyingDecimals: ft.underlyingDecimals,
-            shares: fTokenShares.toString(),
-            underlyingAssets: underlyingAssets.toString(),
-            underlyingAssetsUi: toUiUnits(
-              underlyingAssets,
-              ft.underlyingDecimals
-            ),
+      // Check user position for each fToken
+      for (const entry of dataArray) {
+        try {
+          const fTokenAddr = entry.tokenAddress as `0x${string}`;
+          const result = await client.readContract({
+            address: LENDING_RESOLVER as `0x${string}`,
+            abi: lendingResolverAbi,
+            functionName: "getUserPosition",
+            args: [fTokenAddr, userAddress],
           });
+
+          const { fTokenShares, underlyingAssets } = result as {
+            fTokenShares: bigint;
+            underlyingAssets: bigint;
+            underlyingBalance: bigint;
+            allowance: bigint;
+          };
+
+          if (fTokenShares > 0n) {
+            const symbol = entry.symbol as string;
+            const decimals = Number(entry.decimals);
+            const underlyingSymbol = symbol.startsWith("f") ? symbol.slice(1) : symbol;
+
+            positions.push({
+              chainIndex,
+              fTokenAddress: fTokenAddr.toLowerCase(),
+              symbol,
+              underlyingSymbol,
+              underlyingDecimals: decimals,
+              shares: fTokenShares.toString(),
+              underlyingAssets: underlyingAssets.toString(),
+              underlyingAssetsUi: toUiUnits(underlyingAssets, decimals),
+            });
+          }
+        } catch {
+          // Skip individual fToken errors
         }
-      } catch (error) {
-        console.error(
-          `Error fetching position for ${ft.symbol} on chain ${chainIndex}:`,
-          error
-        );
+      }
+    } catch (error) {
+      // Fallback to hardcoded list if getFTokensEntireData fails
+      console.error(`[Fluid] getFTokensEntireData failed on chain ${chainIndex}, using hardcoded list`);
+      const fTokens = getFTokensForChain(chainIndex);
+      for (const ft of fTokens) {
+        try {
+          const result = await client.readContract({
+            address: LENDING_RESOLVER as `0x${string}`,
+            abi: lendingResolverAbi,
+            functionName: "getUserPosition",
+            args: [ft.address as `0x${string}`, userAddress],
+          });
+
+          const { fTokenShares, underlyingAssets } = result as {
+            fTokenShares: bigint;
+            underlyingAssets: bigint;
+            underlyingBalance: bigint;
+            allowance: bigint;
+          };
+
+          if (fTokenShares > 0n) {
+            positions.push({
+              chainIndex,
+              fTokenAddress: ft.address,
+              symbol: ft.symbol,
+              underlyingSymbol: ft.underlyingSymbol,
+              underlyingDecimals: ft.underlyingDecimals,
+              shares: fTokenShares.toString(),
+              underlyingAssets: underlyingAssets.toString(),
+              underlyingAssetsUi: toUiUnits(underlyingAssets, ft.underlyingDecimals),
+            });
+          }
+        } catch {
+          /* skip */
+        }
       }
     }
   }

@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
       to: tokenAddress,
       chain: String(chainIndex),
       inputData: withdrawCalldata,
+      force: true, // Skip simulation — may fail due to timing
     });
 
     return NextResponse.json({
