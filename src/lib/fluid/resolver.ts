@@ -11,6 +11,7 @@ export interface FluidMarket {
   symbol: string;
   underlyingSymbol: string;
   underlyingDecimals: number;
+  underlyingAddress: string;
   supplyRatePercent: number;
   rewardsRatePercent: number;
   totalAprPercent: number;
@@ -57,6 +58,7 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
         totalAssets: bigint;
         supplyRate: bigint;
         rewardsRate: bigint;
+        asset: string;
         [key: string]: unknown;
       }>;
 
@@ -80,6 +82,7 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
           symbol,
           underlyingSymbol,
           underlyingDecimals: decimals,
+          underlyingAddress: (entry.asset as string ?? "").toLowerCase(),
           supplyRatePercent,
           rewardsRatePercent,
           totalAprPercent: supplyRatePercent + rewardsRatePercent,

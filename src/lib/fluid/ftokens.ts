@@ -38,6 +38,19 @@ export function encodeWithdraw(
   });
 }
 
+/** Encode fToken redeem calldata (ERC-4626) — burns shares, returns underlying */
+export function encodeRedeem(
+  shares: bigint,
+  receiver: `0x${string}`,
+  owner: `0x${string}`
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: erc4626Abi,
+    functionName: "redeem",
+    args: [shares, receiver, owner],
+  });
+}
+
 /** Encode fWETH depositNative calldata (payable, for native ETH) */
 export function encodeDepositNative(receiver: `0x${string}`): `0x${string}` {
   return encodeFunctionData({

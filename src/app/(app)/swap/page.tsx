@@ -261,6 +261,7 @@ export default function SwapPage() {
   const [quote, setQuote] = useState<Record<string, unknown> | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [swapLoading, setSwapLoading] = useState(false);
+  const [swapStep, setSwapStep] = useState<"idle" | "approving" | "waiting_approve" | "swapping">("idle");
   const [error, setError] = useState<{ type: "quote" | "swap"; title: string; message: string } | null>(null);
   const [swapResult, setSwapResult] = useState<{ status: string; message: string; txHash?: string; mevProtected?: boolean; securityWarning?: string | null } | null>(null);
   const [slippage, setSlippage] = useState("0.5");
@@ -280,6 +281,33 @@ export default function SwapPage() {
     setQuote(null);
     setError(null);
     setSwapResult(null);
+    setSwapStep("idle");
+  };
+
+  const RPC_URLS: Record<string, string> = {
+    ethereum: "https://eth.llamarpc.com",
+    arbitrum: "https://arb1.arbitrum.io/rpc",
+    base: "https://mainnet.base.org",
+    bsc: "https://bsc-dataseed.binance.org",
+  };
+
+  const pollSwapTxReceipt = async (txHash: string): Promise<boolean> => {
+    const rpcUrl = RPC_URLS[chain];
+    if (!rpcUrl || !txHash) return true;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionReceipt", params: [txHash], id: 1 }),
+        });
+        const json = await res.json();
+        if (json.result?.status === "0x1") return true;
+        if (json.result?.status === "0x0") return false;
+      } catch {}
+    }
+    return true; // timeout — proceed anyway
   };
 
   if (!authenticated) {
@@ -388,9 +416,34 @@ export default function SwapPage() {
   const handleSwap = async () => {
     if (!fromToken || !toToken || !amountWei) return;
     setSwapLoading(true);
+    setSwapStep("idle");
     setError(null);
     setSwapResult(null);
     try {
+      // Step 1: Approve DEX router for ERC-20 tokens (skip for native ETH/BNB)
+      const isNative = fromToken.address.toLowerCase() === NATIVE_TOKEN.toLowerCase();
+      if (!isNative) {
+        setSwapStep("approving");
+        const approveRes = await fetch("/api/swap/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: fromToken.address, amount: amountWei, chain }),
+        });
+        const approveData = await approveRes.json();
+        if (!approveData.success) {
+          throw new Error(approveData.error || "Approval failed");
+        }
+        // Poll for approval tx confirmation
+        const approveTxHash =
+          (approveData.data as Record<string, unknown>)?.txHash as string | undefined ??
+          (typeof approveData.data === "string" ? approveData.data : undefined);
+        if (approveTxHash) {
+          setSwapStep("waiting_approve");
+          await pollSwapTxReceipt(approveTxHash);
+        }
+      }
+
+      setSwapStep("swapping");
       const res = await fetch("/api/swap/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -429,10 +482,13 @@ export default function SwapPage() {
         const err = friendlyError(data.error || "Swap failed. Please try again.");
         setError({ type: "swap", ...err });
       }
-    } catch {
-      setError({ type: "swap", title: "Network Error", message: "Could not connect to the server. Please check your internet connection." });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Swap failed. Please try again.";
+      const err = friendlyError(msg);
+      setError({ type: "swap", ...err });
     } finally {
       setSwapLoading(false);
+      setSwapStep("idle");
     }
   };
 
@@ -889,10 +945,16 @@ export default function SwapPage() {
               {swapLoading ? (
                 <span className="flex items-center gap-2">
                   <Spinner />
-                  Swapping...
+                  {swapStep === "approving"
+                    ? "Approving..."
+                    : swapStep === "waiting_approve"
+                    ? "Confirming approval..."
+                    : "Swapping..."}
                 </span>
               ) : (
-                "Swap"
+                fromToken?.address.toLowerCase() === NATIVE_TOKEN.toLowerCase()
+                  ? "Swap"
+                  : "Approve & Swap"
               )}
             </Button>
           </div>

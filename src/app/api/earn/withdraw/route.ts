@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
-import { encodeWithdraw, parseAmount } from "@/lib/fluid/ftokens";
+import { encodeWithdraw, encodeRedeem, parseAmount } from "@/lib/fluid/ftokens";
 import { getFToken } from "@/lib/fluid/constants";
 import { FLUID_CHAIN_IDS } from "@/lib/chains";
 import { normalizeAddress } from "@/lib/utils";
@@ -8,18 +8,21 @@ import { z } from "zod";
 
 const schema = z.object({
   fTokenSymbol: z.string().min(1),
-  amount: z.string().min(1), // UI units
+  amount: z.string().min(1), // UI units (underlying)
   chainIndex: z.number().refine((n) => FLUID_CHAIN_IDS.includes(n)),
   walletAddress: z.string().regex(/^0x[0-9a-f]{40}$/),
   // Optional: pass fToken address directly for dynamically discovered tokens
   fTokenAddress: z.string().regex(/^0x[0-9a-f]{40}$/).optional(),
   decimals: z.number().optional(),
+  // If true, use redeem(shares) instead of withdraw(assets) to avoid rounding issues
+  isAll: z.boolean().optional(),
+  shares: z.string().optional(), // raw shares bigint string, used when isAll=true
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex, walletAddress, fTokenAddress, decimals } =
+    const { fTokenSymbol, amount, chainIndex, walletAddress, fTokenAddress, decimals, isAll, shares } =
       schema.parse(body);
 
     // Try hardcoded lookup first, fall back to provided address
@@ -37,10 +40,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rawAmount = parseAmount(amount, tokenDecimals);
     const wallet = normalizeAddress(walletAddress) as `0x${string}`;
 
-    const withdrawCalldata = encodeWithdraw(rawAmount, wallet, wallet);
+    // Use redeem(shares) for "withdraw all" to avoid rounding dust issues
+    // Use withdraw(assets) for partial withdrawals
+    const withdrawCalldata =
+      isAll && shares
+        ? encodeRedeem(BigInt(shares), wallet, wallet)
+        : encodeWithdraw(parseAmount(amount, tokenDecimals), wallet, wallet);
 
     const result = await walletContractCall({
       to: tokenAddress,
