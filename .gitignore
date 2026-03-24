@@ -45,5 +45,5 @@ next-env.d.ts
 .agents/
 skills-lock.json
 
-# onchainos binary (platform-specific, installed at build time)
-onchainos
+# onchainos binary (platform-specific, installed at build time into ./bin/)
+/bin/

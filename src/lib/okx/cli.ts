@@ -1,12 +1,21 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
+import path from "path";
+import fs from "fs";
 import type { CliResult } from "./types";
 
 const execFileAsync = promisify(execFile);
 
-const ONCHAINOS_BIN =
-  process.env.ONCHAINOS_PATH ||
-  `${process.env.HOME}/.local/bin/onchainos`;
+function resolveBin(): string {
+  if (process.env.ONCHAINOS_PATH) return process.env.ONCHAINOS_PATH;
+  // Project-local bin — installed here during Render build
+  const projectBin = path.join(process.cwd(), "bin", "onchainos");
+  if (fs.existsSync(projectBin)) return projectBin;
+  // Local dev fallback
+  return path.join(process.env.HOME ?? "~", ".local", "bin", "onchainos");
+}
+
+const ONCHAINOS_BIN = resolveBin();
 
 // Mutex to serialize CLI calls (prevents keyring conflicts)
 let lock: Promise<void> = Promise.resolve();
