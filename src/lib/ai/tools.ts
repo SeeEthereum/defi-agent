@@ -4,14 +4,14 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "get_balances",
     description:
-      "Get the user's wallet balances across all supported chains (Ethereum, Arbitrum, Base, BNB Chain)",
+      "Get the user's wallet balances across all supported chains (Ethereum, Arbitrum, Base, BNB Chain, Polygon, Optimism)",
     input_schema: {
       type: "object",
       properties: {
         chain: {
           type: "string",
           description:
-            "Optional: filter by chain name (ethereum, arbitrum, base, bnb). Omit to get balances on all chains.",
+            "Optional: filter by chain name (ethereum, arbitrum, base, bsc, polygon, optimism). Omit to get balances on all chains.",
         },
       },
     },
@@ -19,14 +19,14 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "get_fluid_markets",
     description:
-      "Get current Fluid lending market data including supply APR, rewards APR, and TVL. Available on Ethereum, Arbitrum, and Base only (NOT BNB Chain).",
+      "Get current Fluid lending market data including supply APR, rewards APR, and TVL. Available on Ethereum, Arbitrum, Base, and Polygon (NOT BNB Chain or Optimism).",
     input_schema: {
       type: "object",
       properties: {
         chainIndex: {
           type: "number",
           description:
-            "Optional: filter by chain (1=Ethereum, 42161=Arbitrum, 8453=Base). Omit for all chains.",
+            "Optional: filter by chain (1=Ethereum, 42161=Arbitrum, 8453=Base, 137=Polygon). Omit for all chains.",
         },
       },
     },
@@ -62,7 +62,7 @@ export const AI_TOOLS: Tool[] = [
         },
         chain: {
           type: "string",
-          description: "Chain name: ethereum, arbitrum, base, or bsc.",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, or optimism.",
         },
       },
       required: ["fromToken", "toToken", "amount", "chain"],
@@ -78,7 +78,7 @@ export const AI_TOOLS: Tool[] = [
         fTokenSymbol: {
           type: "string",
           description:
-            "The fToken symbol to deposit into: fUSDC, fUSDT, or fWETH.",
+            "The fToken symbol to deposit into: fUSDC, fUSDT, fWETH, or fWPOL (Polygon only).",
         },
         amount: {
           type: "string",
@@ -88,7 +88,7 @@ export const AI_TOOLS: Tool[] = [
         chainIndex: {
           type: "number",
           description:
-            "Chain ID: 1 (Ethereum), 42161 (Arbitrum), or 8453 (Base). NOT 56 (BNB).",
+            "Chain ID: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), or 137 (Polygon). NOT 56 (BNB) or 10 (Optimism).",
         },
       },
       required: ["fTokenSymbol", "amount", "chainIndex"],
@@ -117,7 +117,7 @@ export const AI_TOOLS: Tool[] = [
         },
         chain: {
           type: "string",
-          description: "Chain name: ethereum, arbitrum, base, or bsc.",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, or optimism.",
         },
         slippage: {
           type: "string",
@@ -157,12 +157,12 @@ export const AI_TOOLS: Tool[] = [
         chainIndex: {
           type: "number",
           description:
-            "Chain ID: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), or 56 (BNB Chain).",
+            "Chain ID: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), 56 (BNB Chain), 137 (Polygon), or 10 (Optimism).",
         },
         contractToken: {
           type: "string",
           description:
-            "ERC-20 token contract address. Omit for native token (ETH/BNB).",
+            "ERC-20 token contract address. Omit for native token (ETH/BNB/MATIC).",
         },
       },
       required: ["recipient", "amount", "chainIndex"],

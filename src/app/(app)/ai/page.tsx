@@ -365,7 +365,7 @@ export default function AiPage() {
   const hasContent = messages.length > 0 || proposedActions.length > 0;
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+    <div className="relative flex flex-col h-[calc(100vh-4rem-56px)] md:h-[calc(100vh-4rem)] overflow-hidden">
 
       {/* ── Aurora background blobs ─────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
@@ -455,7 +455,7 @@ export default function AiPage() {
             )}
             <div
               className={cn(
-                "max-w-[75%] rounded-2xl px-4 py-3 text-sm",
+                "max-w-[88%] sm:max-w-[75%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm",
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground rounded-br-sm"
                   : "bg-muted rounded-bl-sm"
@@ -480,7 +480,7 @@ export default function AiPage() {
                 <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
               </svg>
             </div>
-            <div className="max-w-[75%] w-72">
+            <div className="max-w-[85%] w-full sm:w-72">
               <ActionCard
                 action={action}
                 onConfirm={() => executeAction(action, i)}
@@ -513,7 +513,7 @@ export default function AiPage() {
       </div>
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
-      <div className="relative shrink-0 border-t border-violet-200/40 px-6 py-4 bg-background/80 backdrop-blur z-10">
+      <div className="relative shrink-0 border-t border-violet-200/40 px-3 py-3 md:px-6 md:py-4 bg-background/80 backdrop-blur z-10">
         <div className="absolute inset-0 bg-gradient-to-r from-violet-500/4 via-transparent to-cyan-500/4 pointer-events-none" />
         <form onSubmit={handleSubmit} className="flex gap-3 items-end">
           <div className="flex-1 relative">

@@ -50,6 +50,26 @@ export const CHAINS: Record<string, ChainConfig> = {
     nativeSymbol: "BNB",
     nativeDecimals: 18,
   },
+  polygon: {
+    chainIndex: 137,
+    name: "Polygon",
+    swapName: "polygon",
+    rpcUrl: "https://polygon-bor-rpc.publicnode.com",
+    explorer: "https://polygonscan.com",
+    hasFluid: true,
+    nativeSymbol: "MATIC",
+    nativeDecimals: 18,
+  },
+  optimism: {
+    chainIndex: 10,
+    name: "Optimism",
+    swapName: "optimism",
+    rpcUrl: "https://mainnet.optimism.io",
+    explorer: "https://optimistic.etherscan.io",
+    hasFluid: false,
+    nativeSymbol: "ETH",
+    nativeDecimals: 18,
+  },
 } as const;
 
 export const SUPPORTED_CHAIN_IDS = Object.values(CHAINS).map(

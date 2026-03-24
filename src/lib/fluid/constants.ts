@@ -75,6 +75,37 @@ export const FTOKENS: Record<number, Record<string, FTokenConfig>> = {
       underlyingSymbol: "WETH",
     },
   },
+  // Polygon — verified via LendingResolver.getFTokensEntireData() on-chain
+  137: {
+    fUSDC: {
+      address: "0x571d456b578fdc34e26e6d636736ed7c0cdb9d89",
+      underlying: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+      symbol: "fUSDC",
+      underlyingDecimals: 6,
+      underlyingSymbol: "USDC",
+    },
+    fUSDT: {
+      address: "0x6f5e34eff43d9ab7c977512509c53840b5efba85",
+      underlying: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+      symbol: "fUSDT",
+      underlyingDecimals: 6,
+      underlyingSymbol: "USDT",
+    },
+    fWETH: {
+      address: "0xd3154535e4d0e179583ad694859e4e876eb12d24",
+      underlying: "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619",
+      symbol: "fWETH",
+      underlyingDecimals: 18,
+      underlyingSymbol: "WETH",
+    },
+    fWPOL: {
+      address: "0x41b8b33a413681cb7d869d287e99c30c6df775b9",
+      underlying: "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+      symbol: "fWPOL",
+      underlyingDecimals: 18,
+      underlyingSymbol: "WPOL",
+    },
+  },
 };
 
 export function getFTokensForChain(chainIndex: number): FTokenConfig[] {

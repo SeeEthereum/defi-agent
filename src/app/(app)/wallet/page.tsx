@@ -223,20 +223,22 @@ export default function WalletPage() {
       </div>
 
       <Tabs defaultValue="balances">
-        <TabsList className="h-10 rounded-full bg-muted/60 p-1">
-          <TabsTrigger value="balances" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+        <div className="overflow-x-auto pb-1 -mx-1 px-1">
+        <TabsList className="h-10 rounded-full bg-muted/60 p-1 w-max min-w-full">
+          <TabsTrigger value="balances" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Balances
           </TabsTrigger>
-          <TabsTrigger value="history" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm" onClick={() => { if (!historyLoaded) loadHistory(); }}>
+          <TabsTrigger value="history" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm" onClick={() => { if (!historyLoaded) loadHistory(); }}>
             History
           </TabsTrigger>
-          <TabsTrigger value="deposit" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="deposit" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Deposit
           </TabsTrigger>
-          <TabsTrigger value="send" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="send" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Send
           </TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="balances" className="mt-6 space-y-4">
           {/* Refresh button */}

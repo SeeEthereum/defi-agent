@@ -4,6 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
+interface SidebarProps {
+  onClose?: () => void;
+}
+
 const primaryItem = { href: "/ai", label: "AI Assistant", icon: "sparkles" };
 
 const navItems = [
@@ -48,29 +52,44 @@ const icons: Record<string, React.ReactNode> = {
       <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
     </svg>
   ),
+  x: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  ),
 };
 
-export function Sidebar() {
+export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
 
   return (
     <aside className="flex h-screen w-[260px] flex-col border-r border-border/60 bg-sidebar">
       <div className="flex h-16 items-center gap-3 px-6">
-        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
+        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
           </svg>
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <span className="text-[15px] font-semibold tracking-tight">DeFi Agent</span>
           <p className="text-[10px] text-muted-foreground leading-none mt-0.5">by 0xSalvo</p>
         </div>
+        {/* Close button — mobile only */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+          >
+            {icons["x"]}
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 px-3 pt-4 space-y-0.5">
         {/* AI Assistant — primary entry point */}
         <Link
           href={primaryItem.href}
+          onClick={onClose}
           className={cn(
             "relative flex items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-semibold transition-all duration-200 mb-3 overflow-hidden",
             pathname === primaryItem.href
@@ -78,37 +97,26 @@ export function Sidebar() {
               : "ai-shimmer-bg animate-ai-glow text-violet-700 border border-violet-400/30 hover:border-violet-400/50"
           )}
         >
-          {/* Scan line — only when inactive */}
           {pathname !== primaryItem.href && (
             <span className="pointer-events-none absolute inset-x-0 top-0 h-px animate-ai-scan bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent" />
           )}
-
-          {/* Icon with orbiting dots */}
           <span className={cn(
             "relative flex h-7 w-7 items-center justify-center rounded-lg shrink-0 overflow-visible",
             pathname === primaryItem.href ? "bg-white/20" : "bg-violet-500/15"
           )}>
             {pathname !== primaryItem.href && (
               <>
-                {/* Orbit dot 1 — violet */}
-                <span
-                  className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_5px_2px_oklch(0.55_0.28_290/0.7)] animate-ai-orbit-sm-1"
-                />
-                {/* Orbit dot 2 — cyan */}
-                <span
-                  className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-cyan-400 shadow-[0_0_5px_2px_oklch(0.65_0.22_200/0.7)] animate-ai-orbit-sm-2"
-                />
+                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_5px_2px_oklch(0.55_0.28_290/0.7)] animate-ai-orbit-sm-1" />
+                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-cyan-400 shadow-[0_0_5px_2px_oklch(0.65_0.22_200/0.7)] animate-ai-orbit-sm-2" />
               </>
             )}
             <span className={cn(pathname !== primaryItem.href && "animate-ai-pulse-icon")}>
               {icons[primaryItem.icon]}
             </span>
           </span>
-
           <span className={cn("flex-1", pathname !== primaryItem.href && "ai-gradient-text")}>
             {primaryItem.label}
           </span>
-
           {pathname !== primaryItem.href && (
             <span className="text-[10px] font-bold tracking-wide uppercase bg-violet-500/15 text-violet-600 px-1.5 py-0.5 rounded-md animate-pulse">
               Start
@@ -116,7 +124,6 @@ export function Sidebar() {
           )}
         </Link>
 
-        {/* Other pages */}
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 px-3 pb-2">
           Manual
         </p>
@@ -124,6 +131,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onClose}
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
               pathname === item.href

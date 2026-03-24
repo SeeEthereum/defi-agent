@@ -21,18 +21,20 @@ import { TokenIcon } from "@/components/token-icon";
 import type { FluidMarket, FluidUserPosition } from "@/lib/fluid/resolver";
 
 const CHAIN_TABS = [
-  { id: "all", label: "All Chains" },
+  { id: "all", label: "All" },
   { id: "1", label: "Ethereum" },
   { id: "42161", label: "Arbitrum" },
   { id: "8453", label: "Base" },
+  { id: "137", label: "Polygon" },
 ] as const;
 
-const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 42161: "Arbitrum", 8453: "Base" };
+const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 137: "Polygon" };
 
 const RPC_URLS: Record<number, string> = {
   1: "https://ethereum-rpc.publicnode.com",
   42161: "https://arb1.arbitrum.io/rpc",
   8453: "https://mainnet.base.org",
+  137: "https://polygon-bor-rpc.publicnode.com",
 };
 
 /** Poll eth_getTransactionReceipt until confirmed or timeout (60s) */
@@ -586,7 +588,7 @@ export default function EarnPage() {
         </div>
 
         {/* Chain tabs */}
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/60 p-1 w-fit">
+        <div className="flex items-center gap-1.5 rounded-full bg-muted/60 p-1 w-full overflow-x-auto scrollbar-none max-w-full">
           {CHAIN_TABS.map((tab) => (
             <button
               key={tab.id}
