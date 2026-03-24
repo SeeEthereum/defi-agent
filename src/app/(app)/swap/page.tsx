@@ -285,7 +285,7 @@ export default function SwapPage() {
   };
 
   const RPC_URLS: Record<string, string> = {
-    ethereum: "https://eth.llamarpc.com",
+    ethereum: "https://ethereum-rpc.publicnode.com",
     arbitrum: "https://arb1.arbitrum.io/rpc",
     base: "https://mainnet.base.org",
     bsc: "https://bsc-dataseed.binance.org",

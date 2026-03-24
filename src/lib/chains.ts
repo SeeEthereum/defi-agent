@@ -14,7 +14,7 @@ export const CHAINS: Record<string, ChainConfig> = {
     chainIndex: 1,
     name: "Ethereum",
     swapName: "ethereum",
-    rpcUrl: "https://eth.llamarpc.com",
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
     explorer: "https://etherscan.io",
     hasFluid: true,
     nativeSymbol: "ETH",

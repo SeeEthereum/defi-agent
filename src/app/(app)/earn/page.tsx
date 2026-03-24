@@ -30,7 +30,7 @@ const CHAIN_TABS = [
 const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 42161: "Arbitrum", 8453: "Base" };
 
 const RPC_URLS: Record<number, string> = {
-  1: "https://eth.llamarpc.com",
+  1: "https://ethereum-rpc.publicnode.com",
   42161: "https://arb1.arbitrum.io/rpc",
   8453: "https://mainnet.base.org",
 };
@@ -88,8 +88,10 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
           amount,
           chainIndex: market.chainIndex,
           walletAddress,
-          // Pass the live underlying address from the resolver
+          // Pass live addresses from the resolver to override stale constants
+          fTokenAddress: market.fTokenAddress,
           underlyingAddress: market.underlyingAddress || undefined,
+          decimals: market.underlyingDecimals,
         }),
       });
       const data = await res.json();
@@ -120,6 +122,10 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
           amount,
           chainIndex: market.chainIndex,
           walletAddress,
+          // Pass live addresses from the resolver to override stale constants
+          fTokenAddress: market.fTokenAddress,
+          underlyingAddress: market.underlyingAddress || undefined,
+          decimals: market.underlyingDecimals,
         }),
       });
       const data = await res.json();
