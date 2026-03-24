@@ -42,7 +42,7 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "get_swap_quote",
     description:
-      "Get a price quote for swapping tokens. Shows expected output amount, price impact, and estimated gas. Always call this before propose_swap.",
+      "Get a price quote for swapping ANY token pair via the OKX DEX aggregator. Shows expected output amount, price impact, estimated gas, and routing info. Always call this before propose_swap.",
     input_schema: {
       type: "object",
       properties: {
@@ -97,7 +97,7 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "propose_swap",
     description:
-      "Propose a token swap via OKX DEX aggregator (0 commission, best price across 500+ sources). Creates an action card for user confirmation. Does NOT execute automatically.",
+      "Propose a swap of ANY token pair via OKX DEX aggregator (0 commission, best price across 500+ DEX sources). Supports all ERC-20 tokens, not just stablecoins. Creates an action card for user confirmation. Does NOT execute automatically.",
     input_schema: {
       type: "object",
       properties: {
@@ -136,6 +136,25 @@ export const AI_TOOLS: Tool[] = [
         },
       },
       required: ["fromToken", "toToken", "amount", "chain"],
+    },
+  },
+  {
+    name: "search_token",
+    description:
+      "Search for a token by name or symbol to find its contract address. Use this when the user mentions a token you don't have the address for.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Token name or symbol to search for (e.g. 'PEPE', 'Shiba Inu', 'LINK').",
+        },
+        chain: {
+          type: "string",
+          description: "Optional: filter by chain name (ethereum, arbitrum, base, bsc, polygon, optimism).",
+        },
+      },
+      required: ["query"],
     },
   },
   {

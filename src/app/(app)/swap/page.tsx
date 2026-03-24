@@ -289,6 +289,8 @@ export default function SwapPage() {
     arbitrum: "https://arb1.arbitrum.io/rpc",
     base: "https://mainnet.base.org",
     bsc: "https://bsc-dataseed.binance.org",
+    polygon: "https://polygon-bor-rpc.publicnode.com",
+    optimism: "https://mainnet.optimism.io",
   };
 
   const pollSwapTxReceipt = async (txHash: string): Promise<boolean> => {

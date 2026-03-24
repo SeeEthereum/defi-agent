@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { swapExecute, walletContractCall, securityTxScan } from "@/lib/okx/cli";
+import { dexSwap } from "@/lib/okx/dex-api";
+import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
 import { z } from "zod";
 import { normalizeAddress, toUiUnits } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
@@ -21,29 +22,38 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { fromToken, toToken, amount, chain, wallet, slippage, gasLevel, mevProtection } =
-      schema.parse(body);
-
-    // Get swap calldata
-    const swapResult = await swapExecute({
-      from: normalizeAddress(fromToken),
-      to: normalizeAddress(toToken),
+    const {
+      fromToken,
+      toToken,
       amount,
       chain,
-      wallet: normalizeAddress(wallet),
+      wallet,
       slippage,
       gasLevel,
+      mevProtection,
+    } = schema.parse(body);
+
+    const chainConfig = getChainBySwapName(chain);
+    if (!chainConfig) {
+      return NextResponse.json(
+        { success: false, error: `Unknown chain: ${chain}` },
+        { status: 400 }
+      );
+    }
+
+    const chainIndex = String(chainConfig.chainIndex);
+
+    // Get swap calldata from OKX DEX Aggregator API
+    const swapResult = await dexSwap({
+      chainIndex,
+      fromTokenAddress: normalizeAddress(fromToken),
+      toTokenAddress: normalizeAddress(toToken),
+      amount,
+      userWalletAddress: normalizeAddress(wallet),
+      slippagePercent: slippage ?? "0.5",
     });
 
-    // The CLI returns data as an array — extract the first element
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawData = swapResult.data as any;
-    const swapEntry = Array.isArray(rawData) ? rawData[0] : rawData;
-
-    const tx = swapEntry?.tx as
-      | { to: string; value: string; data: string }
-      | undefined;
-
+    const tx = swapResult?.tx;
     if (!tx) {
       return NextResponse.json(
         {
@@ -51,14 +61,6 @@ export async function POST(request: NextRequest) {
           error:
             "The swap service did not return transaction data. The pair or amount may not be supported.",
         },
-        { status: 400 }
-      );
-    }
-
-    const chainConfig = getChainBySwapName(chain);
-    if (!chainConfig) {
-      return NextResponse.json(
-        { success: false, error: `Unknown chain: ${chain}` },
         { status: 400 }
       );
     }
@@ -75,10 +77,14 @@ export async function POST(request: NextRequest) {
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const scan = scanResult.data as any;
-      // If the scan returns a risk level of high, block the transaction
-      const riskLevel = scan?.riskLevel ?? scan?.risk_level ?? scan?.level ?? "";
+      const riskLevel =
+        scan?.riskLevel ?? scan?.risk_level ?? scan?.level ?? "";
       const riskItems: string[] = scan?.riskItems ?? scan?.risks ?? [];
-      if (riskLevel === "HIGH" || riskLevel === "high" || riskLevel === "3") {
+      if (
+        riskLevel === "HIGH" ||
+        riskLevel === "high" ||
+        riskLevel === "3"
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -88,8 +94,11 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      // Medium risk — allow but attach warning
-      if (riskLevel === "MEDIUM" || riskLevel === "medium" || riskLevel === "2") {
+      if (
+        riskLevel === "MEDIUM" ||
+        riskLevel === "medium" ||
+        riskLevel === "2"
+      ) {
         securityWarning = `Security scan flagged medium risk: ${riskItems.join(", ") || "Proceed with caution."}`;
       }
     } catch {
@@ -102,14 +111,14 @@ export async function POST(request: NextRequest) {
         ? toUiUnits(tx.value, chainConfig.nativeDecimals)
         : "0";
 
-    // Enable MEV protection only on supported chains
     const useMev = mevProtection && MEV_SUPPORTED_CHAINS.includes(chain);
 
     const callResult = await walletContractCall({
       to: normalizeAddress(tx.to),
-      chain: String(chainConfig.chainIndex),
+      chain: chainIndex,
       inputData: tx.data,
       value: valueUi,
+      gasLimit: tx.gas,
       mevProtection: useMev,
       force: true, // Skip backend simulation — approval may not be reflected yet
     });
@@ -121,9 +130,14 @@ export async function POST(request: NextRequest) {
       callData?.txHash ??
       callData?.hash ??
       callData?.transactionHash ??
-      (typeof callData === "string" && callData.startsWith("0x") ? callData : null);
+      (typeof callData === "string" && callData.startsWith("0x")
+        ? callData
+        : null);
 
-    if (callData?.status === "failed" || callData?.status === "reverted") {
+    if (
+      callData?.status === "failed" ||
+      callData?.status === "reverted"
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -139,7 +153,8 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           status: "confirming",
-          message: "Transaction signed and broadcast. Waiting for on-chain confirmation.",
+          message:
+            "Transaction signed and broadcast. Waiting for on-chain confirmation.",
           txHash: callData.txHash ?? null,
           mevProtected: useMev ?? false,
           securityWarning,
@@ -152,12 +167,14 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         status: "broadcast",
-        message: txHash ? "Transaction broadcast successfully." : "Transaction submitted.",
+        message: txHash
+          ? "Transaction broadcast successfully."
+          : "Transaction submitted.",
         txHash: txHash ?? null,
         mevProtected: useMev ?? false,
         gasLevel: gasLevel ?? "average",
         securityWarning,
-        routerResult: swapEntry?.routerResult ?? null,
+        routerResult: swapResult?.routerResult ?? null,
         ...callData,
       },
     });

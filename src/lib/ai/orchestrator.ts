@@ -4,10 +4,11 @@ import type {
 } from "openai/resources/chat/completions";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { walletBalance } from "@/lib/okx/cli";
+import { walletBalance, tokenSearch } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
-import { swapQuote } from "@/lib/okx/cli";
+import { dexQuote } from "@/lib/okx/dex-api";
 import { normalizeAddress } from "@/lib/utils";
+import { getChainBySwapName } from "@/lib/chains";
 
 // ── OpenAI-format tools (converted from Anthropic-style tool definitions) ────
 const openaiTools = AI_TOOLS.map((t) => ({
@@ -49,12 +50,21 @@ async function executeToolCall(
       return getUserPositions(userAddress as `0x${string}`);
     }
     case "get_swap_quote": {
-      const result = await swapQuote({
-        from: normalizeAddress(input.fromToken as string),
-        to: normalizeAddress(input.toToken as string),
+      const chain = input.chain as string;
+      const chainCfg = getChainBySwapName(chain);
+      if (!chainCfg) return { error: `Unsupported chain: ${chain}` };
+      const quote = await dexQuote({
+        chainIndex: String(chainCfg.chainIndex),
+        fromTokenAddress: normalizeAddress(input.fromToken as string),
+        toTokenAddress: normalizeAddress(input.toToken as string),
         amount: input.amount as string,
-        chain: input.chain as string,
       });
+      return quote;
+    }
+    case "search_token": {
+      const query = input.query as string;
+      const chain = input.chain as string | undefined;
+      const result = await tokenSearch(query, chain);
       return result.data;
     }
     case "propose_supply":

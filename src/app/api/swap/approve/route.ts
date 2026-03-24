@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { swapApprove, walletContractCall } from "@/lib/okx/cli";
+import { dexApproveTransaction } from "@/lib/okx/dex-api";
+import { walletContractCall } from "@/lib/okx/cli";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
@@ -15,31 +16,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { token, amount, chain } = schema.parse(body);
 
-    // onchainos swap approve returns the approval TX DATA — not a broadcast
-    // Response shape: { data: [{ data: "0x095ea7b3...", dexContractAddress: "0x...", gasLimit, gasPrice }] }
-    const result = await swapApprove({
-      token: normalizeAddress(token),
-      amount,
-      chain,
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawData = result.data as any;
-    const entry = Array.isArray(rawData) ? rawData[0] : rawData;
-
-    // The response has { data: "0x..calldata", dexContractAddress: "0x..spender" }
-    // The `data` field IS the approve calldata (approve(spender, amount))
-    // The `to` for walletContractCall must be the TOKEN address (we call approve ON the token)
-    const inputData = entry?.data ?? entry?.tx?.data ?? entry?.inputData;
-
-    if (!inputData) {
-      // If no tx data returned, the allowance might already be sufficient
-      return NextResponse.json({
-        success: true,
-        data: { txHash: null, alreadyApproved: true },
-      });
-    }
-
     const chainConfig = getChainBySwapName(chain);
     if (!chainConfig) {
       return NextResponse.json(
@@ -48,11 +24,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send the approval transaction: call approve() ON the token contract
+    const chainIndex = String(chainConfig.chainIndex);
+    const tokenAddr = normalizeAddress(token);
+
+    // Get approve calldata from OKX DEX Aggregator API
+    const approveData = await dexApproveTransaction({
+      chainIndex,
+      tokenContractAddress: tokenAddr,
+      approveAmount: amount,
+    });
+
+    if (!approveData?.data) {
+      // No calldata = allowance already sufficient
+      return NextResponse.json({
+        success: true,
+        data: { txHash: null, alreadyApproved: true },
+      });
+    }
+
+    // Broadcast the approve tx via wallet contract-call.
+    // The `to` address is the TOKEN contract (calling approve() on it).
     const callResult = await walletContractCall({
-      to: normalizeAddress(token),
-      chain: String(chainConfig.chainIndex),
-      inputData,
+      to: tokenAddr,
+      chain: chainIndex,
+      inputData: approveData.data,
+      gasLimit: approveData.gasLimit,
+      force: true, // Skip backend simulation — may race with recent txs
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,7 +57,9 @@ export async function POST(request: NextRequest) {
     const txHash =
       callData?.txHash ??
       callData?.hash ??
-      (typeof callData === "string" && callData.startsWith("0x") ? callData : null);
+      (typeof callData === "string" && callData.startsWith("0x")
+        ? callData
+        : null);
 
     return NextResponse.json({
       success: true,
