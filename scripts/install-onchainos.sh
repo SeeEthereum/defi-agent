@@ -40,9 +40,9 @@ else
   exit 1
 fi
 
-# Fetch latest release tag from GitHub
-LATEST=$(curl -fsSL "https://api.github.com/repos/okx/onchainos-skills/releases/latest" \
-  | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')
+# Hardcoded version — avoids GitHub API rate-limit 403 errors on Render CI.
+# Update this string when a new onchainos release is published.
+LATEST="v2.1.0"
 
 echo "Installing onchainos $LATEST for $TARGET into $PROJECT_BIN_DIR..."
 
