@@ -4,7 +4,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { walletBalance, tokenSearch } from "@/lib/okx/cli";
+import { walletBalance, tokenSearch, walletAddresses, walletHistory } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { normalizeAddress } from "@/lib/utils";
@@ -85,6 +85,25 @@ async function executeToolCall(
         params: input,
         message: "Transfer proposal ready for your confirmation.",
       };
+    case "propose_withdraw":
+      return {
+        action: "withdraw",
+        params: input,
+        message: "Withdraw proposal ready for your confirmation.",
+      };
+    case "get_wallet_addresses": {
+      const result = await walletAddresses();
+      return result.data;
+    }
+    case "get_transaction_history": {
+      const chain = input.chain as string | undefined;
+      const limit = input.limit as number | undefined;
+      const result = await walletHistory({
+        chain,
+        limit: String(limit ?? 10),
+      });
+      return result.data;
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }

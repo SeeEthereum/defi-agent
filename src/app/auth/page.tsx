@@ -289,15 +289,16 @@ export default function AuthPage() {
           className="flex items-center justify-center gap-2 mt-5"
           style={{ animation: "ai-fade-up 0.6s ease both 0.35s", opacity: 0 }}
         >
-          <Image
-            src="/avatar.png"
-            alt="0xSalvo"
-            width={24}
-            height={24}
-            className="rounded-full object-cover ring-2 ring-violet-200/60"
-          />
           <span className="text-[11px] text-muted-foreground/70">
-            by <span className="font-semibold text-foreground/60">0xSalvo</span>
+            by{" "}
+            <a
+              href="https://x.com/salvodisobey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-foreground/60 hover:text-primary transition-colors"
+            >
+              0xSalvo
+            </a>
           </span>
         </div>
 

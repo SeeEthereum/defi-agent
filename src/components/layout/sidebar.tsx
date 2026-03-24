@@ -65,11 +65,8 @@ export function Sidebar({ onClose }: SidebarProps) {
   return (
     <aside className="flex h-screen w-[260px] flex-col border-r border-border/60 bg-sidebar">
       <div className="flex h-16 items-center gap-3 px-6">
-        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-          </svg>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.jpg" alt="DeFi Agent" width={40} height={40} className="rounded-xl object-cover shadow-sm shrink-0" />
         <div className="flex-1 min-w-0">
           <span className="text-[15px] font-semibold tracking-tight">DeFi Agent</span>
           <p className="text-[10px] text-muted-foreground leading-none mt-0.5">by 0xSalvo</p>

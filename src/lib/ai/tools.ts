@@ -187,4 +187,57 @@ export const AI_TOOLS: Tool[] = [
       required: ["recipient", "amount", "chainIndex"],
     },
   },
+  {
+    name: "propose_withdraw",
+    description:
+      "Propose withdrawing assets from a Fluid lending position. Creates an action card for user confirmation. Does NOT execute automatically.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fTokenSymbol: {
+          type: "string",
+          description:
+            "The fToken symbol to withdraw from: fUSDC, fUSDT, fWETH, or fWPOL.",
+        },
+        amount: {
+          type: "string",
+          description:
+            "Amount in human-readable units (e.g. \"100\" for 100 USDC). Use \"all\" to withdraw entire position.",
+        },
+        chainIndex: {
+          type: "number",
+          description:
+            "Chain ID: 1 (Ethereum), 42161 (Arbitrum), 8453 (Base), or 137 (Polygon).",
+        },
+      },
+      required: ["fTokenSymbol", "amount", "chainIndex"],
+    },
+  },
+  {
+    name: "get_wallet_addresses",
+    description:
+      "Get the user's wallet deposit addresses across all chains. Useful for receiving tokens or showing the user their address.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "get_transaction_history",
+    description:
+      "Get the user's recent transaction history. Shows past sends, swaps, and other on-chain transactions.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description: "Optional: filter by chain name (ethereum, arbitrum, base, bsc, polygon, optimism).",
+        },
+        limit: {
+          type: "number",
+          description: "Optional: number of transactions to return (default 10, max 50).",
+        },
+      },
+    },
+  },
 ];

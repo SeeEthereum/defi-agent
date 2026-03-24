@@ -116,6 +116,14 @@ function ActionCard({
     rows.push({ label: "Amount", value: String(p.amount) });
     rows.push({ label: "To", value: shortAddr(p.recipient as string) });
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
+  } else if (action.action === "withdraw") {
+    const p = action.params;
+    const chain = getChainByIndex(p.chainIndex as number);
+    title = "Fluid Withdraw";
+    emoji = "📉";
+    rows.push({ label: "Asset", value: p.fTokenSymbol as string });
+    rows.push({ label: "Amount", value: p.amount === "all" ? "Withdraw All" : String(p.amount) });
+    rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
   }
 
   return (
@@ -176,7 +184,9 @@ const SUGGESTIONS = [
   "Show my portfolio balance",
   "Swap 0.1 ETH for USDC on Arbitrum",
   "Supply 100 USDC on Fluid Ethereum",
-  "Send 10 USDC to 0x1234…",
+  "Show my Fluid positions",
+  "Show my wallet address",
+  "Show my recent transactions",
 ];
 
 export default function AiPage() {
@@ -316,6 +326,16 @@ export default function AiPage() {
           recipient: action.params.recipient,
           chain: action.params.chainIndex,
           contractToken: action.params.contractToken,
+        };
+        break;
+      case "withdraw":
+        endpoint = "/api/earn/withdraw";
+        body = {
+          fTokenSymbol: action.params.fTokenSymbol,
+          amount: action.params.amount,
+          chainIndex: action.params.chainIndex,
+          walletAddress: walletAddress ?? "",
+          withdrawAll: action.params.amount === "all",
         };
         break;
       default:
