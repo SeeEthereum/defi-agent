@@ -19,7 +19,11 @@ const openaiTools = AI_TOOLS.map((t) => ({
   },
 }));
 
-const openai = new OpenAI();
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI();
+  return _openai;
+}
 
 async function executeToolCall(
   name: string,
@@ -93,7 +97,7 @@ export async function runAiChat(
     ...messages,
   ];
 
-  let response = await openai.chat.completions.create({
+  let response = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
     max_tokens: 4096,
     tools: openaiTools,
@@ -145,7 +149,7 @@ export async function runAiChat(
       });
     }
 
-    response = await openai.chat.completions.create({
+    response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       max_tokens: 4096,
       tools: openaiTools,
