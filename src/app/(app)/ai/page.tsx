@@ -5,8 +5,34 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
-import { getChainByIndex, getChainBySwapName } from "@/lib/chains";
+import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
+
+const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+const CHAIN_RPC: Record<string, string> = Object.fromEntries(
+  Object.values(CHAINS).map((c) => [c.swapName, c.rpcUrl])
+);
+
+/** Poll eth_getTransactionReceipt until confirmed or timeout */
+async function waitForReceipt(txHash: string, chain: string): Promise<boolean> {
+  const rpc = CHAIN_RPC[chain];
+  if (!rpc || !txHash) return true;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_getTransactionReceipt", params: [txHash], id: 1 }),
+      });
+      const json = await res.json();
+      if (json.result?.status === "0x1") return true;
+      if (json.result?.status === "0x0") return false;
+    } catch {}
+  }
+  return true;
+}
 
 // ── Token symbol lookup ──────────────────────────────────────────────────────
 const TOKEN_MAP: Record<string, string> = {
@@ -236,7 +262,40 @@ export default function AiPage() {
           walletAddress: walletAddress ?? "",
         };
         break;
-      case "swap":
+      case "swap": {
+        // Step 1: Approve DEX router for ERC-20 tokens (skip for native ETH/BNB)
+        const fromAddr = (action.params.fromToken as string ?? "").toLowerCase();
+        const isNative = fromAddr === NATIVE_TOKEN;
+        if (!isNative && fromAddr) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "⏳ Approving token for swap..." }]);
+          const approveRes = await fetch("/api/swap/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: fromAddr,
+              amount: action.params.amount,
+              chain: action.params.chain,
+            }),
+          });
+          const approveData = await approveRes.json();
+          if (!approveData.success) {
+            setMessages((prev) => [...prev, { role: "assistant", content: `❌ **Approval failed:** ${approveData.error}` }]);
+            setExecutingIndex(null);
+            return;
+          }
+          // Wait for approval tx confirmation
+          const approveTxHash = approveData.data?.txHash as string | undefined;
+          if (approveTxHash) {
+            setMessages((prev) => [...prev, { role: "assistant", content: `✅ Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
+            const confirmed = await waitForReceipt(approveTxHash, action.params.chain as string);
+            if (!confirmed) {
+              setMessages((prev) => [...prev, { role: "assistant", content: "❌ Approval transaction reverted on-chain." }]);
+              setExecutingIndex(null);
+              return;
+            }
+          }
+        }
+        // Step 2: Execute swap
         endpoint = "/api/swap/execute";
         body = {
           fromToken: action.params.fromToken,
@@ -249,6 +308,7 @@ export default function AiPage() {
           mevProtection: action.params.mevProtection,
         };
         break;
+      }
       case "send":
         endpoint = "/api/wallet/send";
         body = {
