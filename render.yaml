@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: defi-agent
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: bash scripts/install-onchainos.sh && npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: PATH
+        value: "/home/render/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      # ── Set these in the Render dashboard (never commit values) ──
+      - key: OKX_API_KEY
+        sync: false
+      - key: OKX_SECRET_KEY
+        sync: false
+      - key: OKX_PASSPHRASE
+        sync: false
+      - key: OKX_PROJECT_ID
+        sync: false
+      - key: ANTHROPIC_AUTH_TOKEN
+        sync: false

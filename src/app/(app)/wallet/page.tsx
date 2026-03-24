@@ -1,0 +1,531 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { useAllChainBalances } from "@/hooks/use-balances";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { CHAINS } from "@/lib/chains";
+import { formatUsd } from "@/lib/utils";
+import { toast } from "sonner";
+
+interface TxEntry {
+  txHash: string;
+  txTime: string;
+  symbol?: string;
+  amount?: string;
+  state?: string;
+  chainIndex?: string;
+  txType?: string;
+}
+
+export default function WalletPage() {
+  const { authenticated, walletAddress, accountName, accountId, accountCount, mutate: mutateAuth } = useAuth();
+  const { balancesByChain, isLoading, mutateAll } = useAllChainBalances();
+
+  const [sendForm, setSendForm] = useState({
+    recipient: "",
+    amount: "",
+    chain: "1",
+    contractToken: "",
+  });
+  const [sending, setSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+
+  // History state
+  const [history, setHistory] = useState<TxEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/wallet/history?limit=20");
+      const data = await res.json();
+      if (data.success) {
+        const entries = Array.isArray(data.data)
+          ? data.data
+          : Array.isArray(data.data?.data)
+          ? data.data.data
+          : [];
+        setHistory(entries);
+      }
+    } catch {
+      // silent
+    } finally {
+      setHistoryLoading(false);
+      setHistoryLoaded(true);
+    }
+  }, []);
+
+  const handleAddAccount = async () => {
+    setAddingAccount(true);
+    try {
+      const res = await fetch("/api/wallet/accounts", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("New wallet account created!");
+        mutateAuth();
+        mutateAll();
+      } else {
+        toast.error(data.error || "Failed to add account");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setAddingAccount(false);
+    }
+  };
+
+  const handleSwitchAccount = async (targetAccountId: string) => {
+    setSwitchingAccount(true);
+    try {
+      const res = await fetch("/api/wallet/accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: targetAccountId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Switched account!");
+        mutateAuth();
+        mutateAll();
+      } else {
+        toast.error(data.error || "Failed to switch account");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSwitchingAccount(false);
+    }
+  };
+
+  const handleForceRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch("/api/wallet/balances?force=true");
+      mutateAll();
+      toast.success("Balances refreshed");
+    } catch {
+      toast.error("Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (!authenticated) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground text-[15px]">
+          Please connect your wallet first.
+        </p>
+      </div>
+    );
+  }
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    try {
+      const res = await fetch("/api/wallet/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: sendForm.amount,
+          recipient: sendForm.recipient.toLowerCase(),
+          chain: parseInt(sendForm.chain),
+          contractToken: sendForm.contractToken || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Transaction sent! Hash: ${data.data?.txHash || "pending"}`);
+        setSendForm({ recipient: "", amount: "", chain: "1", contractToken: "" });
+      } else {
+        toast.error(data.error || "Send failed");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const evmAddress = walletAddress;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight">Wallet</h1>
+        <p className="text-[13px] text-muted-foreground mt-0.5">Manage your assets across all chains</p>
+      </div>
+
+      {/* Account card */}
+      <div className="rounded-2xl border border-border/60 bg-white shadow-sm shadow-black/[0.03] p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 font-bold text-[15px] shrink-0">
+            {accountName ? accountName.slice(0, 2).toUpperCase() : "W1"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] font-semibold text-foreground">{accountName ?? "Wallet 1"}</p>
+            <p className="text-[12px] text-muted-foreground font-mono truncate">{walletAddress ?? "—"}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {accountCount > 1 && (
+              <button
+                onClick={() => {
+                  const id = prompt(`Switch to account ID (current: ${accountId ?? "—"})`);
+                  if (id) handleSwitchAccount(id);
+                }}
+                disabled={switchingAccount}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-white text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-indigo-300 transition-colors disabled:opacity-50"
+              >
+                {switchingAccount ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                  </svg>
+                )}
+                Switch ({accountCount})
+              </button>
+            )}
+            <button
+              onClick={handleAddAccount}
+              disabled={addingAccount}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-indigo-600 text-white text-[12px] font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {addingAccount ? (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              )}
+              Add Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Tabs defaultValue="balances">
+        <TabsList className="h-10 rounded-full bg-muted/60 p-1">
+          <TabsTrigger value="balances" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Balances
+          </TabsTrigger>
+          <TabsTrigger value="history" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm" onClick={() => { if (!historyLoaded) loadHistory(); }}>
+            History
+          </TabsTrigger>
+          <TabsTrigger value="deposit" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Deposit
+          </TabsTrigger>
+          <TabsTrigger value="send" className="rounded-full px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            Send
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="balances" className="mt-6 space-y-4">
+          {/* Refresh button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleForceRefresh}
+              disabled={refreshing || isLoading}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "animate-spin" : ""}>
+                <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+              </svg>
+              {refreshing ? "Refreshing..." : "Refresh balances"}
+            </button>
+          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center h-40">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2">
+              {Object.values(CHAINS).map((chain) => {
+                const chainBal = balancesByChain[chain.chainIndex];
+                return (
+                  <Card
+                    key={chain.chainIndex}
+                    className="hover-lift rounded-2xl border-border/60 shadow-sm"
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-[13px] font-medium text-muted-foreground flex items-center justify-between">
+                        {chain.name}
+                        {!chain.hasFluid && (
+                          <Badge
+                            variant="outline"
+                            className="text-[11px] font-normal border-border/60 text-muted-foreground/70"
+                          >
+                            No Lending
+                          </Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xl font-semibold tracking-tight">
+                        {chainBal?.isLoading ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          </span>
+                        ) : (
+                          formatUsd(chainBal?.totalValueUsd ?? "0")
+                        )}
+                      </p>
+                      {chainBal?.tokens && chainBal.tokens.length > 0 ? (
+                        <div className="mt-3 space-y-0">
+                          {chainBal.tokens.map((t, i) => (
+                            <div
+                              key={`${t.tokenAddress}-${i}`}
+                              className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0"
+                            >
+                              <span className="text-[13px] text-muted-foreground">
+                                {t.symbol}
+                              </span>
+                              <span className="text-[13px] font-mono font-medium">
+                                {parseFloat(t.balance).toFixed(4)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[13px] text-muted-foreground/60 mt-2">
+                          No tokens found
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-6">
+          <Card className="rounded-2xl border-border/60 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg font-semibold tracking-tight flex items-center justify-between">
+                Transaction History
+                <button
+                  onClick={loadHistory}
+                  disabled={historyLoading}
+                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={historyLoading ? "animate-spin" : ""}>
+                    <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+                  </svg>
+                  Refresh
+                </button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {historyLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              ) : history.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground/60 text-center py-8">
+                  No transactions found
+                </p>
+              ) : (
+                <div className="space-y-0">
+                  {history.map((tx, i) => {
+                    const chainName = Object.values(CHAINS).find(c => String(c.chainIndex) === tx.chainIndex)?.name ?? `Chain ${tx.chainIndex ?? "?"}`;
+                    const isReceive = tx.txType === "1";
+                    const stateLabel = tx.state === "2" ? "Success" : tx.state === "3" ? "Failed" : "Pending";
+                    const stateColor = tx.state === "2" ? "text-emerald-600" : tx.state === "3" ? "text-red-500" : "text-amber-500";
+                    const dateStr = tx.txTime ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                    return (
+                      <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isReceive ? "bg-emerald-50" : "bg-indigo-50"}`}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isReceive ? "text-emerald-600" : "text-indigo-500"}>
+                            {isReceive
+                              ? <><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></>
+                              : <><path d="M12 19V5"/><path d="m19 12-7-7-7 7"/></>
+                            }
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium">{isReceive ? "Receive" : "Send"}{tx.symbol ? ` ${tx.symbol}` : ""}</span>
+                            <span className={`text-[11px] font-medium ${stateColor}`}>{stateLabel}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-muted-foreground">{chainName}</span>
+                            <span className="text-[11px] text-muted-foreground">·</span>
+                            <span className="text-[11px] text-muted-foreground">{dateStr}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[13px] font-medium tabular-nums">
+                            {tx.amount ? `${parseFloat(tx.amount).toFixed(4)} ${tx.symbol ?? ""}` : "—"}
+                          </p>
+                          {tx.txHash && (
+                            <a
+                              href={`${Object.values(CHAINS).find(c => String(c.chainIndex) === tx.chainIndex)?.explorer ?? "https://etherscan.io"}/tx/${tx.txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-indigo-500 hover:text-indigo-700 font-mono"
+                            >
+                              {tx.txHash.slice(0, 6)}...{tx.txHash.slice(-4)}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="deposit" className="mt-6 space-y-4">
+          <Card className="rounded-2xl border-border/60 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold tracking-tight">
+                Deposit Address
+              </CardTitle>
+              <p className="text-[13px] text-muted-foreground">
+                Send assets to this address on any supported EVM chain
+              </p>
+            </CardHeader>
+            <CardContent>
+              {evmAddress ? (
+                <div className="space-y-4">
+                  <div className="gradient-bg rounded-xl p-5 font-mono text-[13px] break-all leading-relaxed text-foreground/80 border border-border/40">
+                    {evmAddress}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full px-5 text-[13px]"
+                    onClick={() => {
+                      navigator.clipboard.writeText(evmAddress);
+                      toast.success("Address copied!");
+                    }}
+                  >
+                    Copy Address
+                  </Button>
+                  <p className="text-[12px] text-muted-foreground/70">
+                    This address works on Ethereum, Arbitrum, Base, and BNB
+                    Chain.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-20">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="send" className="mt-6 space-y-4">
+          <Card className="rounded-2xl border-border/60 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold tracking-tight">
+                Send Tokens
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSend} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="recipient" className="text-[13px] font-medium">
+                    Recipient Address
+                  </Label>
+                  <Input
+                    id="recipient"
+                    placeholder="0x..."
+                    className="h-11 rounded-xl text-[14px]"
+                    value={sendForm.recipient}
+                    onChange={(e) =>
+                      setSendForm({ ...sendForm, recipient: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount" className="text-[13px] font-medium">
+                      Amount
+                    </Label>
+                    <Input
+                      id="amount"
+                      type="text"
+                      placeholder="0.01"
+                      className="h-11 rounded-xl text-[14px]"
+                      value={sendForm.amount}
+                      onChange={(e) =>
+                        setSendForm({ ...sendForm, amount: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="chain" className="text-[13px] font-medium">
+                      Chain
+                    </Label>
+                    <select
+                      id="chain"
+                      className="flex h-11 w-full rounded-xl border border-border/60 bg-transparent px-3 py-1 text-[14px] outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
+                      value={sendForm.chain}
+                      onChange={(e) =>
+                        setSendForm({ ...sendForm, chain: e.target.value })
+                      }
+                    >
+                      {Object.values(CHAINS).map((c) => (
+                        <option key={c.chainIndex} value={c.chainIndex}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="token" className="text-[13px] font-medium">
+                    Token Contract (leave empty for native)
+                  </Label>
+                  <Input
+                    id="token"
+                    placeholder="0x... (optional)"
+                    className="h-11 rounded-xl text-[14px]"
+                    value={sendForm.contractToken}
+                    onChange={(e) =>
+                      setSendForm({
+                        ...sendForm,
+                        contractToken: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={sending}
+                  className="h-11 rounded-xl px-8 text-[14px] font-medium"
+                >
+                  {sending ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Sending
+                    </span>
+                  ) : (
+                    "Send"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

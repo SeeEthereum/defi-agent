@@ -1,0 +1,306 @@
+import { execFile } from "child_process";
+import { promisify } from "util";
+import type { CliResult } from "./types";
+
+const execFileAsync = promisify(execFile);
+
+const ONCHAINOS_BIN =
+  process.env.ONCHAINOS_PATH ||
+  `${process.env.HOME}/.local/bin/onchainos`;
+
+// Mutex to serialize CLI calls (prevents keyring conflicts)
+let lock: Promise<void> = Promise.resolve();
+
+function withMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = lock;
+  let resolve: () => void;
+  lock = new Promise((r) => {
+    resolve = r;
+  });
+  return prev.then(fn).finally(() => resolve!());
+}
+
+export class OkxCliError extends Error {
+  constructor(
+    public command: string,
+    public exitCode: number | null,
+    public stderr: string
+  ) {
+    super(`onchainos ${command} failed: ${stderr || "unknown error"}`);
+    this.name = "OkxCliError";
+  }
+}
+
+export async function runCli<T = unknown>(
+  subcommands: string[],
+  args: Record<string, string> = {}
+): Promise<CliResult<T>> {
+  return withMutex(async () => {
+    const cmdArgs = [...subcommands];
+    for (const [key, value] of Object.entries(args)) {
+      if (value === "true") {
+        cmdArgs.push(`--${key}`);
+      } else if (value !== "" && value !== "false") {
+        cmdArgs.push(`--${key}`, value);
+      }
+    }
+
+    try {
+      const { stdout, stderr } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
+        timeout: 30_000,
+        env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+      });
+
+      let parsed: T | undefined;
+      try {
+        const json = JSON.parse(stdout);
+        if (json.ok !== undefined) {
+          return { ok: json.ok, data: json.data as T, raw: stdout.trim() };
+        }
+        parsed = json as T;
+      } catch {
+        // stdout is not JSON
+      }
+
+      return {
+        ok: true,
+        data: (parsed ?? stdout.trim()) as T,
+        raw: stdout.trim(),
+      };
+    } catch (error: unknown) {
+      const err = error as {
+        code?: string;
+        exitCode?: number;
+        stderr?: string;
+        stdout?: string;
+      };
+
+      // Exit code 2 = confirming response (not an error)
+      if (err.exitCode === 2 && err.stdout) {
+        try {
+          const json = JSON.parse(err.stdout);
+          if (json.confirming) {
+            return { ok: true, data: json as T, raw: err.stdout };
+          }
+        } catch {
+          // not JSON confirming response
+        }
+      }
+
+      // Region restriction
+      if (
+        err.stderr?.includes("50125") ||
+        err.stderr?.includes("80001")
+      ) {
+        throw new OkxCliError(
+          subcommands.join(" "),
+          err.exitCode ?? null,
+          "Service is not available in your region. Please switch to a supported region and try again."
+        );
+      }
+
+      // Try to extract a meaningful message from stderr or stdout
+      let detail = (err.stderr || "").trim();
+
+      // Sometimes the CLI prints the error in stdout as JSON
+      if (!detail && err.stdout) {
+        try {
+          const parsed = JSON.parse(err.stdout);
+          detail =
+            parsed.error?.message ??
+            parsed.error ??
+            parsed.msg ??
+            parsed.message ??
+            "";
+        } catch {
+          // stdout wasn't JSON, use it raw if it looks like an error
+          if (err.stdout.toLowerCase().includes("error") || err.stdout.toLowerCase().includes("fail")) {
+            detail = err.stdout.trim();
+          }
+        }
+      }
+
+      throw new OkxCliError(
+        subcommands.join(" "),
+        err.exitCode ?? null,
+        detail || "Command execution failed"
+      );
+    }
+  });
+}
+
+// Auth commands
+export async function walletLogin(email?: string, locale = "en-US") {
+  const args: Record<string, string> = { locale };
+  if (email) {
+    return runCli(["wallet", "login", email], args);
+  }
+  return runCli(["wallet", "login"], args);
+}
+
+export async function walletVerify(otp: string) {
+  return runCli(["wallet", "verify", otp]);
+}
+
+export async function walletStatus() {
+  return runCli(["wallet", "status"]);
+}
+
+export async function walletLogout() {
+  return runCli(["wallet", "logout"]);
+}
+
+export async function walletAddresses(chain?: string) {
+  const args: Record<string, string> = {};
+  if (chain) args.chain = chain;
+  return runCli(["wallet", "addresses"], args);
+}
+
+// Balance commands
+export async function walletBalance(
+  chain?: string,
+  tokenAddress?: string,
+  all = false,
+  force = false
+) {
+  const args: Record<string, string> = {};
+  if (chain) args.chain = chain;
+  if (tokenAddress) args["token-address"] = tokenAddress;
+  if (all) args.all = "true";
+  if (force) args.force = "true";
+  return runCli(["wallet", "balance"], args);
+}
+
+// Send command
+export async function walletSend(params: {
+  amount: string;
+  recipient: string;
+  chain: string;
+  from?: string;
+  contractToken?: string;
+  force?: boolean;
+}) {
+  const args: Record<string, string> = {
+    amount: params.amount,
+    receipt: params.recipient,
+    chain: params.chain,
+  };
+  if (params.from) args.from = params.from;
+  if (params.contractToken) args["contract-token"] = params.contractToken;
+  if (params.force) args.force = "true";
+  return runCli(["wallet", "send"], args);
+}
+
+// Contract call command
+export async function walletContractCall(params: {
+  to: string;
+  chain: string;
+  inputData?: string;
+  unsignedTx?: string;
+  value?: string;
+  gasLimit?: string;
+  from?: string;
+  mevProtection?: boolean;
+  jitoUnsignedTx?: string;
+  aaDexTokenAddr?: string;
+  aaDexTokenAmount?: string;
+  force?: boolean;
+}) {
+  const args: Record<string, string> = {
+    to: params.to,
+    chain: params.chain,
+  };
+  if (params.inputData) args["input-data"] = params.inputData;
+  if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
+  if (params.value) args.value = params.value;
+  if (params.gasLimit) args["gas-limit"] = params.gasLimit;
+  if (params.from) args.from = params.from;
+  if (params.mevProtection) args["mev-protection"] = "true";
+  if (params.jitoUnsignedTx) args["jito-unsigned-tx"] = params.jitoUnsignedTx;
+  if (params.aaDexTokenAddr) args["aa-dex-token-addr"] = params.aaDexTokenAddr;
+  if (params.aaDexTokenAmount)
+    args["aa-dex-token-amount"] = params.aaDexTokenAmount;
+  if (params.force) args.force = "true";
+  return runCli(["wallet", "contract-call"], args);
+}
+
+// History command
+export async function walletHistory(params?: {
+  txHash?: string;
+  chain?: string;
+  address?: string;
+  limit?: string;
+  pageNum?: string;
+}) {
+  const args: Record<string, string> = {};
+  if (params?.txHash) args["tx-hash"] = params.txHash;
+  if (params?.chain) args.chain = params.chain;
+  if (params?.address) args.address = params.address;
+  if (params?.limit) args.limit = params.limit;
+  if (params?.pageNum) args["page-num"] = params.pageNum;
+  return runCli(["wallet", "history"], args);
+}
+
+// Security commands
+export async function securityTxScan(params: {
+  from: string;
+  to: string;
+  chain: string;
+  data?: string;
+  value?: string;
+}) {
+  const args: Record<string, string> = {
+    from: params.from,
+    to: params.to,
+    chain: params.chain,
+  };
+  if (params.data) args.data = params.data;
+  if (params.value) args.value = params.value;
+  return runCli(["security", "tx-scan"], args);
+}
+
+// Token commands
+export async function tokenSearch(query: string, chains?: string) {
+  const args: Record<string, string> = { query };
+  if (chains) args.chains = chains;
+  return runCli(["token", "search"], args);
+}
+
+// Swap commands
+export async function swapQuote(params: {
+  from: string;
+  to: string;
+  amount: string;
+  chain: string;
+}) {
+  return runCli(["swap", "quote"], params);
+}
+
+export async function swapApprove(params: {
+  token: string;
+  amount: string;
+  chain: string;
+}) {
+  return runCli(["swap", "approve"], params);
+}
+
+export async function swapExecute(params: {
+  from: string;
+  to: string;
+  amount: string;
+  chain: string;
+  wallet: string;
+  slippage?: string;
+  gasLevel?: string;
+}) {
+  const args: Record<string, string> = {
+    from: params.from,
+    to: params.to,
+    amount: params.amount,
+    chain: params.chain,
+    wallet: params.wallet,
+  };
+  if (params.slippage) args.slippage = params.slippage;
+  if (params.gasLevel) args["gas-level"] = params.gasLevel;
+  return runCli(["swap", "swap"], args);
+}
