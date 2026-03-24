@@ -108,7 +108,7 @@ export async function runAiChat(
   ];
 
   let response = await getOpenAI().chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4.1",
     max_tokens: 4096,
     tools: openaiTools,
     messages: openaiMessages,
@@ -160,7 +160,7 @@ export async function runAiChat(
     }
 
     response = await getOpenAI().chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       max_tokens: 4096,
       tools: openaiTools,
       messages: openaiMessages,

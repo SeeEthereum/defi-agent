@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { toast } from "sonner";
+import { TokenIcon } from "@/components/token-icon";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -24,6 +25,14 @@ interface TokenSearchResult {
   address?: string;
   decimals?: string | number;
   name?: string;
+}
+
+interface WalletToken {
+  symbol: string;
+  address: string;
+  decimals: number;
+  balance: string; // human-readable
+  balanceUsd: string;
 }
 
 function getNativeToken(chain: string): TokenInfo {
@@ -94,11 +103,13 @@ function TokenSelector({
   token,
   onSelect,
   chain,
+  walletTokens,
 }: {
   label: string;
   token: TokenInfo | null;
   onSelect: (t: TokenInfo) => void;
   chain: string;
+  walletTokens?: WalletToken[];
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TokenSearchResult[]>([]);
@@ -162,6 +173,13 @@ function TokenSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Find balance of currently selected token
+  const selectedBalance = token && walletTokens
+    ? walletTokens.find(
+        (w) => w.address.toLowerCase() === token.address.toLowerCase() || w.symbol.toUpperCase() === token.symbol.toUpperCase()
+      )
+    : null;
+
   return (
     <div ref={containerRef}>
       <p className="text-[13px] font-medium text-muted-foreground mb-2">
@@ -169,15 +187,15 @@ function TokenSelector({
       </p>
       {token ? (
         <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-white px-4 h-11">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
-            {token.symbol.slice(0, 2)}
-          </div>
+          <TokenIcon symbol={token.symbol} size={24} />
           <span className="font-semibold text-sm tracking-tight">
             {token.symbol}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {abbreviateAddress(token.address)}
-          </span>
+          {selectedBalance && (
+            <span className="text-xs text-muted-foreground">
+              {parseFloat(selectedBalance.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            </span>
+          )}
           <button
             type="button"
             className="ml-auto text-[13px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
@@ -192,7 +210,7 @@ function TokenSelector({
       ) : (
         <div className="relative">
           <Input
-            placeholder="Search token (e.g. USDC, ETH)..."
+            placeholder="Search token or select from balance..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -201,21 +219,66 @@ function TokenSelector({
             onFocus={() => setShowDropdown(true)}
             className="h-11 rounded-xl border-border/60 bg-white px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
           />
-          {showDropdown && (query.length > 0 || results.length > 0) && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-52 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5">
-              {searching && (
+          {showDropdown && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5">
+              {/* Show wallet tokens first when no search query */}
+              {query.length === 0 && walletTokens && walletTokens.length > 0 && (
+                <>
+                  <div className="px-4 py-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-slate-50/80">
+                    Your Tokens
+                  </div>
+                  {walletTokens.map((wt, i) => (
+                    <button
+                      key={`wallet-${wt.address}-${i}`}
+                      type="button"
+                      className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors"
+                      onClick={() => {
+                        onSelect({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals });
+                        setQuery("");
+                        setShowDropdown(false);
+                      }}
+                    >
+                      <TokenIcon symbol={wt.symbol} size={28} />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold tracking-tight">{wt.symbol}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[13px] font-medium tabular-nums">
+                          {parseFloat(wt.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                        </div>
+                        {parseFloat(wt.balanceUsd) > 0 && (
+                          <div className="text-[11px] text-muted-foreground">
+                            ${parseFloat(wt.balanceUsd).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  <div className="px-4 py-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-slate-50/80 border-t border-border/40">
+                    Search Other Tokens
+                  </div>
+                  <div className="px-4 py-2 text-[12px] text-muted-foreground">
+                    Type to search any token...
+                  </div>
+                </>
+              )}
+              {/* Search results */}
+              {query.length > 0 && searching && (
                 <div className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
                   <Spinner className="text-indigo-500" />
                   Searching...
                 </div>
               )}
-              {!searching && results.length === 0 && query.length > 0 && (
+              {query.length > 0 && !searching && results.length === 0 && (
                 <div className="px-4 py-3 text-[13px] text-muted-foreground">
                   No tokens found
                 </div>
               )}
-              {results.map((t, i) => {
+              {query.length > 0 && results.map((t, i) => {
                 const parsed = parseTokenResult(t);
+                const bal = walletTokens?.find(
+                  (w) => w.address.toLowerCase() === parsed.address.toLowerCase()
+                );
                 return (
                   <button
                     key={`${parsed.address}-${i}`}
@@ -227,18 +290,24 @@ function TokenSelector({
                       setShowDropdown(false);
                     }}
                   >
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                      {parsed.symbol.slice(0, 2)}
+                    <TokenIcon symbol={parsed.symbol} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold tracking-tight">
+                        {parsed.symbol}
+                      </span>
+                      <span className="text-muted-foreground text-xs truncate ml-2">
+                        {getTokenName(t)}
+                      </span>
                     </div>
-                    <span className="font-semibold tracking-tight">
-                      {parsed.symbol}
-                    </span>
-                    <span className="text-muted-foreground text-xs truncate">
-                      {getTokenName(t)}
-                    </span>
-                    <span className="text-muted-foreground text-[11px] ml-auto font-mono">
-                      {abbreviateAddress(parsed.address)}
-                    </span>
+                    {bal ? (
+                      <span className="text-[12px] font-medium tabular-nums">
+                        {parseFloat(bal.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-[11px] font-mono">
+                        {abbreviateAddress(parsed.address)}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -269,6 +338,48 @@ export default function SwapPage() {
   const [gasLevel, setGasLevel] = useState<"slow" | "average" | "fast">("average");
   const [mevProtection, setMevProtection] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [walletTokens, setWalletTokens] = useState<WalletToken[]>([]);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  // Fetch wallet balances when chain changes
+  useEffect(() => {
+    if (!authenticated) return;
+    const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
+    if (!chainConfig) return;
+    setBalanceLoading(true);
+    fetch(`/api/wallet/balances?chain=${chainConfig.chainIndex}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.success) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = data.data as any;
+        const assets: WalletToken[] = [];
+        // Parse balance response — may be nested under details[].tokenAssets or flat array
+        const tokenList =
+          raw?.details?.[0]?.tokenAssets ??
+          raw?.tokenAssets ??
+          (Array.isArray(raw) ? raw : []);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const t of tokenList as any[]) {
+          const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
+          if (bal <= 0) continue;
+          assets.push({
+            symbol: t.symbol ?? t.tokenSymbol ?? "?",
+            address: t.tokenContractAddress ?? NATIVE_TOKEN,
+            decimals: Number(t.decimal ?? t.decimals ?? 18),
+            balance: t.balance ?? t.holdingAmount ?? "0",
+            balanceUsd: t.usdValue ?? t.tokenPrice
+              ? String(bal * parseFloat(t.tokenPrice ?? "0"))
+              : "0",
+          });
+        }
+        // Sort by USD value descending
+        assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
+        setWalletTokens(assets);
+      })
+      .catch(() => setWalletTokens([]))
+      .finally(() => setBalanceLoading(false));
+  }, [chain, authenticated]);
 
   // MEV protection is only available on Ethereum, BSC, Base
   const mevSupportedChains = ["ethereum", "bsc", "base"];
@@ -680,6 +791,7 @@ export default function SwapPage() {
               token={fromToken}
               onSelect={setFromToken}
               chain={chain}
+              walletTokens={walletTokens}
             />
 
             {/* Amount input */}
@@ -699,12 +811,27 @@ export default function SwapPage() {
                 }}
                 className="h-11 rounded-xl border-border/60 bg-white px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
               />
-              <p className="text-[11px] text-muted-foreground/70 mt-1.5 px-1">
-                Balance: --
-                {fromToken
-                  ? ` \u00b7 ${fromToken.symbol} (${fromToken.decimals} decimals)`
-                  : ""}
-              </p>
+              {fromToken && (() => {
+                const bal = walletTokens.find(
+                  (w) => w.address.toLowerCase() === fromToken.address.toLowerCase() || w.symbol.toUpperCase() === fromToken.symbol.toUpperCase()
+                );
+                return (
+                  <div className="flex items-center justify-between mt-1.5 px-1">
+                    <p className="text-[11px] text-muted-foreground/70">
+                      Balance: {bal ? parseFloat(bal.balance).toLocaleString(undefined, { maximumFractionDigits: 6 }) : balanceLoading ? "..." : "--"} {fromToken.symbol}
+                    </p>
+                    {bal && parseFloat(bal.balance) > 0 && (
+                      <button
+                        type="button"
+                        className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+                        onClick={() => setAmount(bal.balance)}
+                      >
+                        MAX
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -735,6 +862,7 @@ export default function SwapPage() {
               token={toToken}
               onSelect={setToToken}
               chain={chain}
+              walletTokens={walletTokens}
             />
           </div>
 

@@ -161,11 +161,16 @@ export default function AuthPage() {
             <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_2px_oklch(0.5_0.24_260/0.6)]"
               style={{ animation: "ai-orbit-lg-3 4.5s linear infinite" }} />
 
-            {/* Icon */}
-            <div className="relative h-20 w-20 rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-cyan-500 flex items-center justify-center shadow-[0_8px_32px_oklch(0.55_0.28_290/0.45)] animate-ai-glow">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="animate-ai-spin-slow">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-              </svg>
+            {/* Logo */}
+            <div className="relative h-20 w-20 rounded-2xl overflow-hidden shadow-[0_8px_32px_oklch(0.55_0.28_290/0.45)] animate-ai-glow">
+              <Image
+                src="/logo.jpg"
+                alt="DeFi Agent"
+                width={80}
+                height={80}
+                className="object-cover w-full h-full"
+                priority
+              />
             </div>
           </div>
 
