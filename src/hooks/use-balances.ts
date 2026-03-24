@@ -60,16 +60,21 @@ export function useAllChainBalances() {
     let totalUsd = 0;
 
     if (rawData) {
-      // The CLI returns different structures — handle both array and object
-      const tokenList = Array.isArray(rawData)
-        ? rawData
-        : Array.isArray((rawData as Record<string, unknown>).tokens)
-          ? (rawData as Record<string, unknown>).tokens as Record<string, unknown>[]
-          : Array.isArray((rawData as Record<string, unknown>).details)
-            ? (rawData as Record<string, unknown>).details as Record<string, unknown>[]
-            : [];
+      // Real CLI structure: { details: [{tokenAssets: [...]}, ...], totalValueUsd: "..." }
+      // Fallbacks for any legacy shapes
+      let tokenList: Record<string, unknown>[] = [];
 
-      for (const t of tokenList as Record<string, unknown>[]) {
+      if (Array.isArray(rawData)) {
+        tokenList = rawData as Record<string, unknown>[];
+      } else if (Array.isArray((rawData as Record<string, unknown>).details)) {
+        // Flatten tokenAssets from all detail entries
+        const details = (rawData as Record<string, unknown>).details as Array<{ tokenAssets?: Record<string, unknown>[] }>;
+        tokenList = details.flatMap((d) => d.tokenAssets ?? []);
+      } else if (Array.isArray((rawData as Record<string, unknown>).tokens)) {
+        tokenList = (rawData as Record<string, unknown>).tokens as Record<string, unknown>[];
+      }
+
+      for (const t of tokenList) {
         const symbol = (t.tokenSymbol ?? t.symbol ?? "???") as string;
         const balance = (t.balance ?? t.holdingAmount ?? "0") as string;
         const tokenAddress = (t.tokenContractAddress ?? t.tokenAddress ?? "") as string;
