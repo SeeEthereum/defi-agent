@@ -47,7 +47,7 @@ function getNativeToken(chain: string): TokenInfo {
 function parseTokenResult(t: TokenSearchResult): TokenInfo {
   return {
     symbol: t.tokenSymbol ?? t.symbol ?? "???",
-    address: t.tokenContractAddress ?? t.address ?? "",
+    address: t.tokenContractAddress || t.address || "",
     decimals: Number(t.decimal ?? t.decimals ?? 18),
   };
 }
@@ -365,7 +365,7 @@ export default function SwapPage() {
           if (bal <= 0) continue;
           assets.push({
             symbol: t.symbol ?? t.tokenSymbol ?? "?",
-            address: t.tokenContractAddress ?? NATIVE_TOKEN,
+            address: t.tokenContractAddress || NATIVE_TOKEN,
             decimals: Number(t.decimal ?? t.decimals ?? 18),
             balance: t.balance ?? t.holdingAmount ?? "0",
             balanceUsd: t.usdValue ?? t.tokenPrice

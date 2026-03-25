@@ -8,7 +8,7 @@ import { walletBalance, tokenSearch, walletAddresses, walletHistory } from "@/li
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { normalizeAddress } from "@/lib/utils";
-import { getChainBySwapName } from "@/lib/chains";
+import { CHAINS, getChainBySwapName } from "@/lib/chains";
 
 // ── OpenAI-format tools (converted from Anthropic-style tool definitions) ────
 const openaiTools = AI_TOOLS.map((t) => ({
@@ -33,8 +33,16 @@ async function executeToolCall(
 ): Promise<unknown> {
   switch (name) {
     case "get_balances": {
-      const chain = input.chain as string | undefined;
-      const result = await walletBalance(chain);
+      const chainName = input.chain as string | undefined;
+      // CLI expects chain ID (e.g. "1"), not name (e.g. "ethereum")
+      let chainId: string | undefined;
+      if (chainName) {
+        const cfg = getChainBySwapName(chainName) ?? Object.values(CHAINS).find(
+          (c) => c.name.toLowerCase() === chainName.toLowerCase() || c.swapName === chainName
+        );
+        chainId = cfg ? String(cfg.chainIndex) : chainName;
+      }
+      const result = await walletBalance(chainId);
       return result.data;
     }
     case "get_fluid_markets": {
