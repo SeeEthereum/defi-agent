@@ -113,12 +113,14 @@ export async function POST(request: NextRequest) {
 
     const useMev = mevProtection && MEV_SUPPORTED_CHAINS.includes(chain);
 
+    // Don't pass the DEX API's gas estimate — it's often an extreme upper bound
+    // (e.g. 50M gas) that causes "insufficient funds for gas * price + value" errors.
+    // Let the node estimate the actual gas needed, which is typically 200k-500k.
     const callResult = await walletContractCall({
       to: normalizeAddress(tx.to),
       chain: chainIndex,
       inputData: tx.data,
       value: valueUi,
-      gasLimit: tx.gas,
       mevProtection: useMev,
       force: true, // Skip backend simulation — approval may not be reflected yet
     });

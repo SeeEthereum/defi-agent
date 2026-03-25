@@ -67,7 +67,6 @@ export async function POST(request: NextRequest) {
             to: tokenAddr,
             chain: chainIndex,
             inputData: resetData.data,
-            gasLimit: resetData.gasLimit,
             force: true,
           });
           // Brief pause to let the reset propagate
@@ -84,7 +83,6 @@ export async function POST(request: NextRequest) {
       to: tokenAddr,
       chain: chainIndex,
       inputData: approveData.data,
-      gasLimit: approveData.gasLimit,
       force: true, // Skip backend simulation — may race with recent txs
     });
 
