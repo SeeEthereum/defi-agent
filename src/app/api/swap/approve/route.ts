@@ -27,11 +27,16 @@ export async function POST(request: NextRequest) {
     const chainIndex = String(chainConfig.chainIndex);
     const tokenAddr = normalizeAddress(token);
 
-    // Get approve calldata from OKX DEX Aggregator API
+    // Get approve calldata from OKX DEX Aggregator API.
+    // Use max uint256 to avoid issues where the router needs slightly more
+    // than the exact swap amount (fees, rounding). This is standard practice
+    // for DEX approvals — the user already confirmed the swap action.
+    const MAX_UINT256 =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     const approveData = await dexApproveTransaction({
       chainIndex,
       tokenContractAddress: tokenAddr,
-      approveAmount: amount,
+      approveAmount: MAX_UINT256,
     });
 
     if (!approveData?.data) {
@@ -40,6 +45,37 @@ export async function POST(request: NextRequest) {
         success: true,
         data: { txHash: null, alreadyApproved: true },
       });
+    }
+
+    // USDT requires resetting allowance to 0 before setting a new one.
+    // Known USDT addresses across chains:
+    const USDT_ADDRESSES = [
+      "0xdac17f958d2ee523a2206206994597c13d831ec7", // Ethereum
+      "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", // Arbitrum
+      "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // Polygon
+      "0x55d398326f99059ff775485246999027b3197955", // BNB Chain
+    ];
+    if (USDT_ADDRESSES.includes(tokenAddr)) {
+      try {
+        const resetData = await dexApproveTransaction({
+          chainIndex,
+          tokenContractAddress: tokenAddr,
+          approveAmount: "0",
+        });
+        if (resetData?.data) {
+          await walletContractCall({
+            to: tokenAddr,
+            chain: chainIndex,
+            inputData: resetData.data,
+            gasLimit: resetData.gasLimit,
+            force: true,
+          });
+          // Brief pause to let the reset propagate
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      } catch {
+        // Reset is best-effort — continue with the actual approval
+      }
     }
 
     // Broadcast the approve tx via wallet contract-call.
