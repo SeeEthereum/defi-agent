@@ -63,12 +63,23 @@ function abbreviateAddress(addr: string): string {
 }
 
 function toWei(amount: string, decimals: number): string {
-  return BigInt(Math.round(parseFloat(amount) * 10 ** decimals)).toString();
+  // String-based conversion to avoid floating point precision loss
+  // for tokens with 18 decimals and large amounts (e.g. PEPE)
+  const [intPart, fracPart = ""] = amount.split(".");
+  const padded = fracPart.padEnd(decimals, "0").slice(0, decimals);
+  const raw = intPart + padded;
+  // Remove leading zeros but keep at least "0"
+  return raw.replace(/^0+/, "") || "0";
 }
 
 function fromWei(amount: string, decimals: number): string {
-  const num = Number(amount) / 10 ** decimals;
-  return num.toFixed(6);
+  // String-based conversion to preserve precision for large token amounts
+  const s = amount.padStart(decimals + 1, "0");
+  const intPart = s.slice(0, s.length - decimals) || "0";
+  const fracPart = s.slice(s.length - decimals);
+  // Trim trailing zeros, keep up to 6 significant decimals
+  const trimmed = fracPart.slice(0, 6).replace(/0+$/, "");
+  return trimmed ? `${intPart}.${trimmed}` : intPart;
 }
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -173,10 +184,10 @@ function TokenSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Find balance of currently selected token
+  // Find balance of currently selected token — match by address only (unique)
   const selectedBalance = token && walletTokens
     ? walletTokens.find(
-        (w) => w.address.toLowerCase() === token.address.toLowerCase() || w.symbol.toUpperCase() === token.symbol.toUpperCase()
+        (w) => w.address.toLowerCase() === token.address.toLowerCase()
       )
     : null;
 
@@ -365,12 +376,14 @@ export default function SwapPage() {
           if (bal <= 0) continue;
           assets.push({
             symbol: t.symbol ?? t.tokenSymbol ?? "?",
-            address: t.tokenContractAddress || NATIVE_TOKEN,
+            address: t.tokenAddress || t.tokenContractAddress || NATIVE_TOKEN,
             decimals: Number(t.decimal ?? t.decimals ?? 18),
             balance: t.balance ?? t.holdingAmount ?? "0",
-            balanceUsd: t.usdValue ?? t.tokenPrice
-              ? String(bal * parseFloat(t.tokenPrice ?? "0"))
-              : "0",
+            balanceUsd: t.usdValue
+              ? String(t.usdValue)
+              : t.tokenPrice
+                ? String(bal * parseFloat(t.tokenPrice))
+                : "0",
           });
         }
         // Sort by USD value descending
@@ -813,7 +826,7 @@ export default function SwapPage() {
               />
               {fromToken && (() => {
                 const bal = walletTokens.find(
-                  (w) => w.address.toLowerCase() === fromToken.address.toLowerCase() || w.symbol.toUpperCase() === fromToken.symbol.toUpperCase()
+                  (w) => w.address.toLowerCase() === fromToken.address.toLowerCase()
                 );
                 return (
                   <div className="flex items-center justify-between mt-1.5 px-1">
