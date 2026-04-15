@@ -189,6 +189,28 @@ const SUGGESTIONS = [
   "Show my recent transactions",
 ];
 
+const CHAT_STORAGE_KEY = "defi-agent-chat-history";
+
+function loadMessages(): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(msgs: Message[]) {
+  try {
+    // Keep last 50 messages to avoid bloating localStorage
+    const toSave = msgs.slice(-50);
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(toSave));
+  } catch {}
+}
+
 export default function AiPage() {
   const { authenticated, walletAddress } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -198,6 +220,17 @@ export default function AiPage() {
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    const saved = loadMessages();
+    if (saved.length > 0) setMessages(saved);
+  }, []);
+
+  // Save chat history whenever messages change
+  useEffect(() => {
+    if (messages.length > 0) saveMessages(messages);
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -409,6 +442,19 @@ export default function AiPage() {
             <p className="text-[11px] text-muted-foreground">Powered by Claude · Zero fees</p>
           </div>
         </div>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setMessages([]);
+              setProposedActions([]);
+              localStorage.removeItem(CHAT_STORAGE_KEY);
+            }}
+            className="text-[11px] text-muted-foreground/60 hover:text-destructive transition-colors px-2 py-1 rounded-lg hover:bg-destructive/5"
+          >
+            Clear chat
+          </button>
+        )}
       </div>
 
       {/* ── Messages ───────────────────────────────────────────────────── */}

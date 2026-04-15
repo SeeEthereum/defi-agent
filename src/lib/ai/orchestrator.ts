@@ -104,10 +104,18 @@ async function executeToolCall(
       return result.data;
     }
     case "get_transaction_history": {
-      const chain = input.chain as string | undefined;
+      const chainName = input.chain as string | undefined;
       const limit = input.limit as number | undefined;
+      // Convert chain name to chainIndex for the CLI
+      let chainId: string | undefined;
+      if (chainName) {
+        const cfg = getChainBySwapName(chainName) ?? Object.values(CHAINS).find(
+          (c) => c.name.toLowerCase() === chainName.toLowerCase() || c.swapName === chainName
+        );
+        chainId = cfg ? String(cfg.chainIndex) : chainName;
+      }
       const result = await walletHistory({
-        chain,
+        chain: chainId,
         limit: String(limit ?? 10),
       });
       return result.data;
