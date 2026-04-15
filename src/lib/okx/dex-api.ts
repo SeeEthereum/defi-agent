@@ -124,14 +124,27 @@ export async function dexQuote(params: {
   toTokenAddress: string;
   amount: string;
   slippagePercent?: string;
+  autoSlippage?: boolean;
+  priceImpactProtectionPercent?: string;
 }): Promise<DexQuoteResult> {
-  return dexGet<DexQuoteResult>("dex/aggregator/quote", {
+  const p: Record<string, string> = {
     chainIndex: params.chainIndex,
     fromTokenAddress: params.fromTokenAddress,
     toTokenAddress: params.toTokenAddress,
     amount: params.amount,
-    slippagePercent: params.slippagePercent ?? "0.5",
-  });
+  };
+
+  if (params.autoSlippage) {
+    p.autoSlippage = "true";
+  } else {
+    p.slippagePercent = params.slippagePercent ?? "0.5";
+  }
+
+  if (params.priceImpactProtectionPercent) {
+    p.priceImpactProtectionPercent = params.priceImpactProtectionPercent;
+  }
+
+  return dexGet<DexQuoteResult>("dex/aggregator/quote", p);
 }
 
 export interface DexApproveResult {
@@ -186,13 +199,26 @@ export async function dexSwap(params: {
   amount: string;
   userWalletAddress: string;
   slippagePercent?: string;
+  autoSlippage?: boolean;
+  priceImpactProtectionPercent?: string;
 }): Promise<DexSwapResult> {
-  return dexGet<DexSwapResult>("dex/aggregator/swap", {
+  const p: Record<string, string> = {
     chainIndex: params.chainIndex,
     fromTokenAddress: params.fromTokenAddress,
     toTokenAddress: params.toTokenAddress,
     amount: params.amount,
     userWalletAddress: params.userWalletAddress,
-    slippagePercent: params.slippagePercent ?? "0.5",
-  });
+  };
+
+  if (params.autoSlippage) {
+    p.autoSlippage = "true";
+  } else {
+    p.slippagePercent = params.slippagePercent ?? "0.5";
+  }
+
+  if (params.priceImpactProtectionPercent) {
+    p.priceImpactProtectionPercent = params.priceImpactProtectionPercent;
+  }
+
+  return dexGet<DexSwapResult>("dex/aggregator/swap", p);
 }

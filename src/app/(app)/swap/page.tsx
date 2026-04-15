@@ -345,6 +345,7 @@ export default function SwapPage() {
   const [error, setError] = useState<{ type: "quote" | "swap"; title: string; message: string } | null>(null);
   const [swapResult, setSwapResult] = useState<{ status: string; message: string; txHash?: string; mevProtected?: boolean; securityWarning?: string | null } | null>(null);
   const [slippage, setSlippage] = useState("0.5");
+  const [autoSlippage, setAutoSlippage] = useState(false);
   const [showSlippage, setShowSlippage] = useState(false);
   const [gasLevel, setGasLevel] = useState<"slow" | "average" | "fast">("average");
   const [mevProtection, setMevProtection] = useState(false);
@@ -522,6 +523,8 @@ export default function SwapPage() {
           toToken: toToken.address,
           amount: amountWei,
           chain,
+          autoSlippage,
+          slippage,
         }),
       });
       const data = await res.json();
@@ -580,6 +583,7 @@ export default function SwapPage() {
           chain,
           wallet: walletAddress ?? "",
           slippage,
+          autoSlippage,
           gasLevel,
           mevProtection: mevAvailable && mevProtection,
         }),
@@ -694,18 +698,29 @@ export default function SwapPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-[13px] font-medium text-muted-foreground">Slippage Tolerance</p>
-              <button
-                type="button"
-                onClick={() => setShowSlippage(!showSlippage)}
-                className="text-[12px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-1"
-              >
-                {slippage}%
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showSlippage ? "rotate-180 transition-transform" : "transition-transform"}>
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setAutoSlippage(!autoSlippage); if (!autoSlippage) setShowSlippage(false); }}
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${autoSlippage ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-muted-foreground hover:text-foreground"}`}
+                >
+                  Auto
+                </button>
+                {!autoSlippage && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSlippage(!showSlippage)}
+                    className="text-[12px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-1"
+                  >
+                    {slippage}%
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showSlippage ? "rotate-180 transition-transform" : "transition-transform"}>
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-            {showSlippage && (
+            {showSlippage && !autoSlippage && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-50/80 border border-border/40">
                 {["0.1", "0.5", "1.0", "2.0"].map((s) => (
                   <button

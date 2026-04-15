@@ -15,6 +15,7 @@ const schema = z.object({
   chain: z.string().min(1),
   wallet: z.string().min(1),
   slippage: z.string().optional(),
+  autoSlippage: z.boolean().optional(),
   gasLevel: z.enum(["slow", "average", "fast"]).optional(),
   mevProtection: z.boolean().optional(),
 });
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       chain,
       wallet,
       slippage,
+      autoSlippage,
       gasLevel,
       mevProtection,
     } = schema.parse(body);
@@ -50,7 +52,9 @@ export async function POST(request: NextRequest) {
       toTokenAddress: normalizeAddress(toToken),
       amount,
       userWalletAddress: normalizeAddress(wallet),
+      autoSlippage: autoSlippage ?? false,
       slippagePercent: slippage ?? "0.5",
+      priceImpactProtectionPercent: "0.9",
     });
 
     const tx = swapResult?.tx;
