@@ -290,6 +290,24 @@ export async function tokenSearch(query: string, chains?: string) {
   return runCli(["token", "search"], args);
 }
 
+export async function tokenTrending(chain: string) {
+  return runCli(["token", "trending"], { chain });
+}
+
+export async function tokenHotTokens(params?: {
+  chain?: string;
+  rankBy?: string;
+  timeFrame?: string;
+  riskFilter?: string;
+}) {
+  const args: Record<string, string> = {};
+  if (params?.chain) args.chain = params.chain;
+  if (params?.rankBy) args["rank-by"] = params.rankBy;
+  if (params?.timeFrame) args["time-frame"] = params.timeFrame;
+  if (params?.riskFilter) args["risk-filter"] = params.riskFilter;
+  return runCli(["token", "hot-tokens"], args);
+}
+
 // Swap commands
 export async function swapQuote(params: {
   from: string;

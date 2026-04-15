@@ -353,6 +353,20 @@ export default function SwapPage() {
   const [walletTokens, setWalletTokens] = useState<WalletToken[]>([]);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
+  // Trending tokens
+  interface TrendingToken {
+    symbol: string;
+    name: string;
+    address: string;
+    chainIndex: string;
+    price: string;
+    change24h: string;
+    marketCap: string;
+    logo: string;
+  }
+  const [trendingTokens, setTrendingTokens] = useState<TrendingToken[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(false);
+
   // Fetch wallet balances when chain changes
   useEffect(() => {
     if (!authenticated) return;
@@ -394,6 +408,22 @@ export default function SwapPage() {
       .catch(() => setWalletTokens([]))
       .finally(() => setBalanceLoading(false));
   }, [chain, authenticated]);
+
+  // Fetch trending tokens on chain change
+  useEffect(() => {
+    const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
+    if (!chainConfig) return;
+    setTrendingLoading(true);
+    fetch(`/api/tokens/trending?chain=${chainConfig.swapName}&timeFrame=4`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setTrendingTokens(data.data);
+        }
+      })
+      .catch(() => setTrendingTokens([]))
+      .finally(() => setTrendingLoading(false));
+  }, [chain]);
 
   // MEV protection is only available on Ethereum, BSC, Base
   const mevSupportedChains = ["ethereum", "bsc", "base"];
@@ -1119,6 +1149,86 @@ export default function SwapPage() {
 
         </div>
       </div>
+
+      {/* ── Trending Tokens ───────────────────────────────────────── */}
+      {trendingTokens.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-border/50 bg-white/80 backdrop-blur-sm shadow-sm shadow-black/[0.03] overflow-hidden">
+          <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🔥</span>
+              <h3 className="text-[13px] font-semibold">Trending Tokens</h3>
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">24h · {Object.values(CHAINS).find(c => c.swapName === chain)?.name ?? chain}</span>
+          </div>
+          {trendingLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner className="text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="divide-y divide-border/30">
+              {trendingTokens.slice(0, 10).map((t, i) => {
+                const price = parseFloat(t.price);
+                const change = parseFloat(t.change24h);
+                const mcap = parseFloat(t.marketCap);
+                const isUp = change >= 0;
+                return (
+                  <button
+                    key={`${t.address}-${i}`}
+                    type="button"
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-indigo-50/40 active:bg-indigo-50/60 transition-colors text-left"
+                    onClick={() => {
+                      const chainConfig = Object.values(CHAINS).find(c => c.swapName === chain);
+                      setToToken({
+                        symbol: t.symbol,
+                        address: t.address,
+                        decimals: 18,
+                      });
+                      // If no fromToken selected, set native
+                      if (!fromToken) setFromToken(getNativeToken(chain));
+                      // Scroll to top of form
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      void chainConfig; // suppress unused
+                    }}
+                  >
+                    <span className="text-[11px] font-medium text-muted-foreground/50 w-5 text-right tabular-nums">{i + 1}</span>
+                    {t.logo ? (
+                      <img
+                        src={t.logo}
+                        alt={t.symbol}
+                        width={28}
+                        height={28}
+                        className="rounded-full shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <TokenIcon symbol={t.symbol} size={28} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13px] font-semibold tracking-tight">{t.symbol}</span>
+                        {t.name && <span className="text-[11px] text-muted-foreground/60 truncate">{t.name.length > 16 ? t.name.slice(0, 14) + "..." : t.name}</span>}
+                      </div>
+                      {mcap > 0 && (
+                        <span className="text-[10px] text-muted-foreground/50">
+                          MCap: ${mcap >= 1e9 ? (mcap / 1e9).toFixed(1) + "B" : mcap >= 1e6 ? (mcap / 1e6).toFixed(1) + "M" : mcap >= 1e3 ? (mcap / 1e3).toFixed(0) + "K" : mcap.toFixed(0)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[12px] font-medium tabular-nums">
+                        ${price >= 1 ? price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}
+                      </div>
+                      <div className={`text-[11px] font-semibold tabular-nums ${isUp ? "text-emerald-600" : "text-red-500"}`}>
+                        {isUp ? "+" : ""}{change.toFixed(2)}%
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
