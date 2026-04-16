@@ -425,6 +425,62 @@ export const AI_TOOLS: Tool[] = [
     },
   },
   {
+    name: "propose_bridge",
+    description:
+      "Propose a cross-chain bridge transfer for user confirmation. Use bridge_tokens first to get a quote, then propose_bridge to create the action card. The user must confirm before execution.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fromChain: {
+          type: "string",
+          description: "Source chain ID (e.g. '42161' for Arbitrum)",
+        },
+        toChain: {
+          type: "string",
+          description: "Destination chain ID (e.g. '1' for Ethereum)",
+        },
+        fromToken: {
+          type: "string",
+          description: "Source token contract address",
+        },
+        toToken: {
+          type: "string",
+          description:
+            "Destination token contract address. Can differ from fromToken for cross-token bridges.",
+        },
+        fromAmount: {
+          type: "string",
+          description: "Amount in minimal units (wei)",
+        },
+        fromTokenSymbol: {
+          type: "string",
+          description: "Source token symbol for display (e.g. 'USDC')",
+        },
+        toTokenSymbol: {
+          type: "string",
+          description: "Destination token symbol for display (e.g. 'ETH')",
+        },
+        estimatedOutput: {
+          type: "string",
+          description:
+            "Estimated output amount in human-readable form from the quote",
+        },
+        bridge: {
+          type: "string",
+          description:
+            "Bridge provider name from the quote (e.g. 'stargate', 'across')",
+        },
+      },
+      required: [
+        "fromChain",
+        "toChain",
+        "fromToken",
+        "toToken",
+        "fromAmount",
+      ],
+    },
+  },
+  {
     name: "scan_dapp_safety",
     description:
       "Scan a URL or domain for phishing, scam, or blacklisted status. Use when the user shares a suspicious URL or asks if a website is safe to interact with.",

@@ -167,6 +167,12 @@ async function executeToolCall(
       const result = await addressTrackerActivities({ trackerType, walletAddress, chain, tradeType });
       return result.data;
     }
+    case "propose_bridge":
+      return {
+        action: "bridge",
+        params: input,
+        message: "Bridge proposal ready for your confirmation.",
+      };
     case "bridge_tokens": {
       if (!userAddress) return { error: "No wallet address available" };
       const fromChain = input.fromChain as string;

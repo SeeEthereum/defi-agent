@@ -18,6 +18,14 @@ interface BridgeTokenInfo {
   priceUSD?: string;
 }
 
+interface WalletToken {
+  symbol: string;
+  address: string;
+  decimals: number;
+  balance: string;
+  balanceUsd: string;
+}
+
 interface QuoteData {
   tool: string;
   toAmount: string;
@@ -141,11 +149,13 @@ function TokenDropdown({
   selected,
   onSelect,
   loading,
+  label,
 }: {
   tokens: BridgeTokenInfo[];
   selected: BridgeTokenInfo | null;
   onSelect: (t: BridgeTokenInfo) => void;
   loading: boolean;
+  label?: string;
 }) {
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -172,7 +182,7 @@ function TokenDropdown({
   return (
     <div ref={containerRef}>
       <p className="text-[13px] font-medium text-muted-foreground mb-2">
-        Token
+        {label ?? "Token"}
       </p>
       {selected ? (
         <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-white px-4 h-11">
@@ -269,9 +279,13 @@ export default function BridgePage() {
   const [fromChainIndex, setFromChainIndex] = useState(1);
   const [toChainIndex, setToChainIndex] = useState(42161);
   const [fromToken, setFromToken] = useState<BridgeTokenInfo | null>(null);
+  const [toToken, setToToken] = useState<BridgeTokenInfo | null>(null);
   const [amount, setAmount] = useState("");
-  const [tokens, setTokens] = useState<BridgeTokenInfo[]>([]);
+  const [fromTokens, setFromTokens] = useState<BridgeTokenInfo[]>([]);
+  const [toTokens, setToTokens] = useState<BridgeTokenInfo[]>([]);
   const [tokensLoading, setTokensLoading] = useState(false);
+  const [walletAssets, setWalletAssets] = useState<WalletToken[]>([]);
+  const [walletAssetsLoading, setWalletAssetsLoading] = useState(false);
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bridgeLoading, setBridgeLoading] = useState(false);
@@ -280,10 +294,47 @@ export default function BridgePage() {
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch tokens when chains change
+  // Fetch wallet balances for source chain
+  const fetchWalletAssets = useCallback(async () => {
+    if (!walletAddress) return;
+    setWalletAssetsLoading(true);
+    try {
+      const chainConfig = CHAIN_LIST.find((c) => c.chainIndex === fromChainIndex);
+      if (!chainConfig) return;
+      const res = await fetch(`/api/wallet/balances?chain=${chainConfig.chainIndex}`);
+      const data = await res.json();
+      const raw = data.data;
+      const tokenList = raw?.details?.[0]?.tokenAssets ?? raw?.tokenAssets ?? (Array.isArray(raw) ? raw : []);
+      const assets: WalletToken[] = [];
+      for (const t of tokenList) {
+        const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
+        if (bal <= 0) continue;
+        assets.push({
+          symbol: t.symbol ?? t.tokenSymbol ?? "?",
+          address: t.tokenAddress || t.tokenContractAddress || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          decimals: Number(t.decimal ?? t.decimals ?? 18),
+          balance: t.balance ?? t.holdingAmount ?? "0",
+          balanceUsd: t.usdValue ? String(t.usdValue) : t.tokenPrice ? String(bal * parseFloat(t.tokenPrice)) : "0",
+        });
+      }
+      assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
+      setWalletAssets(assets);
+    } catch {
+      setWalletAssets([]);
+    } finally {
+      setWalletAssetsLoading(false);
+    }
+  }, [fromChainIndex, walletAddress]);
+
+  useEffect(() => {
+    fetchWalletAssets();
+  }, [fetchWalletAssets]);
+
+  // Fetch LI.FI tokens for both chains
   const fetchTokens = useCallback(async () => {
     setTokensLoading(true);
     setFromToken(null);
+    setToToken(null);
     setQuote(null);
     try {
       const res = await fetch(
@@ -291,14 +342,19 @@ export default function BridgePage() {
       );
       const data = await res.json();
       if (data.success && data.data) {
-        const chainTokens: BridgeTokenInfo[] =
+        const srcTokens: BridgeTokenInfo[] =
           data.data[String(fromChainIndex)] ?? [];
-        setTokens(chainTokens);
+        const dstTokens: BridgeTokenInfo[] =
+          data.data[String(toChainIndex)] ?? [];
+        setFromTokens(srcTokens);
+        setToTokens(dstTokens);
       } else {
-        setTokens([]);
+        setFromTokens([]);
+        setToTokens([]);
       }
     } catch {
-      setTokens([]);
+      setFromTokens([]);
+      setToTokens([]);
     } finally {
       setTokensLoading(false);
     }
@@ -340,34 +396,75 @@ export default function BridgePage() {
 
   const handleSwapChains = () => {
     const prevFrom = fromChainIndex;
-    setFromChainIndex(toChainIndex);
+    const prevTo = toChainIndex;
+    const prevFromToken = fromToken;
+    const prevToToken = toToken;
+    setFromChainIndex(prevTo);
     setToChainIndex(prevFrom);
-    setFromToken(null);
+    setFromToken(prevToToken);
+    setToToken(prevFromToken);
     setQuote(null);
     setError(null);
     setBridgeResult(null);
     setBridgeStatus(null);
   };
 
+  // When user clicks a wallet asset, set it as fromToken and auto-match toToken
+  const handleSelectWalletAsset = (asset: WalletToken) => {
+    // Find matching LI.FI token on source chain
+    const lifiMatch = fromTokens.find(
+      (t) =>
+        t.address.toLowerCase() === asset.address.toLowerCase() ||
+        t.symbol.toLowerCase() === asset.symbol.toLowerCase()
+    );
+    const bridgeToken: BridgeTokenInfo = lifiMatch ?? {
+      address: asset.address,
+      symbol: asset.symbol,
+      decimals: asset.decimals,
+      name: asset.symbol,
+    };
+    setFromToken(bridgeToken);
+
+    // Auto-set destination token to same symbol if available
+    const destMatch = toTokens.find(
+      (t) => t.symbol.toLowerCase() === asset.symbol.toLowerCase()
+    );
+    if (destMatch) {
+      setToToken(destMatch);
+    }
+
+    setQuote(null);
+    setError(null);
+  };
+
+  const handleMaxBalance = () => {
+    if (!fromToken) return;
+    const asset = walletAssets.find(
+      (a) =>
+        a.address.toLowerCase() === fromToken.address.toLowerCase() ||
+        a.symbol.toLowerCase() === fromToken.symbol.toLowerCase()
+    );
+    if (asset) {
+      setAmount(asset.balance);
+      setQuote(null);
+      setError(null);
+    }
+  };
+
   const handleGetQuote = async () => {
-    if (!fromToken || !amount || !walletAddress) return;
+    if (!fromToken || !toToken || !amount || !walletAddress) return;
     setQuoteLoading(true);
     setQuote(null);
     setError(null);
 
     try {
       const amountWei = toWei(amount, fromToken.decimals);
-      const toTokenAddress = fromToken.address.toLowerCase() === NATIVE_TOKEN_LIFI.toLowerCase()
-        ? NATIVE_TOKEN_LIFI
-        : NATIVE_TOKEN_LIFI; // Default destination to native token on dest chain
 
-      // For the quote, we use the same token on both chains (bridge the same asset)
-      // LI.FI will find the best route
       const qs = new URLSearchParams({
         fromChain: String(fromChainIndex),
         toChain: String(toChainIndex),
         fromToken: fromToken.address,
-        toToken: fromToken.address === NATIVE_TOKEN_LIFI ? NATIVE_TOKEN_LIFI : fromToken.address,
+        toToken: toToken.address,
         fromAmount: amountWei,
         fromAddress: walletAddress,
       });
@@ -381,7 +478,7 @@ export default function BridgePage() {
           tool: q.tool ?? q.toolDetails?.name ?? "Unknown",
           toAmount: q.estimate?.toAmount ?? "0",
           toAmountMin: q.estimate?.toAmountMin ?? "0",
-          toToken: q.action?.toToken ?? fromToken,
+          toToken: q.action?.toToken ?? toToken,
           fromToken: q.action?.fromToken ?? fromToken,
           executionDuration: q.estimate?.executionDuration ?? 0,
           feeCosts: q.estimate?.feeCosts ?? [],
@@ -398,7 +495,7 @@ export default function BridgePage() {
   };
 
   const handleBridge = async () => {
-    if (!fromToken || !amount || !walletAddress || !quote) return;
+    if (!fromToken || !toToken || !amount || !walletAddress || !quote) return;
     setBridgeLoading(true);
     setError(null);
     setBridgeResult(null);
@@ -414,7 +511,7 @@ export default function BridgePage() {
           fromChain: String(fromChainIndex),
           toChain: String(toChainIndex),
           fromToken: fromToken.address,
-          toToken: fromToken.address === NATIVE_TOKEN_LIFI ? NATIVE_TOKEN_LIFI : fromToken.address,
+          toToken: toToken.address,
           fromAmount: amountWei,
           fromAddress: walletAddress,
         }),
@@ -490,6 +587,15 @@ export default function BridgePage() {
     ? Math.ceil(quote.executionDuration / 60)
     : null;
 
+  // Find the selected fromToken's wallet balance
+  const selectedAssetBalance = fromToken
+    ? walletAssets.find(
+        (a) =>
+          a.address.toLowerCase() === fromToken.address.toLowerCase() ||
+          a.symbol.toLowerCase() === fromToken.symbol.toLowerCase()
+      )
+    : null;
+
   return (
     <div className="max-w-md mx-auto space-y-5 py-2">
       {/* Page header */}
@@ -512,6 +618,122 @@ export default function BridgePage() {
             onChange={handleFromChainChange}
             excludeChainIndex={toChainIndex}
           />
+
+          {/* Your Assets section */}
+          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4">
+            <p className="text-[13px] font-medium text-muted-foreground mb-2.5">
+              Your Assets on {fromChainConfig?.name ?? "source chain"}
+            </p>
+            {walletAssetsLoading ? (
+              <div className="flex items-center gap-2 py-3 justify-center text-muted-foreground">
+                <Spinner />
+                <span className="text-[13px]">Loading balances...</span>
+              </div>
+            ) : walletAssets.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground py-2 text-center">
+                No tokens found on this chain
+              </p>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-auto">
+                {walletAssets.map((asset, i) => (
+                  <button
+                    key={`${asset.address}-${i}`}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-sm transition-colors ${
+                      fromToken &&
+                      (fromToken.address.toLowerCase() === asset.address.toLowerCase() ||
+                        fromToken.symbol.toLowerCase() === asset.symbol.toLowerCase())
+                        ? "bg-indigo-50 border border-indigo-200/60"
+                        : "hover:bg-white active:bg-indigo-50/50 border border-transparent"
+                    }`}
+                    onClick={() => handleSelectWalletAsset(asset)}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100/60 text-[11px] font-bold text-indigo-600">
+                        {asset.symbol.slice(0, 2)}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-semibold tracking-tight text-[13px]">
+                          {asset.symbol}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[13px] font-medium tabular-nums">
+                        {parseFloat(asset.balance).toFixed(
+                          parseFloat(asset.balance) < 0.01 ? 6 : parseFloat(asset.balance) < 1 ? 4 : 2
+                        )}
+                      </p>
+                      {parseFloat(asset.balanceUsd) > 0 && (
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
+                          ${parseFloat(asset.balanceUsd).toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Source token + amount */}
+          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4 space-y-3">
+            <TokenDropdown
+              tokens={fromTokens}
+              selected={fromToken}
+              onSelect={(t) => {
+                setFromToken(t);
+                setQuote(null);
+                setError(null);
+                // Auto-match destination token by symbol
+                if (t && toTokens.length > 0) {
+                  const destMatch = toTokens.find(
+                    (dt) => dt.symbol.toLowerCase() === t.symbol.toLowerCase()
+                  );
+                  if (destMatch) setToToken(destMatch);
+                }
+              }}
+              loading={tokensLoading}
+              label="Source Token"
+            />
+
+            {/* Amount input with MAX */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[13px] font-medium text-muted-foreground">
+                  Amount
+                </p>
+                {selectedAssetBalance && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      Bal: {parseFloat(selectedAssetBalance.balance).toFixed(
+                        parseFloat(selectedAssetBalance.balance) < 1 ? 4 : 2
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleMaxBalance}
+                      className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100"
+                    >
+                      MAX
+                    </button>
+                  </div>
+                )}
+              </div>
+              <Input
+                placeholder="0.00"
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setQuote(null);
+                  setError(null);
+                }}
+                className="h-11 rounded-xl border-border/60 bg-white px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
+              />
+            </div>
+          </div>
 
           {/* Swap chains arrow */}
           <div className="flex justify-center -my-2 relative z-10">
@@ -545,33 +767,19 @@ export default function BridgePage() {
             excludeChainIndex={fromChainIndex}
           />
 
-          {/* Token selector */}
-          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4 space-y-3">
+          {/* Destination token selector */}
+          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4">
             <TokenDropdown
-              tokens={tokens}
-              selected={fromToken}
-              onSelect={setFromToken}
+              tokens={toTokens}
+              selected={toToken}
+              onSelect={(t) => {
+                setToToken(t);
+                setQuote(null);
+                setError(null);
+              }}
               loading={tokensLoading}
+              label="Destination Token"
             />
-
-            {/* Amount input */}
-            <div>
-              <p className="text-[13px] font-medium text-muted-foreground mb-2">
-                Amount
-              </p>
-              <Input
-                placeholder="0.00"
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => {
-                  setAmount(e.target.value);
-                  setQuote(null);
-                  setError(null);
-                }}
-                className="h-11 rounded-xl border-border/60 bg-white px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
-              />
-            </div>
           </div>
 
           {/* Quote result */}
@@ -599,6 +807,14 @@ export default function BridgePage() {
                     {quote.tool}
                   </span>
                 </div>
+                {fromToken && toToken && fromToken.symbol !== toToken.symbol && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-muted-foreground">Route</span>
+                    <span className="text-[12px] font-medium text-foreground">
+                      {fromToken.symbol} &rarr; {toToken.symbol}
+                    </span>
+                  </div>
+                )}
                 {estimatedMinutes != null && (
                   <div className="flex items-center justify-between">
                     <span className="text-[12px] text-muted-foreground">Estimated Time</span>
@@ -734,7 +950,7 @@ export default function BridgePage() {
           <div className="flex gap-3 pt-1">
             <Button
               onClick={handleGetQuote}
-              disabled={quoteLoading || !fromToken || !amount}
+              disabled={quoteLoading || !fromToken || !toToken || !amount}
               variant="outline"
               className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-slate-50 active:bg-slate-100 transition-all"
             >
