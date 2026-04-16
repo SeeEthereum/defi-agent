@@ -13,11 +13,12 @@ Trade any token, earn yield, scan for risks, track smart money, and manage your 
 DeFi Agent is a non-custodial DeFi platform that combines:
 
 - **DEX Aggregation** — swap any token across 500+ DEX sources at the best price, zero platform fees
+- **Cross-Chain Bridge** — bridge tokens between any supported chain via LI.FI aggregator (20+ bridge protocols), with cross-token support
 - **Yield Farming** — supply assets to Fluid Protocol and earn passive interest
-- **Security Center** — scan tokens for honeypots and rug pulls, manage ERC-20 approvals, check DApps for phishing
+- **Security Center** — scan tokens for honeypots and rug pulls, manage and revoke ERC-20 approvals, check DApps for phishing
 - **Smart Money Intelligence** — track whale/KOL/smart money buy signals and view top trader leaderboards
 - **Market Data** — real-time token prices, candlestick charts, gas prices across all chains
-- **AI Assistant** — a conversational interface powered by GPT-4.1 that can execute any operation the app supports
+- **AI Assistant** — a conversational interface powered by GPT-4.1 that can execute any operation the app supports, including bridging
 - **Hardware-grade Security** — private keys live inside OKX's TEE (Trusted Execution Environment), never exposed to the app or the user
 
 No seed phrases. No browser extensions. Just email login and you're in.
@@ -39,6 +40,19 @@ No seed phrases. No browser extensions. Just email login and you're in.
 - Trending tokens section with 24h price data
 - ERC-8021 Builder Code attribution for transaction tracking
 
+### Bridge (Cross-Chain)
+
+- Transfer tokens across any supported chain via LI.FI bridge aggregator
+- Aggregates 20+ bridge protocols (Stargate, Across, Hop, Celer, Connext, etc.) for optimal routing
+- **Cross-token bridging** — bridge USDC on Arbitrum to ETH on Ethereum, or any combination
+- **Wallet assets view** — see your tokens per chain with balances and USD values
+- MAX button for quick full-balance bridging
+- Real-time quote preview with estimated output, bridge provider, time estimate, and fee breakdown
+- Transaction status tracking with automatic polling until completion
+- Explorer links for both source and destination chain transactions
+- 0% platform commission — only bridge protocol fees and gas
+- ERC-8021 Builder Code attribution
+
 ### Earn (Fluid Protocol)
 
 - Supply USDC, USDT, WETH, or WPOL to earn interest
@@ -54,9 +68,11 @@ No seed phrases. No browser extensions. Just email login and you're in.
   - Scan your entire wallet portfolio with one click
   - Or scan specific tokens by contract address
   - Risk level badges (Safe / Medium / High) with detailed risk factors
-- **Approvals Manager** — view all active ERC-20 and Permit2 approvals
+- **Approvals Manager** — view and revoke active ERC-20 and Permit2 approvals
   - See which contracts can spend your tokens
   - Identify unlimited approvals that should be revoked
+  - **One-click revoke** — revoke any approval directly from the UI (calls `approve(spender, 0)`)
+  - Loading, success, and error states per approval
   - Filter by chain
 - **DApp Scanner** — check URLs for phishing, scams, and blacklisted domains (via AI chatbot)
 
@@ -81,7 +97,7 @@ No seed phrases. No browser extensions. Just email login and you're in.
 ### AI Assistant
 
 - Conversational DeFi management powered by GPT-4.1
-- **17 integrated tools:**
+- **21 integrated tools:**
   - `get_balances` — portfolio balances across all chains
   - `get_fluid_markets` — Fluid lending APR data
   - `get_fluid_positions` — user's active lending positions
@@ -91,6 +107,8 @@ No seed phrases. No browser extensions. Just email login and you're in.
   - `propose_supply` — propose Fluid lending deposits
   - `propose_withdraw` — propose Fluid lending withdrawals
   - `propose_send` — propose token transfers
+  - `bridge_tokens` — cross-chain bridge quotes via LI.FI
+  - `propose_bridge` — propose cross-chain bridge for user confirmation
   - `get_wallet_addresses` — deposit addresses
   - `get_transaction_history` — past transaction records
   - `scan_token_safety` — honeypot and risk detection
@@ -124,14 +142,14 @@ No seed phrases. No browser extensions. Just email login and you're in.
 
 ## Supported Chains
 
-| Chain | Swap | Earn | Security | Signals | Gas |
-|-------|------|------|----------|---------|-----|
-| Ethereum | Yes | Yes | Yes | Yes | High |
-| Arbitrum | Yes | Yes | Yes | Yes | Low |
-| Base | Yes | Yes | Yes | Yes | Low |
-| BNB Chain | Yes | No | Yes | Yes | Low |
-| Polygon | Yes | Yes | Yes | Yes | Low |
-| Optimism | Yes | No | Yes | Yes | Low |
+| Chain | Swap | Bridge | Earn | Security | Signals | Gas |
+|-------|------|--------|------|----------|---------|-----|
+| Ethereum | Yes | Yes | Yes | Yes | Yes | High |
+| Arbitrum | Yes | Yes | Yes | Yes | Yes | Low |
+| Base | Yes | Yes | Yes | Yes | Yes | Low |
+| BNB Chain | Yes | Yes | No | Yes | Yes | Low |
+| Polygon | Yes | Yes | Yes | Yes | Yes | Low |
+| Optimism | Yes | Yes | No | Yes | Yes | Low |
 
 ---
 
@@ -140,11 +158,12 @@ No seed phrases. No browser extensions. Just email login and you're in.
 | Layer | Technology |
 |-------|------------|
 | Frontend | Next.js 15 (App Router), React 19, Tailwind CSS, shadcn/ui |
-| Backend | Next.js API Routes (30+ endpoints) |
+| Backend | Next.js API Routes (35+ endpoints) |
 | Wallet | OKX Agentic Wallet (TEE) via `onchainos` CLI |
 | Swap | OKX DEX Aggregator API (HMAC-SHA256 auth) |
+| Bridge | LI.FI Aggregator (20+ bridge protocols, cross-token) |
 | Lending | Fluid Protocol (ERC-4626, on-chain resolver via viem) |
-| AI | OpenAI GPT-4.1 with function calling (17 tools) |
+| AI | OpenAI GPT-4.1 with function calling (21 tools) |
 | Security | OKX Security APIs (token-scan, dapp-scan, tx-scan, approvals) |
 | Market Data | OKX Market APIs (price, kline, index, signals, leaderboard) |
 | Attribution | ERC-8021 Builder Codes (transaction attribution) |
@@ -217,8 +236,9 @@ src/
 │       ├── wallet/           # Wallet management
 │       ├── earn/             # Fluid lending UI
 │       ├── swap/             # DEX swap UI
+│       ├── bridge/           # Cross-chain bridge UI
 │       ├── ai/               # AI Assistant chat
-│       ├── security/         # Token scanner + Approvals manager
+│       ├── security/         # Token scanner + Approvals manager + Revoke
 │       └── signals/          # Smart money signals + Leaderboard
 ├── app/api/
 │   ├── auth/                 # login, verify, status, logout
@@ -226,7 +246,8 @@ src/
 │   ├── swap/                 # quote, approve, execute
 │   ├── earn/                 # markets, positions, supply, withdraw, approve
 │   ├── ai/chat/              # AI orchestrator endpoint
-│   ├── security/             # token-scan, approvals, dapp-scan
+│   ├── bridge/               # quote, execute, tokens, status
+│   ├── security/             # token-scan, approvals, revoke, dapp-scan
 │   ├── market/               # price, kline
 │   ├── signals/              # smart money signal list
 │   ├── gateway/gas/          # gas prices
@@ -236,7 +257,7 @@ src/
 │   └── portfolio/pnl/        # DEX PnL overview
 ├── lib/
 │   ├── ai/
-│   │   ├── orchestrator.ts   # GPT-4.1 agentic loop (17 tools)
+│   │   ├── orchestrator.ts   # GPT-4.1 agentic loop (21 tools)
 │   │   ├── tools.ts          # Tool definitions
 │   │   └── system-prompt.ts  # AI system prompt
 │   ├── okx/
@@ -244,6 +265,8 @@ src/
 │   │   ├── dex-api.ts        # OKX DEX Aggregator HTTP client
 │   │   ├── builder-code.ts   # ERC-8021 attribution suffix
 │   │   └── types.ts          # TypeScript interfaces
+│   ├── bridge/
+│   │   └── lifi.ts           # LI.FI bridge aggregator client
 │   ├── fluid/
 │   │   ├── constants.ts      # fToken addresses & configs
 │   │   ├── abis.ts           # ERC-4626 & resolver ABIs
@@ -275,6 +298,10 @@ src/
 | POST | `/api/swap/quote` | Get swap quote |
 | POST | `/api/swap/approve` | Approve token for swap |
 | POST | `/api/swap/execute` | Execute swap |
+| GET | `/api/bridge/quote` | Cross-chain bridge quote |
+| POST | `/api/bridge/execute` | Execute cross-chain bridge |
+| GET | `/api/bridge/tokens` | Available bridge tokens per chain |
+| GET | `/api/bridge/status` | Bridge transaction status |
 | GET | `/api/earn/markets` | Fluid lending markets |
 | GET | `/api/earn/positions` | User's lending positions |
 | POST | `/api/earn/approve` | Approve token for lending |
@@ -283,6 +310,7 @@ src/
 | POST | `/api/ai/chat` | AI assistant chat |
 | GET | `/api/security/token-scan` | Batch token security scan |
 | GET | `/api/security/approvals` | ERC-20/Permit2 approvals |
+| POST | `/api/security/revoke` | Revoke token approval |
 | GET | `/api/security/dapp-scan` | DApp/URL phishing check |
 | GET | `/api/market/price` | Token price by address |
 | GET | `/api/market/kline` | Candlestick chart data |
