@@ -396,6 +396,39 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
+  const [revokingKey, setRevokingKey] = useState<string | null>(null);
+  const [revokedKeys, setRevokedKeys] = useState<Set<string>>(new Set());
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  const handleRevoke = useCallback(
+    async (tokenAddr: string, spenderAddr: string, chainIdx: number) => {
+      const key = `${tokenAddr}-${spenderAddr}-${chainIdx}`;
+      setRevokingKey(key);
+      setRevokeError(null);
+      try {
+        const res = await fetch("/api/security/revoke", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenAddress: tokenAddr,
+            spenderAddress: spenderAddr,
+            chainIndex: chainIdx,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setRevokedKeys((prev) => new Set(prev).add(key));
+        } else {
+          setRevokeError(data.error || "Revoke failed");
+        }
+      } catch {
+        setRevokeError("Failed to connect to the server");
+      } finally {
+        setRevokingKey(null);
+      }
+    },
+    []
+  );
 
   const handleFetch = useCallback(async () => {
     if (!walletAddress) return;
@@ -508,6 +541,11 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
               Revoke unused approvals to stay safe
             </p>
           </div>
+          {revokeError && (
+            <div className="rounded-xl bg-red-50 border border-red-200/60 p-3 text-[12px] text-red-700">
+              {revokeError}
+            </div>
+          )}
           {approvals.map((item, i) => {
             const tokenAddr =
               item.tokenAddress ?? item.tokenContractAddress ?? "";
@@ -526,11 +564,15 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
               String(allowance).includes("MAX") ||
               (String(allowance).length > 30 && /^[0-9]+$/.test(String(allowance)));
 
+            const revokeKey = `${tokenAddr}-${spender}-${Number(chainIdx)}`;
+            const isRevoking = revokingKey === revokeKey;
+            const isRevoked = revokedKeys.has(revokeKey);
+
             return (
               <div
                 key={`${tokenAddr}-${spender}-${i}`}
                 className={`rounded-xl border bg-white overflow-hidden ${
-                  isRisky ? "border-red-200" : "border-border/60"
+                  isRevoked ? "border-emerald-200 opacity-60" : isRisky ? "border-red-200" : "border-border/60"
                 }`}
               >
                 <div className="px-4 py-3 space-y-2">
@@ -542,10 +584,11 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                         {networkName ?? getChainName(chainIdx)}
                       </span>
                     </div>
-                    {isRisky && (
+                    {isRevoked ? (
+                      <span className="text-[11px] font-semibold text-emerald-600">Revoked</span>
+                    ) : isRisky ? (
                       <span className="text-[11px] font-semibold text-red-600">At Risk</span>
-                    )}
-                    {risk && !isRisky && (
+                    ) : risk && (
                       <span className={`text-[11px] font-semibold ${riskColor}`}>
                         {risk}
                       </span>
@@ -575,7 +618,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                           ? `${parseFloat(item.remainAmtPrecise).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${symbol}`
                           : allowance || "—"}
                     </span>
-                    {isUnlimited && (
+                    {isUnlimited && !isRevoked && (
                       <span className="text-[10px] text-amber-500 ml-1">(consider revoking)</span>
                     )}
                   </div>
@@ -585,6 +628,44 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                       <span className={`px-1.5 py-0.5 rounded-full ${item.tags === "isEoa" ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-muted-foreground"}`}>
                         {item.tags === "isEoa" ? "EOA (not a contract)" : item.tags}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Revoke button */}
+                  {!isRevoked && tokenAddr && spender && chainIdx != null && (
+                    <div className="pt-1">
+                      <Button
+                        onClick={() =>
+                          handleRevoke(tokenAddr, spender, Number(chainIdx))
+                        }
+                        disabled={isRevoking || !!revokingKey}
+                        variant="outline"
+                        className="w-full h-8 rounded-lg text-[12px] font-semibold border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 disabled:opacity-50"
+                      >
+                        {isRevoking ? (
+                          <span className="flex items-center gap-2">
+                            <Spinner /> Revoking...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 6 6 18" />
+                              <path d="m6 6 12 12" />
+                            </svg>
+                            Revoke Approval
+                          </span>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {isRevoked && (
+                    <div className="pt-1">
+                      <div className="w-full h-8 rounded-lg text-[12px] font-semibold text-emerald-600 bg-emerald-50 flex items-center justify-center gap-1.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                        Successfully Revoked
+                      </div>
                     </div>
                   )}
                 </div>
