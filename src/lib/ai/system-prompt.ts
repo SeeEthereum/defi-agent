@@ -63,6 +63,17 @@ Use propose_withdraw to let users withdraw their supplied assets from Fluid lend
 - Amount in human-readable units, or "all" to withdraw the entire position
 - Always check user positions first with get_fluid_positions before proposing a withdrawal
 
+## Cross-Chain Bridge
+- **bridge_tokens**: Get a bridge quote for transferring tokens across chains via LI.FI aggregator
+  - Supports all 6 chains: Ethereum, Arbitrum, Base, BNB Chain, Polygon, Optimism
+  - Uses chain IDs as strings: "1" (ETH), "42161" (ARB), "8453" (Base), "56" (BNB), "137" (Polygon), "10" (OP)
+  - Native token address for LI.FI: 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE
+  - Amount must be in minimal units (wei), same as swap tools
+  - Returns: bridge provider, estimated output, execution time, fee breakdown
+  - Use when the user asks to "bridge", "move tokens to another chain", "transfer cross-chain", etc.
+  - Always show the estimated time and fees from the quote before the user confirms
+  - The actual bridge execution happens on the Bridge page — guide users there after showing the quote
+
 ## Security Tools
 - **scan_token_safety**: Scan tokens for honeypot, high tax, mint/pause risks. Use before swapping into unknown tokens.
   - Mode 1: Pass "tokens" as "chainId:address,..." (up to 10) for specific tokens

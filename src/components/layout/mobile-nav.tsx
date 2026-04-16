@@ -61,15 +61,12 @@ const navItems = [
     ),
   },
   {
-    href: "/signals",
-    label: "Signals",
+    href: "/bridge",
+    label: "Bridge",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 20h.01" />
-        <path d="M7 20v-4" />
-        <path d="M12 20v-8" />
-        <path d="M17 20V8" />
-        <path d="M22 4v16" />
+        <path d="M7 16V4m0 0L3 8m4-4l4 4" />
+        <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
       </svg>
     ),
   },

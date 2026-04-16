@@ -390,6 +390,41 @@ export const AI_TOOLS: Tool[] = [
     },
   },
   {
+    name: "bridge_tokens",
+    description:
+      "Get a bridge quote for transferring tokens across chains via LI.FI bridge aggregator. Shows estimated output, bridge provider, estimated time, and fees. Use when the user wants to move tokens from one chain to another.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fromChain: {
+          type: "string",
+          description:
+            "Source chain ID as string (e.g. '1' for Ethereum, '42161' for Arbitrum, '8453' for Base, '56' for BNB, '137' for Polygon, '10' for Optimism).",
+        },
+        toChain: {
+          type: "string",
+          description: "Destination chain ID as string.",
+        },
+        fromToken: {
+          type: "string",
+          description:
+            "Source token contract address. Use 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native tokens (ETH/BNB/MATIC).",
+        },
+        toToken: {
+          type: "string",
+          description:
+            "Destination token contract address. Use same as fromToken to bridge the same asset, or 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native tokens.",
+        },
+        amount: {
+          type: "string",
+          description:
+            "Amount in minimal units (wei/smallest denomination). E.g. '100000000000000000' for 0.1 ETH (18 decimals), '100000000' for 100 USDC (6 decimals).",
+        },
+      },
+      required: ["fromChain", "toChain", "fromToken", "toToken", "amount"],
+    },
+  },
+  {
     name: "scan_dapp_safety",
     description:
       "Scan a URL or domain for phishing, scam, or blacklisted status. Use when the user shares a suspicious URL or asks if a website is safe to interact with.",

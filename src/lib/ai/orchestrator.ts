@@ -7,6 +7,7 @@ import { SYSTEM_PROMPT } from "./system-prompt";
 import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
+import { bridgeQuote } from "@/lib/bridge/lifi";
 import { normalizeAddress } from "@/lib/utils";
 import { CHAINS, getChainBySwapName } from "@/lib/chains";
 
@@ -165,6 +166,37 @@ async function executeToolCall(
       const tradeType = input.tradeType as string | undefined;
       const result = await addressTrackerActivities({ trackerType, walletAddress, chain, tradeType });
       return result.data;
+    }
+    case "bridge_tokens": {
+      if (!userAddress) return { error: "No wallet address available" };
+      const fromChain = input.fromChain as string;
+      const toChain = input.toChain as string;
+      const fromToken = input.fromToken as string;
+      const toToken = input.toToken as string;
+      const amount = input.amount as string;
+      try {
+        const quote = await bridgeQuote({
+          fromChain,
+          toChain,
+          fromToken,
+          toToken,
+          fromAmount: amount,
+          fromAddress: userAddress,
+        });
+        return {
+          bridge: quote.tool,
+          fromToken: quote.action.fromToken,
+          toToken: quote.action.toToken,
+          fromAmount: quote.estimate.fromAmount,
+          toAmount: quote.estimate.toAmount,
+          toAmountMin: quote.estimate.toAmountMin,
+          executionDuration: quote.estimate.executionDuration,
+          feeCosts: quote.estimate.feeCosts,
+          gasCosts: quote.estimate.gasCosts,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Bridge quote failed" };
+      }
     }
     case "scan_dapp_safety": {
       const domain = input.domain as string;
