@@ -377,3 +377,71 @@ export async function swapExecute(params: {
   if (params.gasLevel) args["gas-level"] = params.gasLevel;
   return runCli(["swap", "swap"], args);
 }
+
+// ── Security commands ────────────────────────────────────────────────────────
+
+export async function securityTokenScan(params?: {
+  tokens?: string;
+  address?: string;
+  chain?: string;
+}) {
+  const args: Record<string, string> = {};
+  if (params?.tokens) args.tokens = params.tokens;
+  if (params?.address) args.address = params.address;
+  if (params?.chain) args.chain = params.chain;
+  return runCli(["security", "token-scan"], args);
+}
+
+export async function securityApprovals(params: {
+  address: string;
+  chain?: string;
+  limit?: string;
+  cursor?: string;
+}) {
+  const args: Record<string, string> = { address: params.address };
+  if (params.chain) args.chain = params.chain;
+  if (params.limit) args.limit = params.limit;
+  if (params.cursor) args.cursor = params.cursor;
+  return runCli(["security", "approvals"], args);
+}
+
+export async function securityDappScan(url: string) {
+  return runCli(["security", "dapp-scan"], { url });
+}
+
+// ── Market commands ──────────────────────────────────────────────────────────
+
+export async function marketPrice(params: {
+  address: string;
+  chain: string;
+}) {
+  return runCli(["market", "price"], {
+    address: params.address,
+    chain: params.chain,
+  });
+}
+
+export async function marketKline(params: {
+  address: string;
+  chain: string;
+  bar?: string;
+  limit?: string;
+}) {
+  const args: Record<string, string> = {
+    address: params.address,
+    chain: params.chain,
+  };
+  if (params.bar) args.bar = params.bar;
+  if (params.limit) args.limit = params.limit;
+  return runCli(["market", "kline"], args);
+}
+
+export async function marketIndex(params: {
+  address: string;
+  chain: string;
+}) {
+  return runCli(["market", "index"], {
+    address: params.address,
+    chain: params.chain,
+  });
+}

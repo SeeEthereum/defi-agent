@@ -240,4 +240,64 @@ export const AI_TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: "scan_token_safety",
+    description:
+      "Scan one or more tokens for security risks: honeypot detection, high sell tax, mint/pause capabilities, rug pull risk. Use this before swapping into an unknown or suspicious token. Can also scan all tokens held by a wallet address.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tokens: {
+          type: "string",
+          description:
+            "Comma-separated list of 'chainId:contractAddress' pairs, up to 10. E.g. '1:0xdac17f958d2ee523a2206206994597c13d831ec7,42161:0xaf88d065e77c8cc2239327c5edb3a432268e5831'. Mutually exclusive with 'address'.",
+        },
+        address: {
+          type: "string",
+          description:
+            "Wallet address to scan all held tokens. Mutually exclusive with 'tokens'.",
+        },
+        chain: {
+          type: "string",
+          description:
+            "Optional chain filter when using 'address' mode (e.g. 'ethereum', 'arbitrum').",
+        },
+      },
+    },
+  },
+  {
+    name: "get_approvals",
+    description:
+      "Get all active token approvals (ERC-20 approve + Permit2) for a wallet address. Shows which contracts are authorized to spend the user's tokens. Important for security hygiene — users should revoke old/unnecessary approvals.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description:
+            "Optional: comma-separated chain names or IDs (e.g. 'ethereum,arbitrum' or '1,42161'). Omit for all chains.",
+        },
+      },
+    },
+  },
+  {
+    name: "get_token_price",
+    description:
+      "Get the current price of a token by its contract address. Returns price in USD, 24h change, market cap, volume and more. Use 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee for native tokens (ETH/BNB/MATIC) or an empty string.",
+    input_schema: {
+      type: "object",
+      properties: {
+        address: {
+          type: "string",
+          description:
+            "Token contract address. Use the native token address (0xeee...eee) or empty string for ETH/BNB/MATIC.",
+        },
+        chain: {
+          type: "string",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, or optimism.",
+        },
+      },
+      required: ["address", "chain"],
+    },
+  },
 ];

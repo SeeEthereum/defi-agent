@@ -4,7 +4,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { walletBalance, tokenSearch, walletAddresses, walletHistory } from "@/lib/okx/cli";
+import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, marketPrice } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { normalizeAddress } from "@/lib/utils";
@@ -118,6 +118,25 @@ async function executeToolCall(
         chain: chainId,
         limit: String(limit ?? 10),
       });
+      return result.data;
+    }
+    case "scan_token_safety": {
+      const tokens = input.tokens as string | undefined;
+      const address = input.address as string | undefined;
+      const chain = input.chain as string | undefined;
+      const result = await securityTokenScan({ tokens, address, chain });
+      return result.data;
+    }
+    case "get_approvals": {
+      if (!userAddress) return { error: "No wallet address available" };
+      const chain = input.chain as string | undefined;
+      const result = await securityApprovals({ address: userAddress, chain });
+      return result.data;
+    }
+    case "get_token_price": {
+      const address = input.address as string;
+      const chainName = input.chain as string;
+      const result = await marketPrice({ address, chain: chainName });
       return result.data;
     }
     default:
