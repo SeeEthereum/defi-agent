@@ -44,15 +44,23 @@ interface ApprovalItem {
   tokenAddress?: string;
   tokenSymbol?: string;
   symbol?: string;
+  approvalAddress?: string;
   spenderAddress?: string;
   spender?: string;
+  protocolName?: string;
+  protocolIcon?: string | null;
   spenderName?: string;
   spender_name?: string;
+  remainAmount?: string;
+  remainAmtPrecise?: string;
   allowance?: string;
   approvedAmount?: string;
   approved_amount?: string;
   chainIndex?: string | number;
   chainId?: string | number;
+  network?: string;
+  tags?: string | null;
+  vulnerabilityFlag?: boolean;
   isAtRisk?: boolean;
   is_at_risk?: boolean;
   riskLevel?: string;
@@ -117,7 +125,7 @@ function Spinner({ className = "" }: { className?: string }) {
 
 function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
   const [mode, setMode] = useState<"wallet" | "manual">("wallet");
-  const [chain, setChain] = useState("");
+  const [chain, setChain] = useState("arbitrum");
   const [manualTokens, setManualTokens] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<TokenScanResult[]>([]);
@@ -189,18 +197,17 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
         </button>
       </div>
 
-      {/* Chain filter (wallet mode) */}
+      {/* Chain selector (wallet mode — required) */}
       {mode === "wallet" && (
         <div>
           <p className="text-[13px] font-medium text-muted-foreground mb-2">
-            Filter by chain (optional)
+            Select chain
           </p>
           <select
             className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-4 text-sm font-medium text-foreground outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
             value={chain}
             onChange={(e) => setChain(e.target.value)}
           >
-            <option value="">All chains</option>
             {Object.values(CHAINS).map((c) => (
               <option key={c.swapName} value={c.swapName}>
                 {c.name}
@@ -230,7 +237,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
 
       <Button
         onClick={handleScan}
-        disabled={loading || (mode === "manual" && !manualTokens.trim())}
+        disabled={loading || (mode === "manual" && !manualTokens.trim()) || (mode === "wallet" && !chain)}
         className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold"
       >
         {loading ? (
@@ -265,19 +272,37 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
           </p>
           {results.map((token, i) => {
             const addr =
-              token.tokenContractAddress ?? token.tokenAddress ?? token.address ?? "";
+              token.tokenAddress ?? token.tokenContractAddress ?? token.address ?? "";
             const symbol = token.tokenSymbol ?? token.symbol ?? abbreviate(addr);
             const risk = token.riskLevel ?? token.risk_level;
             const badge = getRiskBadge(risk);
             const isHoneypot =
               token.isHoneypot ?? token.is_honeypot ?? token.honeypot ?? false;
-            const buyTax = token.buyTax ?? token.buy_tax;
-            const sellTax = token.sellTax ?? token.sell_tax;
+            const buyTax = token.buyTaxes ?? token.buyTax ?? token.buy_tax;
+            const sellTax = token.sellTaxes ?? token.sellTax ?? token.sell_tax;
             const isMintable = token.isMintable ?? token.is_mintable;
-            const canPause = token.canPause ?? token.can_pause;
-            const holders = token.holderCount ?? token.holder_count;
-            const risks = token.riskItems ?? token.risks ?? [];
-            const chainIdx = token.chainIndex ?? token.chainId;
+            const canPause = token.canPause ?? token.can_pause ?? token.isHasFrozenAuth;
+            const holders = token.holderCount ?? token.holder_count ?? token.holders;
+            const chainIdx = token.chainId ?? token.chainIndex;
+
+            // Build risk items from boolean flags
+            const risks: string[] = token.riskItems ?? token.risks ?? [];
+            if (risks.length === 0) {
+              if (token.isNotOpenSource) risks.push("Contract is not open source");
+              if (token.isNotRenounced) risks.push("Ownership not renounced");
+              if (token.isLowLiquidity) risks.push("Low liquidity");
+              if (token.isLiquidityRemoval) risks.push("Liquidity removal risk");
+              if (token.isDumping) risks.push("Dumping detected");
+              if (token.isFakeLiquidity) risks.push("Fake liquidity");
+              if (token.isAirdropScam) risks.push("Airdrop scam");
+              if (token.isCounterfeit) risks.push("Counterfeit token");
+              if (token.isOverIssued) risks.push("Over-issued");
+              if (token.isVeryHighLpHolderProp) risks.push("Very high LP holder proportion");
+              if (token.isVeryLowLpBurn) risks.push("Very low LP burn");
+              if (token.isHasBlockingHis) risks.push("Has blocking history");
+              if (token.isHasAssetEditAuth) risks.push("Has asset edit authority");
+              if (token.isFundLinkage) risks.push("Fund linkage detected");
+            }
 
             return (
               <div
@@ -387,9 +412,17 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
       const data = await res.json();
       if (data.success) {
         const raw = data.data;
-        const list: ApprovalItem[] = Array.isArray(raw)
-          ? raw
-          : raw?.approvals ?? raw?.results ?? raw?.data ?? (raw ? [raw] : []);
+        // The API returns: [{ cursor, dataList: [...], total }]
+        let list: ApprovalItem[] = [];
+        if (Array.isArray(raw) && raw.length > 0 && raw[0]?.dataList) {
+          list = raw[0].dataList;
+        } else if (Array.isArray(raw)) {
+          list = raw;
+        } else if (raw?.dataList) {
+          list = raw.dataList;
+        } else if (raw?.approvals ?? raw?.results ?? raw?.data) {
+          list = raw.approvals ?? raw.results ?? raw.data;
+        }
         setApprovals(list);
         setFetched(true);
       } else {
@@ -477,20 +510,21 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
           </div>
           {approvals.map((item, i) => {
             const tokenAddr =
-              item.tokenContractAddress ?? item.tokenAddress ?? "";
-            const symbol = item.tokenSymbol ?? item.symbol ?? abbreviate(tokenAddr);
-            const spender = item.spenderAddress ?? item.spender ?? "";
-            const spenderName = item.spenderName ?? item.spender_name ?? "";
+              item.tokenAddress ?? item.tokenContractAddress ?? "";
+            const symbol = item.symbol ?? item.tokenSymbol ?? abbreviate(tokenAddr);
+            const spender = item.approvalAddress ?? item.spenderAddress ?? item.spender ?? "";
+            const spenderName = item.protocolName ?? item.spenderName ?? item.spender_name ?? "";
             const allowance =
-              item.allowance ?? item.approvedAmount ?? item.approved_amount ?? "";
+              item.remainAmount ?? item.allowance ?? item.approvedAmount ?? item.approved_amount ?? "";
             const chainIdx = item.chainIndex ?? item.chainId;
+            const networkName = item.network;
             const risk = item.riskLevel ?? item.risk_level;
-            const isRisky = item.isAtRisk ?? item.is_at_risk ?? false;
+            const isRisky = item.vulnerabilityFlag ?? item.isAtRisk ?? item.is_at_risk ?? false;
             const riskColor = getRiskColor(risk);
             const isUnlimited =
-              allowance.includes("unlimited") ||
-              allowance.includes("MAX") ||
-              (allowance.length > 30 && /^[0-9]+$/.test(allowance));
+              String(allowance).includes("unlimited") ||
+              String(allowance).includes("MAX") ||
+              (String(allowance).length > 30 && /^[0-9]+$/.test(String(allowance)));
 
             return (
               <div
@@ -505,10 +539,13 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                     <div className="flex items-center gap-2">
                       <span className="text-[14px] font-semibold">{symbol}</span>
                       <span className="text-[11px] text-muted-foreground/60">
-                        {getChainName(chainIdx)}
+                        {networkName ?? getChainName(chainIdx)}
                       </span>
                     </div>
-                    {risk && (
+                    {isRisky && (
+                      <span className="text-[11px] font-semibold text-red-600">At Risk</span>
+                    )}
+                    {risk && !isRisky && (
                       <span className={`text-[11px] font-semibold ${riskColor}`}>
                         {risk}
                       </span>
@@ -532,12 +569,24 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                   <div className="text-[12px]">
                     <span className="text-muted-foreground">Amount: </span>
                     <span className={`font-medium ${isUnlimited ? "text-amber-600" : ""}`}>
-                      {isUnlimited ? "Unlimited" : allowance || "—"}
+                      {isUnlimited
+                        ? "Unlimited"
+                        : item.remainAmtPrecise
+                          ? `${parseFloat(item.remainAmtPrecise).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${symbol}`
+                          : allowance || "—"}
                     </span>
                     {isUnlimited && (
                       <span className="text-[10px] text-amber-500 ml-1">(consider revoking)</span>
                     )}
                   </div>
+                  {/* Tags */}
+                  {item.tags && (
+                    <div className="text-[11px]">
+                      <span className={`px-1.5 py-0.5 rounded-full ${item.tags === "isEoa" ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-muted-foreground"}`}>
+                        {item.tags === "isEoa" ? "EOA (not a contract)" : item.tags}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );

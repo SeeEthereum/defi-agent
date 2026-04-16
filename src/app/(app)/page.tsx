@@ -200,6 +200,24 @@ export default function DashboardPage() {
       </Card>
 
       {/* Portfolio PnL */}
+      {!pnlLoading && pnl && pnl.totalTrades === 0 && pnl.totalPnl === 0 && (
+        <Card>
+          <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                  <polyline points="16 7 22 7 22 13" />
+                </svg>
+              </div>
+              <h2 className="text-sm font-semibold">Trading Performance</h2>
+            </div>
+            <p className="text-[12px] text-muted-foreground">
+              No DEX trading history found on supported PnL chains (Ethereum, Base, BNB Chain). Trade on these chains to see your performance analytics.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       {!pnlLoading && pnl && (pnl.totalTrades > 0 || pnl.totalPnl !== 0) && (
         <Card>
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">

@@ -210,26 +210,35 @@ function SignalsTab() {
             {signals.length} signal{signals.length !== 1 ? "s" : ""}
           </p>
           {signals.slice(0, 20).map((s, i) => {
-            const symbol = s.tokenSymbol ?? s.symbol ?? "???";
-            const addr = s.tokenContractAddress ?? s.tokenAddress ?? s.address ?? "";
-            const addressCount = s.addressCount ?? s.address_count ?? 0;
-            const totalAmt = s.totalAmountUsd ?? s.total_amount_usd ?? s.amountUsd ?? s.amount_usd;
-            const mcap = s.marketCap ?? s.market_cap;
+            // Signal data has nested token object: s.token.symbol, s.token.tokenAddress, etc.
+            const tokenObj = s.token as Record<string, unknown> | undefined;
+            const symbol = (tokenObj?.symbol as string) ?? s.tokenSymbol ?? s.symbol ?? "???";
+            const addr = (tokenObj?.tokenAddress as string) ?? s.tokenContractAddress ?? s.tokenAddress ?? s.address ?? "";
+            const addressCount = s.triggerWalletCount ?? s.addressCount ?? s.address_count ?? 0;
+            const totalAmt = s.amountUsd ?? s.amount_usd ?? s.totalAmountUsd ?? s.total_amount_usd;
+            const mcap = (tokenObj?.marketCapUsd as string) ?? s.marketCap ?? s.market_cap;
             const liq = s.liquidityUsd ?? s.liquidity_usd;
             const price = s.price;
             const change = s.priceChange24h ?? s.price_change_24h;
+            const soldRatio = s.soldRatioPercent;
             const types = s.walletTypes ?? s.wallet_types ?? [];
+            const wType = s.walletType;
+            if (wType && types.length === 0) types.push(wType);
+            const logo = (tokenObj?.logo as string) ?? s.logo;
+            const tokenName = (tokenObj?.name as string) ?? "";
+            const holders = tokenObj?.holders as string | undefined;
 
             return (
               <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-white p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {s.logo && (
+                    {logo && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={s.logo} alt={symbol} width={24} height={24} className="rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      <img src={logo} alt={symbol} width={24} height={24} className="rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     )}
                     <span className="text-[14px] font-semibold">{symbol}</span>
+                    {tokenName && <span className="text-[11px] text-muted-foreground/60 truncate max-w-[120px]">{tokenName}</span>}
                     <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
                   </div>
                   {change != null && (
@@ -271,6 +280,18 @@ function SignalsTab() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Liquidity</span>
                       <span className="font-medium">{formatUsd(liq)}</span>
+                    </div>
+                  )}
+                  {holders != null && Number(holders) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Holders</span>
+                      <span className="font-medium">{Number(holders).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {soldRatio != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Sold Ratio</span>
+                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-red-500" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
