@@ -296,7 +296,37 @@ export default function AiPage() {
     let body: Record<string, unknown> = {};
 
     switch (action.action) {
-      case "supply":
+      case "supply": {
+        // Step 1: Approve fToken to spend underlying (e.g. USDC)
+        setMessages((prev) => [...prev, { role: "assistant", content: "⏳ Approvazione token per Fluid..." }]);
+        const approveEarnRes = await fetch("/api/earn/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fTokenSymbol: action.params.fTokenSymbol,
+            amount: action.params.amount,
+            chainIndex: action.params.chainIndex,
+          }),
+        });
+        const approveEarnData = await approveEarnRes.json();
+        if (!approveEarnData.success) {
+          setMessages((prev) => [...prev, { role: "assistant", content: `❌ **Approvazione fallita:** ${approveEarnData.error}` }]);
+          setExecutingIndex(null);
+          return;
+        }
+        const earnApproveTxHash = approveEarnData.data?.approveTxHash as string | undefined;
+        if (earnApproveTxHash) {
+          setMessages((prev) => [...prev, { role: "assistant", content: `✅ Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
+          // Convert chainIndex to swapName for waitForReceipt
+          const earnChain = getChainByIndex(action.params.chainIndex as number)?.swapName ?? "arbitrum";
+          const confirmed = await waitForReceipt(earnApproveTxHash, earnChain);
+          if (!confirmed) {
+            setMessages((prev) => [...prev, { role: "assistant", content: "❌ Transazione di approvazione fallita on-chain." }]);
+            setExecutingIndex(null);
+            return;
+          }
+        }
+        // Step 2: Deposit into fToken
         endpoint = "/api/earn/supply";
         body = {
           fTokenSymbol: action.params.fTokenSymbol,
@@ -305,6 +335,7 @@ export default function AiPage() {
           walletAddress: walletAddress ?? "",
         };
         break;
+      }
       case "swap": {
         // Step 1: Approve DEX router for ERC-20 tokens (skip for native ETH/BNB)
         const fromAddr = (action.params.fromToken as string ?? "").toLowerCase();

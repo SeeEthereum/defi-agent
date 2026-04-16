@@ -3,6 +3,7 @@ import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 import type { CliResult } from "./types";
+import { appendBuilderCode } from "./builder-code";
 
 const execFileAsync = promisify(execFile);
 
@@ -234,7 +235,7 @@ export async function walletContractCall(params: {
     to: params.to,
     chain: params.chain,
   };
-  if (params.inputData) args["input-data"] = params.inputData;
+  if (params.inputData) args["input-data"] = appendBuilderCode(params.inputData) ?? params.inputData;
   if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
   if (params.value) args.value = params.value;
   if (params.gasLimit) args["gas-limit"] = params.gasLimit;
