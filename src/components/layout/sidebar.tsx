@@ -16,6 +16,7 @@ const navItems = [
   { href: "/earn", label: "Earn", icon: "trending-up" },
   { href: "/swap", label: "Swap", icon: "repeat" },
   { href: "/security", label: "Security", icon: "shield" },
+  { href: "/signals", label: "Intelligence", icon: "signal" },
 ];
 
 const icons: Record<string, React.ReactNode> = {
@@ -51,6 +52,15 @@ const icons: Record<string, React.ReactNode> = {
   shield: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  ),
+  signal: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 20h.01" />
+      <path d="M7 20v-4" />
+      <path d="M12 20v-8" />
+      <path d="M17 20V8" />
+      <path d="M22 4v16" />
     </svg>
   ),
   sparkles: (

@@ -61,11 +61,15 @@ const navItems = [
     ),
   },
   {
-    href: "/security",
-    label: "Security",
+    href: "/signals",
+    label: "Signals",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M2 20h.01" />
+        <path d="M7 20v-4" />
+        <path d="M12 20v-8" />
+        <path d="M17 20V8" />
+        <path d="M22 4v16" />
       </svg>
     ),
   },

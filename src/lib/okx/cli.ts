@@ -405,8 +405,8 @@ export async function securityApprovals(params: {
   return runCli(["security", "approvals"], args);
 }
 
-export async function securityDappScan(url: string) {
-  return runCli(["security", "dapp-scan"], { url });
+export async function securityDappScan(domain: string) {
+  return runCli(["security", "dapp-scan"], { domain });
 }
 
 // ── Market commands ──────────────────────────────────────────────────────────
@@ -444,4 +444,102 @@ export async function marketIndex(params: {
     address: params.address,
     chain: params.chain,
   });
+}
+
+// ── Signal commands ──────────────────────────────────────────────────────────
+
+export async function signalList(params: {
+  chain: string;
+  walletType?: string;
+  minAmountUsd?: string;
+  maxAmountUsd?: string;
+  minAddressCount?: string;
+  tokenAddress?: string;
+  minMarketCapUsd?: string;
+  maxMarketCapUsd?: string;
+  minLiquidityUsd?: string;
+}) {
+  const args: Record<string, string> = { chain: params.chain };
+  if (params.walletType) args["wallet-type"] = params.walletType;
+  if (params.minAmountUsd) args["min-amount-usd"] = params.minAmountUsd;
+  if (params.maxAmountUsd) args["max-amount-usd"] = params.maxAmountUsd;
+  if (params.minAddressCount) args["min-address-count"] = params.minAddressCount;
+  if (params.tokenAddress) args["token-address"] = params.tokenAddress;
+  if (params.minMarketCapUsd) args["min-market-cap-usd"] = params.minMarketCapUsd;
+  if (params.maxMarketCapUsd) args["max-market-cap-usd"] = params.maxMarketCapUsd;
+  if (params.minLiquidityUsd) args["min-liquidity-usd"] = params.minLiquidityUsd;
+  return runCli(["signal", "list"], args);
+}
+
+export async function signalChains() {
+  return runCli(["signal", "chains"]);
+}
+
+// ── Gateway commands ─────────────────────────────────────────────────────────
+
+export async function gatewayGas(chain: string) {
+  return runCli(["gateway", "gas"], { chain });
+}
+
+export async function gatewaySimulate(params: {
+  from: string;
+  to: string;
+  data: string;
+  chain: string;
+  amount?: string;
+}) {
+  const args: Record<string, string> = {
+    from: params.from,
+    to: params.to,
+    data: params.data,
+    chain: params.chain,
+  };
+  if (params.amount) args.amount = params.amount;
+  return runCli(["gateway", "simulate"], args);
+}
+
+// ── Address tracker commands ─────────────────────────────────────────────────
+
+export async function addressTrackerActivities(params: {
+  trackerType: string;
+  walletAddress?: string;
+  tradeType?: string;
+  chain?: string;
+  minVolume?: string;
+  maxVolume?: string;
+  minMarketCap?: string;
+  maxMarketCap?: string;
+}) {
+  const args: Record<string, string> = {
+    "tracker-type": params.trackerType,
+  };
+  if (params.walletAddress) args["wallet-address"] = params.walletAddress;
+  if (params.tradeType) args["trade-type"] = params.tradeType;
+  if (params.chain) args.chain = params.chain;
+  if (params.minVolume) args["min-volume"] = params.minVolume;
+  if (params.maxVolume) args["max-volume"] = params.maxVolume;
+  if (params.minMarketCap) args["min-market-cap"] = params.minMarketCap;
+  if (params.maxMarketCap) args["max-market-cap"] = params.maxMarketCap;
+  return runCli(["market", "address-tracker-activities"], args);
+}
+
+// ── Leaderboard commands ─────────────────────────────────────────────────────
+
+export async function leaderboardList(params: {
+  chain: string;
+  timeFrame: string;
+  sortBy: string;
+  walletType?: string;
+}) {
+  const args: Record<string, string> = {
+    chain: params.chain,
+    "time-frame": params.timeFrame,
+    "sort-by": params.sortBy,
+  };
+  if (params.walletType) args["wallet-type"] = params.walletType;
+  return runCli(["leaderboard", "list"], args);
+}
+
+export async function leaderboardSupportedChains() {
+  return runCli(["leaderboard", "supported-chains"]);
 }

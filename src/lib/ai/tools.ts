@@ -300,4 +300,108 @@ export const AI_TOOLS: Tool[] = [
       required: ["address", "chain"],
     },
   },
+  {
+    name: "get_smart_money_signals",
+    description:
+      "Get latest smart money / KOL / whale buy signals on a specific chain. Shows aggregated buying activity from notable wallets. Use this when the user asks 'what are whales buying?', 'smart money signals', 'what are KOLs trading?'. WARNING: always add a disclaimer that signals are not investment advice.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, optimism, solana.",
+        },
+        walletType: {
+          type: "string",
+          description:
+            "Optional: filter by wallet type. '1'=Smart Money, '2'=KOL/Influencer, '3'=Whales. Comma-separated for multiple (e.g. '1,3'). Omit for all.",
+        },
+        minAmountUsd: {
+          type: "string",
+          description: "Optional: minimum transaction amount in USD (e.g. '10000').",
+        },
+      },
+      required: ["chain"],
+    },
+  },
+  {
+    name: "get_gas_price",
+    description:
+      "Get current gas prices for a specific chain. Shows slow/average/fast gas prices. Use when the user asks about gas costs or wants to know if it's cheap to transact.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, or optimism.",
+        },
+      },
+      required: ["chain"],
+    },
+  },
+  {
+    name: "get_leaderboard",
+    description:
+      "Get the top trader leaderboard — ranked by PnL, win rate, ROI, volume, or number of trades. Shows the best-performing wallets on a specific chain. Use when the user asks about top traders, best performers, or leaderboard rankings.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, solana.",
+        },
+        timeFrame: {
+          type: "string",
+          description: "Time frame: '1'=1 day, '2'=3 days, '3'=7 days, '4'=1 month, '5'=3 months. Default '3' (7 days).",
+        },
+        sortBy: {
+          type: "string",
+          description: "Sort by: '1'=PnL, '2'=Win Rate, '3'=Tx number, '4'=Volume, '5'=ROI. Default '1' (PnL).",
+        },
+      },
+      required: ["chain"],
+    },
+  },
+  {
+    name: "get_address_activities",
+    description:
+      "Get latest DEX trading activities from smart money wallets, KOLs, or specific tracked addresses. Shows what notable wallets are buying/selling right now.",
+    input_schema: {
+      type: "object",
+      properties: {
+        trackerType: {
+          type: "string",
+          description: "Tracker type: 'smart_money' (or '1'), 'kol' (or '2'), 'multi_address' (or '3'). Default 'smart_money'.",
+        },
+        walletAddress: {
+          type: "string",
+          description: "Required for multi_address mode: comma-separated wallet addresses (max 20).",
+        },
+        chain: {
+          type: "string",
+          description: "Optional chain filter (e.g. 'ethereum', 'arbitrum'). Omit for all chains.",
+        },
+        tradeType: {
+          type: "string",
+          description: "Optional: '0'=all, '1'=buy only, '2'=sell only. Default '0'.",
+        },
+      },
+      required: ["trackerType"],
+    },
+  },
+  {
+    name: "scan_dapp_safety",
+    description:
+      "Scan a URL or domain for phishing, scam, or blacklisted status. Use when the user shares a suspicious URL or asks if a website is safe to interact with.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: {
+          type: "string",
+          description: "Full URL or domain to check (e.g. 'https://app.uniswap.org' or 'uniswap.org').",
+        },
+      },
+      required: ["domain"],
+    },
+  },
 ];

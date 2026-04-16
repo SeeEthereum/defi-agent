@@ -4,7 +4,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, marketPrice } from "@/lib/okx/cli";
+import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { normalizeAddress } from "@/lib/utils";
@@ -137,6 +137,38 @@ async function executeToolCall(
       const address = input.address as string;
       const chainName = input.chain as string;
       const result = await marketPrice({ address, chain: chainName });
+      return result.data;
+    }
+    case "get_smart_money_signals": {
+      const chain = input.chain as string;
+      const walletType = input.walletType as string | undefined;
+      const minAmountUsd = input.minAmountUsd as string | undefined;
+      const result = await signalList({ chain, walletType, minAmountUsd });
+      return result.data;
+    }
+    case "get_gas_price": {
+      const chain = input.chain as string;
+      const result = await gatewayGas(chain);
+      return result.data;
+    }
+    case "get_leaderboard": {
+      const chain = input.chain as string;
+      const timeFrame = (input.timeFrame as string) || "3";
+      const sortBy = (input.sortBy as string) || "1";
+      const result = await leaderboardList({ chain, timeFrame, sortBy });
+      return result.data;
+    }
+    case "get_address_activities": {
+      const trackerType = (input.trackerType as string) || "smart_money";
+      const walletAddress = input.walletAddress as string | undefined;
+      const chain = input.chain as string | undefined;
+      const tradeType = input.tradeType as string | undefined;
+      const result = await addressTrackerActivities({ trackerType, walletAddress, chain, tradeType });
+      return result.data;
+    }
+    case "scan_dapp_safety": {
+      const domain = input.domain as string;
+      const result = await securityDappScan(domain);
       return result.data;
     }
     default:

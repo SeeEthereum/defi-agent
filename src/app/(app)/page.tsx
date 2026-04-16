@@ -282,12 +282,14 @@ export default function DashboardPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
         {[
           { href: "/wallet", label: "Wallet", desc: "Balances & send", icon: "wallet" },
           { href: "/earn", label: "Earn", desc: "Supply on Fluid", icon: "trending-up" },
           { href: "/swap", label: "Swap", desc: "Trade tokens", icon: "repeat" },
           { href: "/ai", label: "AI Assistant", desc: "Get suggestions", icon: "sparkles" },
+          { href: "/security", label: "Security", desc: "Scan & approvals", icon: "shield" },
+          { href: "/signals", label: "Intelligence", desc: "Smart money signals", icon: "signal" },
         ].map((action) => (
           <Link key={action.href} href={action.href}>
             <Card className="hover-lift cursor-pointer h-full">
@@ -428,6 +430,22 @@ function ActionIcon({ name }: { name: string }) {
       return (
         <svg {...props}>
           <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...props}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
+    case "signal":
+      return (
+        <svg {...props}>
+          <path d="M2 20h.01" />
+          <path d="M7 20v-4" />
+          <path d="M12 20v-8" />
+          <path d="M17 20V8" />
+          <path d="M22 4v16" />
         </svg>
       );
     default:
