@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useAllChainBalances } from "@/hooks/use-balances";
 import { useFluidMarkets } from "@/hooks/use-fluid-markets";
@@ -20,10 +21,39 @@ const CHAIN_COLORS: Record<number, string> = {
   10: "#FF0420",     // Optimism
 };
 
+interface PnlOverview {
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalPnl: number;
+  buyVolume: number;
+  sellVolume: number;
+  buyCount: number;
+  sellCount: number;
+  tokenCount: number;
+  winRate: number;
+  totalTrades: number;
+}
+
 export default function DashboardPage() {
-  const { authenticated, accountName, isLoading: authLoading } = useAuth();
+  const { authenticated, accountName, walletAddress, isLoading: authLoading } = useAuth();
   const { balancesByChain, isLoading: balLoading } = useAllChainBalances();
   const { markets, isLoading: marketsLoading } = useFluidMarkets();
+
+  const [pnl, setPnl] = useState<PnlOverview | null>(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
+
+  // Fetch Portfolio PnL
+  useEffect(() => {
+    if (!authenticated || !walletAddress) return;
+    setPnlLoading(true);
+    fetch(`/api/portfolio/pnl?address=${walletAddress}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setPnl(data.data.overview);
+      })
+      .catch(() => {})
+      .finally(() => setPnlLoading(false));
+  }, [authenticated, walletAddress]);
 
   if (authLoading) {
     return (
@@ -168,6 +198,88 @@ export default function DashboardPage() {
           )}
         </div>
       </Card>
+
+      {/* Portfolio PnL */}
+      {!pnlLoading && pnl && (pnl.totalTrades > 0 || pnl.totalPnl !== 0) && (
+        <Card>
+          <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                  <polyline points="16 7 22 7 22 13" />
+                </svg>
+              </div>
+              <h2 className="text-sm font-semibold">Trading Performance</h2>
+              <Badge variant="outline" className="ml-auto text-[10px] border-muted-foreground/20 text-muted-foreground">
+                DEX PnL
+              </Badge>
+            </div>
+
+            {/* PnL Summary Row */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Total PnL</p>
+                <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {pnl.totalPnl >= 0 ? "+" : ""}{formatUsd(pnl.totalPnl.toFixed(2))}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Realized</p>
+                <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {pnl.realizedPnl >= 0 ? "+" : ""}{formatUsd(pnl.realizedPnl.toFixed(2))}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Unrealized</p>
+                <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {pnl.unrealizedPnl >= 0 ? "+" : ""}{formatUsd(pnl.unrealizedPnl.toFixed(2))}
+                </p>
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
+                <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                  <span className="text-xs">📊</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground/70">Win Rate</p>
+                  <p className="text-sm font-semibold tabular-nums">{(pnl.winRate * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
+                <div className="h-7 w-7 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                  <span className="text-xs">🔄</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground/70">Total Trades</p>
+                  <p className="text-sm font-semibold tabular-nums">{pnl.totalTrades}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
+                <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                  <span className="text-xs">💰</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground/70">Buy Volume</p>
+                  <p className="text-sm font-semibold tabular-nums">{formatUsd(pnl.buyVolume.toFixed(0))}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
+                <div className="h-7 w-7 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
+                  <span className="text-xs">🪙</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground/70">Tokens Traded</p>
+                  <p className="text-sm font-semibold tabular-nums">{pnl.tokenCount}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">

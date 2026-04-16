@@ -294,6 +294,36 @@ export async function tokenTrending(chain: string) {
   return runCli(["token", "trending"], { chain });
 }
 
+// Market / Portfolio PnL commands
+export async function marketPortfolioOverview(chain: string, address: string) {
+  return runCli(["market", "portfolio-overview"], { chain, address });
+}
+
+export async function marketPortfolioRecentPnl(chain: string, address: string, limit?: string) {
+  const args: Record<string, string> = { chain, address };
+  if (limit) args.limit = limit;
+  return runCli(["market", "portfolio-recent-pnl"], args);
+}
+
+export async function marketPortfolioDexHistory(params: {
+  chain: string;
+  address: string;
+  begin: string;
+  end: string;
+  limit?: string;
+  txType?: string;
+}) {
+  const args: Record<string, string> = {
+    chain: params.chain,
+    address: params.address,
+    begin: params.begin,
+    end: params.end,
+  };
+  if (params.limit) args.limit = params.limit;
+  if (params.txType) args["tx-type"] = params.txType;
+  return runCli(["market", "portfolio-dex-history"], args);
+}
+
 export async function tokenHotTokens(params?: {
   chain?: string;
   rankBy?: string;
