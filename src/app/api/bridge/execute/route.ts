@@ -4,6 +4,7 @@ import { walletContractCall } from "@/lib/okx/cli";
 import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { toUiUnits } from "@/lib/utils";
+import { encodeApprove } from "@/lib/fluid/ftokens";
 
 const schema = z.object({
   fromChain: z.string().min(1),
@@ -13,6 +14,15 @@ const schema = z.object({
   fromAmount: z.string().min(1),
   fromAddress: z.string().min(1),
 });
+
+// LI.FI's native token sentinels — both cases exist; normalize via lowercase
+const NATIVE_ZERO = "0x0000000000000000000000000000000000000000";
+const NATIVE_EEE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+function isNativeToken(address: string): boolean {
+  const a = address.toLowerCase();
+  return a === NATIVE_ZERO || a === NATIVE_EEE;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +60,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert value from wei to human-readable for walletContractCall
+    // ── STEP 1: ERC-20 approve (if bridging a non-native token) ─────────────
+    // LI.FI returns `estimate.approvalAddress` — the router/bridge contract
+    // that needs allowance to pull the fromToken from the user.
+    // Skip for native tokens (ETH/BNB/MATIC) — they don't require approval.
+    let approveTxHash: string | null = null;
+    const approvalAddress = quote.estimate.approvalAddress;
+
+    if (!isNativeToken(fromToken) && approvalAddress) {
+      try {
+        const approveCalldata = encodeApprove(
+          approvalAddress.toLowerCase() as `0x${string}`,
+          BigInt(fromAmount)
+        );
+
+        const approveResult = await walletContractCall({
+          to: fromToken.toLowerCase(),
+          chain: fromChain,
+          inputData: approveCalldata,
+          // Our own OKX-style calldata — safe to append Builder Code
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const approveData = approveResult.data as any;
+        approveTxHash =
+          approveData?.txHash ??
+          approveData?.hash ??
+          approveData?.transactionHash ??
+          null;
+
+        if (
+          approveData?.status === "failed" ||
+          approveData?.status === "reverted"
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Approval transaction reverted. You may have insufficient balance for gas.",
+            },
+            { status: 400 }
+          );
+        }
+      } catch (approveError) {
+        const msg =
+          approveError instanceof Error
+            ? approveError.message
+            : "Approval failed";
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to approve token for bridge: ${msg}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ── STEP 2: Execute the bridge transaction ──────────────────────────────
+    // Convert value from wei to UI units (walletContractCall expects decimal format)
     const valueWei = txReq.value ?? "0";
     const valueUi =
       valueWei && valueWei !== "0" && valueWei !== "0x0"
@@ -60,7 +128,9 @@ export async function POST(request: NextRequest) {
           )
         : "0";
 
-    // Execute via wallet contract-call (source chain)
+    // Execute via wallet contract-call (source chain).
+    // IMPORTANT: skipBuilderCode=true because LI.FI calldata is third-party;
+    // appending bytes could corrupt validation in the bridge router contract.
     const callResult = await walletContractCall({
       to: txReq.to,
       chain: fromChain,
@@ -68,6 +138,7 @@ export async function POST(request: NextRequest) {
       value: valueUi,
       gasLimit: txReq.gasLimit,
       force: true,
+      skipBuilderCode: true,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,7 +156,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Bridge transaction was sent but reverted on-chain. You may have insufficient balance.",
+          error: "Bridge transaction reverted on-chain. The route may have changed or the approval may not have confirmed yet — try again in a few seconds.",
         },
         { status: 400 }
       );
@@ -95,6 +166,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         txHash: txHash ?? null,
+        approveTxHash,
         bridge: quote.tool,
         estimatedTime: quote.estimate.executionDuration,
         toAmount: quote.estimate.toAmount,

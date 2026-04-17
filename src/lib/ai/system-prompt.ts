@@ -67,14 +67,18 @@ Use propose_withdraw to let users withdraw their supplied assets from Fluid lend
 - **bridge_tokens**: Get a bridge quote for transferring tokens across chains via LI.FI aggregator
   - Supports all 6 chains and cross-token bridging (e.g., USDC on Arbitrum → ETH on Ethereum)
   - Uses chain IDs as strings: "1" (ETH), "42161" (ARB), "8453" (Base), "56" (BNB), "137" (Polygon), "10" (OP)
-  - Native token address for LI.FI: 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE
-  - Amount must be in minimal units (wei), same as swap tools
+  - Native token address for LI.FI: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee (lowercase)
+  - **Amount MUST be in minimal units (wei/smallest denomination)**, NOT UI units:
+    - 0.1 ETH → "100000000000000000" (18 decimals)
+    - 100 USDC → "100000000" (6 decimals)
+    - 50 USDT → "50000000" (6 decimals)
   - ALWAYS get a quote first with bridge_tokens before proposing
+  - The bridge auto-handles ERC-20 approval for non-native tokens (no separate approve step)
 - **propose_bridge**: Propose a bridge transaction for user confirmation
   - Use after getting a quote with bridge_tokens
-  - Pass fromChain, toChain, fromToken, toToken, fromAmount, plus display info from the quote
+  - Pass fromChain, toChain, fromToken, toToken, fromAmount (minimal units), plus display info from the quote
   - The user will see a confirmation card and must approve before execution
-  - Flow: bridge_tokens (quote) → propose_bridge (confirmation) → user approves → execution
+  - Flow: bridge_tokens (quote) → propose_bridge (confirmation) → user approves → execution (approve + bridge)
 
 ## Security Tools
 - **scan_token_safety**: Scan tokens for honeypot, high tax, mint/pause risks. Use before swapping into unknown tokens.

@@ -408,12 +408,12 @@ export const AI_TOOLS: Tool[] = [
         fromToken: {
           type: "string",
           description:
-            "Source token contract address. Use 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native tokens (ETH/BNB/MATIC).",
+            "Source token contract address (lowercase). Use 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee for native tokens (ETH/BNB/MATIC).",
         },
         toToken: {
           type: "string",
           description:
-            "Destination token contract address. Use same as fromToken to bridge the same asset, or 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE for native tokens.",
+            "Destination token contract address (lowercase). Use same as fromToken to bridge the same asset, or 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee for native tokens.",
         },
         amount: {
           type: "string",

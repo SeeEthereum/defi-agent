@@ -19,7 +19,9 @@ export async function GET(request: NextRequest) {
     const minAddressCount = searchParams.get("minAddressCount") ?? undefined;
     const tokenAddress = searchParams.get("tokenAddress") ?? undefined;
     const minMarketCapUsd = searchParams.get("minMarketCapUsd") ?? undefined;
+    const maxMarketCapUsd = searchParams.get("maxMarketCapUsd") ?? undefined;
     const minLiquidityUsd = searchParams.get("minLiquidityUsd") ?? undefined;
+    const maxLiquidityUsd = searchParams.get("maxLiquidityUsd") ?? undefined;
 
     const result = await signalList({
       chain,
@@ -29,7 +31,9 @@ export async function GET(request: NextRequest) {
       minAddressCount,
       tokenAddress,
       minMarketCapUsd,
+      maxMarketCapUsd,
       minLiquidityUsd,
+      maxLiquidityUsd,
     });
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {

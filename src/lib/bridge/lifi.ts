@@ -182,18 +182,24 @@ export async function bridgeTokens(
 
 /**
  * Get the status of a bridge transaction.
+ *
+ * The `bridge` parameter is the tool key returned by `bridgeQuote` as
+ * `quote.tool` (e.g. "across", "hop", "stargate", "cbridge"). When omitted,
+ * LI.FI attempts to auto-detect but the call can return INVALID for some
+ * routes, so always pass the tool if available.
  */
 export async function bridgeStatus(
   txHash: string,
   fromChain: string,
-  toChain: string
+  toChain: string,
+  bridge?: string
 ): Promise<BridgeStatus> {
   const qs = new URLSearchParams({
     txHash,
-    bridge: "lifi",
     fromChain,
     toChain,
   });
+  if (bridge) qs.set("bridge", bridge);
 
   const res = await fetch(`${BASE_URL}/status?${qs.toString()}`, {
     method: "GET",

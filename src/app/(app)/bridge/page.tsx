@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 
-const NATIVE_TOKEN_LIFI = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+// Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
+const NATIVE_TOKEN_LIFI = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const CHAIN_LIST = Object.values(CHAINS);
 
 interface BridgeTokenInfo {
@@ -33,6 +34,8 @@ interface QuoteData {
   toToken: BridgeTokenInfo;
   fromToken: BridgeTokenInfo;
   executionDuration: number;
+  /** LI.FI's router/bridge contract that needs ERC-20 allowance. Absent for native tokens. */
+  approvalAddress?: string;
   feeCosts: Array<{
     name: string;
     amount: string;
@@ -481,6 +484,7 @@ export default function BridgePage() {
           toToken: q.action?.toToken ?? toToken,
           fromToken: q.action?.fromToken ?? fromToken,
           executionDuration: q.estimate?.executionDuration ?? 0,
+          approvalAddress: q.estimate?.approvalAddress,
           feeCosts: q.estimate?.feeCosts ?? [],
           gasCosts: q.estimate?.gasCosts ?? [],
         });
@@ -529,7 +533,7 @@ export default function BridgePage() {
           pollRef.current = setInterval(async () => {
             try {
               const statusRes = await fetch(
-                `/api/bridge/status?txHash=${result.txHash}&fromChain=${result.fromChain}&toChain=${result.toChain}`
+                `/api/bridge/status?txHash=${result.txHash}&fromChain=${result.fromChain}&toChain=${result.toChain}&bridge=${encodeURIComponent(result.bridge)}`
               );
               const statusData = await statusRes.json();
               if (statusData.success && statusData.data) {
@@ -839,6 +843,19 @@ export default function BridgePage() {
                     Zero commission — DeFi Agent does not charge any fees on bridges
                   </span>
                 </div>
+                {/* Approval notice: ERC-20 bridges need an approve tx before the bridge call */}
+                {quote.approvalAddress &&
+                  fromToken &&
+                  fromToken.address.toLowerCase() !== NATIVE_TOKEN_LIFI && (
+                    <div className="flex items-start gap-2 pt-2 mt-0.5 border-t border-amber-100/60">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-amber-500 shrink-0 mt-[1px]">
+                        <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <span className="text-[11px] text-amber-700 leading-relaxed">
+                        Two transactions required: first an ERC-20 <strong>approve</strong> for the bridge router, then the <strong>bridge</strong> itself. Both happen in sequence after you click Bridge.
+                      </span>
+                    </div>
+                  )}
               </div>
             </div>
           )}

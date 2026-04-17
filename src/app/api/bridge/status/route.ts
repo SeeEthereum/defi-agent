@@ -7,6 +7,9 @@ export async function GET(request: NextRequest) {
     const txHash = searchParams.get("txHash");
     const fromChain = searchParams.get("fromChain");
     const toChain = searchParams.get("toChain");
+    // Optional: the tool key from the original quote (e.g. "across", "hop").
+    // Passing it avoids INVALID responses for routes LI.FI can't auto-detect.
+    const bridge = searchParams.get("bridge") ?? undefined;
 
     if (!txHash || !fromChain || !toChain) {
       return NextResponse.json(
@@ -15,7 +18,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const status = await bridgeStatus(txHash, fromChain, toChain);
+    const status = await bridgeStatus(txHash, fromChain, toChain, bridge);
 
     return NextResponse.json({ success: true, data: status });
   } catch (error) {

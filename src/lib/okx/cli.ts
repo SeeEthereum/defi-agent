@@ -230,12 +230,22 @@ export async function walletContractCall(params: {
   aaDexTokenAddr?: string;
   aaDexTokenAmount?: string;
   force?: boolean;
+  /**
+   * Skip the ERC-8021 Builder Code suffix. Use for third-party calldata
+   * (e.g. LI.FI bridges) where the receiving contract may validate
+   * calldata length or reject trailing bytes.
+   */
+  skipBuilderCode?: boolean;
 }) {
   const args: Record<string, string> = {
     to: params.to,
     chain: params.chain,
   };
-  if (params.inputData) args["input-data"] = appendBuilderCode(params.inputData) ?? params.inputData;
+  if (params.inputData) {
+    args["input-data"] = params.skipBuilderCode
+      ? params.inputData
+      : appendBuilderCode(params.inputData) ?? params.inputData;
+  }
   if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
   if (params.value) args.value = params.value;
   if (params.gasLimit) args["gas-limit"] = params.gasLimit;
@@ -458,6 +468,7 @@ export async function signalList(params: {
   minMarketCapUsd?: string;
   maxMarketCapUsd?: string;
   minLiquidityUsd?: string;
+  maxLiquidityUsd?: string;
 }) {
   const args: Record<string, string> = { chain: params.chain };
   if (params.walletType) args["wallet-type"] = params.walletType;
@@ -468,6 +479,7 @@ export async function signalList(params: {
   if (params.minMarketCapUsd) args["min-market-cap-usd"] = params.minMarketCapUsd;
   if (params.maxMarketCapUsd) args["max-market-cap-usd"] = params.maxMarketCapUsd;
   if (params.minLiquidityUsd) args["min-liquidity-usd"] = params.minLiquidityUsd;
+  if (params.maxLiquidityUsd) args["max-liquidity-usd"] = params.maxLiquidityUsd;
   return runCli(["signal", "list"], args);
 }
 
