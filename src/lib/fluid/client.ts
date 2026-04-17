@@ -1,5 +1,5 @@
 import { createPublicClient, http, type Chain } from "viem";
-import { mainnet, arbitrum, base, polygon } from "viem/chains";
+import { mainnet, arbitrum, base, polygon, optimism, bsc } from "viem/chains";
 import { CHAINS } from "@/lib/chains";
 
 const viemChains: Record<number, Chain> = {
@@ -7,6 +7,8 @@ const viemChains: Record<number, Chain> = {
   42161: arbitrum,
   8453: base,
   137: polygon,
+  10: optimism,
+  56: bsc,
 };
 
 const clients = new Map<number, ReturnType<typeof createPublicClient>>();

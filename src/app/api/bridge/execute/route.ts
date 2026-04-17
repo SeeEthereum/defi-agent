@@ -5,6 +5,8 @@ import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { toUiUnits } from "@/lib/utils";
 import { encodeApprove } from "@/lib/fluid/ftokens";
+import { getPublicClient } from "@/lib/fluid/client";
+import { erc20Abi, maxUint256 } from "viem";
 
 const schema = z.object({
   fromChain: z.string().min(1),
@@ -22,6 +24,52 @@ const NATIVE_EEE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 function isNativeToken(address: string): boolean {
   const a = address.toLowerCase();
   return a === NATIVE_ZERO || a === NATIVE_EEE;
+}
+
+/**
+ * Read the current ERC-20 allowance on-chain.
+ * Returns null if the chain is not supported by viem client.
+ */
+async function readAllowance(
+  chainIndex: number,
+  token: `0x${string}`,
+  owner: `0x${string}`,
+  spender: `0x${string}`
+): Promise<bigint | null> {
+  try {
+    const client = getPublicClient(chainIndex);
+    return await client.readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [owner, spender],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Poll on-chain allowance every 2 s until it is ≥ required,
+ * or throw after 40 s timeout (enough for most chains).
+ */
+async function waitForAllowance(
+  chainIndex: number,
+  token: `0x${string}`,
+  owner: `0x${string}`,
+  spender: `0x${string}`,
+  required: bigint
+): Promise<void> {
+  const deadline = Date.now() + 40_000;
+  while (Date.now() < deadline) {
+    const current = await readAllowance(chainIndex, token, owner, spender);
+    // If we can't read (unsupported chain for viem), assume it'll be fine and proceed
+    if (current === null || current >= required) return;
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+  throw new Error(
+    "Approval confirmation timed out after 40 s. Please retry — the approve may still be pending."
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -66,54 +114,85 @@ export async function POST(request: NextRequest) {
     // Skip for native tokens (ETH/BNB/MATIC) — they don't require approval.
     let approveTxHash: string | null = null;
     const approvalAddress = quote.estimate.approvalAddress;
+    const chainIndex = Number(fromChain);
+    const fromTokenAddr = fromToken.toLowerCase() as `0x${string}`;
+    const ownerAddr = fromAddress.toLowerCase() as `0x${string}`;
+    const requiredAmount = BigInt(fromAmount);
 
     if (!isNativeToken(fromToken) && approvalAddress) {
-      try {
-        const approveCalldata = encodeApprove(
-          approvalAddress.toLowerCase() as `0x${string}`,
-          BigInt(fromAmount)
-        );
+      const spenderAddr = approvalAddress.toLowerCase() as `0x${string}`;
 
-        const approveResult = await walletContractCall({
-          to: fromToken.toLowerCase(),
-          chain: fromChain,
-          inputData: approveCalldata,
-          // Our own OKX-style calldata — safe to append Builder Code
-        });
+      // ── 1a. Check existing allowance — skip approve if already sufficient ──
+      const existingAllowance = await readAllowance(
+        chainIndex,
+        fromTokenAddr,
+        ownerAddr,
+        spenderAddr
+      );
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const approveData = approveResult.data as any;
-        approveTxHash =
-          approveData?.txHash ??
-          approveData?.hash ??
-          approveData?.transactionHash ??
-          null;
+      const needsApprove =
+        existingAllowance === null || existingAllowance < requiredAmount;
 
-        if (
-          approveData?.status === "failed" ||
-          approveData?.status === "reverted"
-        ) {
+      if (needsApprove) {
+        try {
+          // Approve MaxUint256 so future bridges on this route don't need
+          // another approve transaction. The bridge contract can only pull
+          // what it's explicitly bridging, so this is safe in practice.
+          const approveCalldata = encodeApprove(spenderAddr, maxUint256);
+
+          const approveResult = await walletContractCall({
+            to: fromTokenAddr,
+            chain: fromChain,
+            inputData: approveCalldata,
+            // Our own calldata — safe to append Builder Code
+          });
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const approveData = approveResult.data as any;
+          approveTxHash =
+            approveData?.txHash ??
+            approveData?.hash ??
+            approveData?.transactionHash ??
+            null;
+
+          if (
+            approveData?.status === "failed" ||
+            approveData?.status === "reverted"
+          ) {
+            return NextResponse.json(
+              {
+                success: false,
+                error:
+                  "Approval transaction reverted. You may have insufficient balance for gas.",
+              },
+              { status: 400 }
+            );
+          }
+
+          // ── 1b. Wait for the approve to be mined before bridging ───────────
+          // The OKX CLI broadcasts the tx and returns immediately. If we call
+          // the bridge contract-call before the approve is confirmed, the gas
+          // estimation fails with "execution reverted" because allowance = 0.
+          await waitForAllowance(
+            chainIndex,
+            fromTokenAddr,
+            ownerAddr,
+            spenderAddr,
+            requiredAmount
+          );
+        } catch (approveError) {
+          const msg =
+            approveError instanceof Error
+              ? approveError.message
+              : "Approval failed";
           return NextResponse.json(
             {
               success: false,
-              error:
-                "Approval transaction reverted. You may have insufficient balance for gas.",
+              error: `Failed to approve token for bridge: ${msg}`,
             },
             { status: 400 }
           );
         }
-      } catch (approveError) {
-        const msg =
-          approveError instanceof Error
-            ? approveError.message
-            : "Approval failed";
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Failed to approve token for bridge: ${msg}`,
-          },
-          { status: 400 }
-        );
       }
     }
 
@@ -156,7 +235,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Bridge transaction reverted on-chain. The route may have changed or the approval may not have confirmed yet — try again in a few seconds.",
+          error: "Bridge transaction reverted on-chain. The route may have changed — try again in a few seconds.",
         },
         { status: 400 }
       );
