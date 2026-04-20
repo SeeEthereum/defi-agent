@@ -6,21 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 // ── Hyperliquid brand colors ──────────────────────────────────────────────────
-const HL_GREEN = "#96FF94";
-const HL_GREEN_DIM = "#4ADE80";
+const HL_GREEN = "#97FCE4";
 
-// ── HL Official Logo SVG ──────────────────────────────────────────────────────
+// ── HL Official Symbol SVG ────────────────────────────────────────────────────
 function HyperliquidLogo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100" height="100" rx="20" fill="#000000" />
-      {/* H */}
-      <rect x="12" y="20" width="10" height="60" fill={HL_GREEN} rx="2" />
-      <rect x="12" y="44" width="28" height="12" fill={HL_GREEN} rx="2" />
-      <rect x="30" y="20" width="10" height="60" fill={HL_GREEN} rx="2" />
-      {/* L */}
-      <rect x="52" y="20" width="10" height="60" fill={HL_GREEN} rx="2" />
-      <rect x="52" y="68" width="36" height="12" fill={HL_GREEN} rx="2" />
+    <svg width={size} height={size} viewBox="0 0 144 144" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M144 71.6991C144 119.306 114.866 134.582 99.5156 120.98C86.8804 109.889 83.1211 86.4521 64.116 84.0456C39.9942 81.0113 37.9057 113.133 22.0334 113.133C3.5504 113.133 0 86.2428 0 72.4315C0 58.3063 3.96809 39.0542 19.736 39.0542C38.1146 39.0542 39.1588 66.5722 62.132 65.1073C85.0007 63.5379 85.4184 34.8689 100.247 22.6271C113.195 12.0593 144 23.4641 144 71.6991Z"
+        fill={HL_GREEN}
+      />
     </svg>
   );
 }
