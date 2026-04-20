@@ -495,4 +495,124 @@ export const AI_TOOLS: Tool[] = [
       required: ["domain"],
     },
   },
+
+  // ── Hyperliquid Perpetuals ─────────────────────────────────────────────────
+
+  {
+    name: "get_hl_positions",
+    description:
+      "Get open perpetual positions and account summary on Hyperliquid. Returns unrealized PnL, liquidation prices, leverage, and margin usage. Use when user asks about their Hyperliquid positions, perp trades, or HL account.",
+    input_schema: {
+      type: "object",
+      properties: {
+        address: {
+          type: "string",
+          description: "Optional wallet address. Defaults to the connected wallet.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_hl_prices",
+    description:
+      "Get current perpetual market prices on Hyperliquid. Returns mid prices for all markets or a specific coin. Use before proposing an order or when the user asks for perp prices.",
+    input_schema: {
+      type: "object",
+      properties: {
+        coin: {
+          type: "string",
+          description: "Specific coin symbol to query (e.g. 'BTC', 'ETH', 'SOL'). Omit for all markets.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_hl_orders",
+    description:
+      "List open perpetual orders on Hyperliquid (limit, TP/SL). Use when the user asks about pending orders.",
+    input_schema: {
+      type: "object",
+      properties: {
+        coin: {
+          type: "string",
+          description: "Optional filter by coin symbol.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "propose_hl_order",
+    description:
+      "Propose a perpetual order on Hyperliquid for user confirmation. ALWAYS call get_hl_prices first to check the current price, then propose_hl_order to create the action card. The user must confirm before execution. Use for long/short positions with optional leverage, stop loss, and take profit.",
+    input_schema: {
+      type: "object",
+      properties: {
+        coin: {
+          type: "string",
+          description: "Coin symbol (e.g. 'BTC', 'ETH', 'SOL', 'HYPE')",
+        },
+        side: {
+          type: "string",
+          enum: ["buy", "sell"],
+          description: "'buy' for LONG, 'sell' for SHORT",
+        },
+        size: {
+          type: "string",
+          description: "Position size in base coin units (e.g. '0.01' for 0.01 BTC). Min notional $10.",
+        },
+        type: {
+          type: "string",
+          enum: ["market", "limit"],
+          description: "Order type. Default: 'market'.",
+        },
+        price: {
+          type: "string",
+          description: "Limit price in USDC. Only for limit orders.",
+        },
+        leverage: {
+          type: "number",
+          description: "Cross leverage multiplier (1–50). Default: 10.",
+        },
+        slPx: {
+          type: "string",
+          description: "Stop-loss trigger price in USDC. Must be below entry for longs, above for shorts.",
+        },
+        tpPx: {
+          type: "string",
+          description: "Take-profit trigger price in USDC. Must be above entry for longs, below for shorts.",
+        },
+        currentPrice: {
+          type: "string",
+          description: "Current mark price from get_hl_prices, for display in the confirmation card.",
+        },
+      },
+      required: ["coin", "side", "size"],
+    },
+  },
+  {
+    name: "propose_hl_close",
+    description:
+      "Propose closing an open Hyperliquid perpetual position for user confirmation. Get current positions with get_hl_positions first.",
+    input_schema: {
+      type: "object",
+      properties: {
+        coin: {
+          type: "string",
+          description: "Coin symbol of the position to close (e.g. 'BTC')",
+        },
+        size: {
+          type: "string",
+          description: "Optional partial close size. Omit to close the full position.",
+        },
+        unrealizedPnl: {
+          type: "string",
+          description: "Current unrealized PnL from get_hl_positions, for display.",
+        },
+      },
+      required: ["coin"],
+    },
+  },
 ];

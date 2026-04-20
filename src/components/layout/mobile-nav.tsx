@@ -70,6 +70,21 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    href: "/trade",
+    label: "Trade",
+    icon: (
+      // Hyperliquid HL logo
+      <svg width="20" height="20" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" rx="20" fill="#000000" />
+        <rect x="12" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+        <rect x="12" y="44" width="28" height="12" fill="#96FF94" rx="2" />
+        <rect x="30" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+        <rect x="52" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+        <rect x="52" y="68" width="36" height="12" fill="#96FF94" rx="2" />
+      </svg>
+    ),
+  },
 ];
 
 export function MobileNav() {

@@ -124,6 +124,27 @@ function ActionCard({
     rows.push({ label: "Asset", value: p.fTokenSymbol as string });
     rows.push({ label: "Amount", value: p.amount === "all" ? "Withdraw All" : String(p.amount) });
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
+  } else if (action.action === "hl_order") {
+    const p = action.params;
+    title = `Hyperliquid ${p.side === "buy" ? "Long" : "Short"}`;
+    emoji = p.side === "buy" ? "📗" : "📕";
+    rows.push({ label: "Market", value: `${p.coin}-PERP` });
+    rows.push({ label: "Side", value: p.side === "buy" ? "LONG" : "SHORT" });
+    rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
+    if (p.type) rows.push({ label: "Type", value: String(p.type).toUpperCase() });
+    if (p.leverage) rows.push({ label: "Leverage", value: `${p.leverage}×` });
+    if (p.currentPrice) rows.push({ label: "Mark Price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString()}` });
+    if (p.slPx) rows.push({ label: "Stop Loss", value: `$${p.slPx}` });
+    if (p.tpPx) rows.push({ label: "Take Profit", value: `$${p.tpPx}` });
+    rows.push({ label: "Settlement", value: "USDC on Hyperliquid L1" });
+  } else if (action.action === "hl_close") {
+    const p = action.params;
+    title = "Close Hyperliquid Position";
+    emoji = "🔴";
+    rows.push({ label: "Market", value: `${p.coin}-PERP` });
+    if (p.size) rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
+    else rows.push({ label: "Size", value: "Full position" });
+    if (p.unrealizedPnl) rows.push({ label: "Unrealized PnL", value: `${parseFloat(String(p.unrealizedPnl)) >= 0 ? "+" : ""}${p.unrealizedPnl} USDC` });
   }
 
   return (
@@ -400,6 +421,39 @@ export default function AiPage() {
           chainIndex: action.params.chainIndex,
           walletAddress: walletAddress ?? "",
           withdrawAll: action.params.amount === "all",
+        };
+        break;
+      case "bridge":
+        endpoint = "/api/bridge/execute";
+        body = {
+          fromChain: action.params.fromChain,
+          toChain: action.params.toChain,
+          fromToken: action.params.fromToken,
+          toToken: action.params.toToken,
+          fromAmount: action.params.fromAmount,
+          fromAddress: walletAddress ?? "",
+        };
+        break;
+      case "hl_order":
+        endpoint = "/api/perp/order";
+        body = {
+          coin: action.params.coin,
+          side: action.params.side,
+          size: action.params.size,
+          type: action.params.type ?? "market",
+          price: action.params.price,
+          leverage: action.params.leverage ?? 10,
+          slPx: action.params.slPx,
+          tpPx: action.params.tpPx,
+          confirm: true,
+        };
+        break;
+      case "hl_close":
+        endpoint = "/api/perp/close";
+        body = {
+          coin: action.params.coin,
+          size: action.params.size,
+          confirm: true,
         };
         break;
       default:

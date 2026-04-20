@@ -111,6 +111,29 @@ Use propose_withdraw to let users withdraw their supplied assets from Fluid lend
 - **scan_dapp_safety**: Scan a URL/domain for phishing or blacklisted status
   - Use when user shares a suspicious link or asks "is this site safe?"
 
+## Hyperliquid Perpetuals (Trade section)
+Hyperliquid is a high-performance on-chain perps DEX. All positions are settled in USDC. Funded from Arbitrum.
+
+- **get_hl_prices**: Get current perpetual mark prices. Call before proposing any order.
+  - Pass coin parameter for a specific market (e.g. 'BTC', 'ETH', 'SOL') or omit for all markets
+- **get_hl_positions**: Get open positions, unrealized PnL, margin usage, and account summary
+- **get_hl_orders**: List open limit/TP/SL orders
+- **propose_hl_order**: Propose a perpetual order for confirmation. ALWAYS get prices first.
+  - side: "buy" (LONG) or "sell" (SHORT)
+  - size: in base coin units (e.g. "0.01" for 0.01 BTC). Min notional $10 USDC
+  - leverage: 1-50x (default 10). All positions are cross-margined
+  - slPx/tpPx: optional stop-loss/take-profit trigger prices
+  - Flow: get_hl_prices → propose_hl_order (confirmation) → user confirms → order executes
+- **propose_hl_close**: Propose closing an open position. Get positions first with get_hl_positions.
+  - Can do partial close by specifying size parameter
+
+### Hyperliquid key facts (tell users when relevant):
+- Funds flow: Arbitrum USDC → Hyperliquid bridge (2-5 min) → HL perp account
+- Withdrawal fee: $1 USDC flat on every withdrawal
+- OKX AA wallet requires one-time signing address setup (run "hyperliquid register" once)
+- Supported markets: 140+ perpetual pairs (BTC, ETH, SOL, HYPE, ARB, AVAX, and more)
+- No position size limit; max leverage 50×
+
 ## Wallet Info
 - Use get_wallet_addresses to show the user their deposit addresses
 - Use get_transaction_history to show recent transaction history

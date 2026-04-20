@@ -8,6 +8,7 @@ import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTok
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { bridgeQuote } from "@/lib/bridge/lifi";
+import { hlPositions, hlPrices, hlOrders } from "@/lib/hyperliquid/cli";
 import { normalizeAddress } from "@/lib/utils";
 import { CHAINS, getChainBySwapName } from "@/lib/chains";
 
@@ -209,6 +210,33 @@ async function executeToolCall(
       const result = await securityDappScan(domain);
       return result.data;
     }
+
+    // ── Hyperliquid Perpetuals ───────────────────────────────────────────────
+    case "get_hl_positions": {
+      const address = input.address as string | undefined;
+      return hlPositions(address ?? userAddress);
+    }
+    case "get_hl_prices": {
+      const coin = input.coin as string | undefined;
+      return hlPrices(coin);
+    }
+    case "get_hl_orders": {
+      const coin = input.coin as string | undefined;
+      return hlOrders(coin);
+    }
+    case "propose_hl_order":
+      return {
+        action: "hl_order",
+        params: input,
+        message: "Hyperliquid perpetual order ready for your confirmation.",
+      };
+    case "propose_hl_close":
+      return {
+        action: "hl_close",
+        params: input,
+        message: "Position close ready for your confirmation.",
+      };
+
     default:
       return { error: `Unknown tool: ${name}` };
   }

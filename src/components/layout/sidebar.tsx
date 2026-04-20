@@ -16,6 +16,7 @@ const navItems = [
   { href: "/earn", label: "Earn", icon: "trending-up" },
   { href: "/swap", label: "Swap", icon: "repeat" },
   { href: "/bridge", label: "Bridge", icon: "bridge" },
+  { href: "/trade", label: "Trade", icon: "trade" },
   { href: "/security", label: "Security", icon: "shield" },
   { href: "/signals", label: "Intelligence", icon: "signal" },
 ];
@@ -68,6 +69,19 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M12 20v-8" />
       <path d="M17 20V8" />
       <path d="M22 4v16" />
+    </svg>
+  ),
+  // Hyperliquid HL monogram logo
+  trade: (
+    <svg width="18" height="18" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" rx="20" fill="#000000" />
+      {/* H */}
+      <rect x="12" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+      <rect x="12" y="44" width="28" height="12" fill="#96FF94" rx="2" />
+      <rect x="30" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+      {/* L */}
+      <rect x="52" y="20" width="10" height="60" fill="#96FF94" rx="2" />
+      <rect x="52" y="68" width="36" height="12" fill="#96FF94" rx="2" />
     </svg>
   ),
   sparkles: (
