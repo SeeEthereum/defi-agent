@@ -222,7 +222,12 @@ export async function walletContractCall(params: {
   chain: string;
   inputData?: string;
   unsignedTx?: string;
-  value?: string;
+  /**
+   * Native token amount in minimal units (wei for EVM) as a whole-number
+   * decimal string. Maps to onchainos `--amt`. Pass `"0"` or omit for
+   * calls that don't transfer native value.
+   */
+  amt?: string;
   gasLimit?: string;
   from?: string;
   mevProtection?: boolean;
@@ -247,7 +252,7 @@ export async function walletContractCall(params: {
       : appendBuilderCode(params.inputData) ?? params.inputData;
   }
   if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
-  if (params.value) args.value = params.value;
+  if (params.amt && params.amt !== "0") args.amt = params.amt;
   if (params.gasLimit) args["gas-limit"] = params.gasLimit;
   if (params.from) args.from = params.from;
   if (params.mevProtection) args["mev-protection"] = "true";

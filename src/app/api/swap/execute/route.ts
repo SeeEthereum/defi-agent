@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dexSwap } from "@/lib/okx/dex-api";
 import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
 import { z } from "zod";
-import { normalizeAddress, toUiUnits } from "@/lib/utils";
+import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
 
 // Chains that support MEV protection
@@ -110,9 +110,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Execute via wallet contract-call ────────────────────────────────────
-    const valueUi =
-      tx.value && tx.value !== "0"
-        ? toUiUnits(tx.value, chainConfig.nativeDecimals)
+    // onchainos `--amt` expects minimal units (wei) as a whole-number string.
+    // The DEX API already returns `tx.value` in wei — just normalize hex → decimal.
+    const amtWei =
+      tx.value && tx.value !== "0" && tx.value !== "0x0"
+        ? BigInt(tx.value).toString()
         : "0";
 
     const useMev = mevProtection && MEV_SUPPORTED_CHAINS.includes(chain);
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest) {
       to: normalizeAddress(tx.to),
       chain: chainIndex,
       inputData: tx.data,
-      value: valueUi,
+      amt: amtWei,
       mevProtection: useMev,
       force: true, // Skip backend simulation — approval may not be reflected yet
     });

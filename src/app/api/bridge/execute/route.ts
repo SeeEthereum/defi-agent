@@ -3,7 +3,6 @@ import { bridgeQuote } from "@/lib/bridge/lifi";
 import { walletContractCall } from "@/lib/okx/cli";
 import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
-import { toUiUnits } from "@/lib/utils";
 import { encodeApprove } from "@/lib/fluid/ftokens";
 import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi, maxUint256 } from "viem";
@@ -197,14 +196,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ── STEP 2: Execute the bridge transaction ──────────────────────────────
-    // Convert value from wei to UI units (walletContractCall expects decimal format)
-    const valueWei = txReq.value ?? "0";
-    const valueUi =
-      valueWei && valueWei !== "0" && valueWei !== "0x0"
-        ? toUiUnits(
-            BigInt(valueWei).toString(),
-            chainConfig.nativeDecimals
-          )
+    // onchainos `--amt` expects minimal units (wei) as a whole-number string,
+    // not a decimal UI value. Normalize hex → decimal; "0" / missing → omit.
+    const rawValue = txReq.value ?? "0";
+    const amtWei =
+      rawValue && rawValue !== "0" && rawValue !== "0x0"
+        ? BigInt(rawValue).toString()
         : "0";
 
     // Execute via wallet contract-call (source chain).
@@ -214,7 +211,7 @@ export async function POST(request: NextRequest) {
       to: txReq.to,
       chain: fromChain,
       inputData: txReq.data,
-      value: valueUi,
+      amt: amtWei,
       gasLimit: txReq.gasLimit,
       force: true,
       skipBuilderCode: true,
