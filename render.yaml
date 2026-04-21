@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    buildCommand: bash scripts/install-onchainos.sh && bash scripts/install-hyperliquid-plugin.sh && npm ci && npm run build
+    buildCommand: bash scripts/install-onchainos.sh && npm ci && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_VERSION
