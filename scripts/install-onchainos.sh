@@ -42,7 +42,7 @@ fi
 
 # Hardcoded version — avoids GitHub API rate-limit 403 errors on Render CI.
 # Update this string when a new onchainos release is published.
-LATEST="v2.1.0"
+LATEST="v2.3.0"
 
 echo "Installing onchainos $LATEST for $TARGET into $PROJECT_BIN_DIR..."
 

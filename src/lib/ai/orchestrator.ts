@@ -214,15 +214,24 @@ async function executeToolCall(
     // ── Hyperliquid Perpetuals ───────────────────────────────────────────────
     case "get_hl_positions": {
       const address = input.address as string | undefined;
-      return hlPositions(address ?? userAddress);
+      const r = await hlPositions(address ?? userAddress);
+      return r.ok ? r.data : { error: r.error, errorCode: r.errorCode, suggestion: r.suggestion };
     }
     case "get_hl_prices": {
       const coin = input.coin as string | undefined;
-      return hlPrices(coin);
+      const r = await hlPrices(coin);
+      if (!r.ok) return { error: r.error, errorCode: r.errorCode, suggestion: r.suggestion };
+      // Filter to curated markets so the LLM doesn't drown in 500+ entries
+      if (!coin && r.data.prices) {
+        const { filterFeaturedPrices } = await import("@/lib/hyperliquid/markets");
+        return { prices: filterFeaturedPrices(r.data.prices) };
+      }
+      return r.data;
     }
     case "get_hl_orders": {
       const coin = input.coin as string | undefined;
-      return hlOrders(coin);
+      const r = await hlOrders(coin);
+      return r.ok ? r.data : { error: r.error, errorCode: r.errorCode, suggestion: r.suggestion };
     }
     case "propose_hl_order":
       return {

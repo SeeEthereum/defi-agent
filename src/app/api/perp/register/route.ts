@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
-import { hlRegister } from "@/lib/hyperliquid/cli";
+import { NextRequest } from "next/server";
+import { hlRegisterCached, invalidateRegisterCache } from "@/lib/hyperliquid/cli";
+import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await hlRegister();
-    return NextResponse.json({ success: true, data });
+    const force = request.nextUrl.searchParams.get("force") === "true";
+    if (force) invalidateRegisterCache();
+    const result = await hlRegisterCached(force);
+    return respond(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to check register status";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return respondBinError(error, "Register check failed");
   }
 }

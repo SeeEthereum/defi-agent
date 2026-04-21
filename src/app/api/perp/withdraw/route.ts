@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlWithdraw } from "@/lib/hyperliquid/cli";
+import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
 import { z } from "zod";
 
 const schema = z.object({
@@ -10,12 +11,24 @@ const schema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const params = schema.parse(body);
-    const data = await hlWithdraw(params);
-    return NextResponse.json({ success: true, data });
+    const params = schema.parse(await request.json());
+    // HL withdraw minimum is $1 (covers the fixed fee)
+    const n = Number(params.amount);
+    if (!Number.isFinite(n) || n <= 1) {
+      return NextResponse.json(
+        { success: false, error: "Withdraw amount must be > 1 USDC (covers $1 flat fee)" },
+        { status: 400 }
+      );
+    }
+    const result = await hlWithdraw(params);
+    return respond(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Withdrawal failed";
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: error.issues[0]?.message ?? "Invalid withdraw parameters" },
+        { status: 400 }
+      );
+    }
+    return respondBinError(error, "Withdraw failed");
   }
 }
