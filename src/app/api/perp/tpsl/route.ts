@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlTpSl } from "@/lib/hyperliquid/cli";
-import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
 import { z } from "zod";
 
 const schema = z.object({
-  coin: z.string().min(1),
-  slPx: z.string().optional(),
-  tpPx: z.string().optional(),
-  size: z.string().optional(),
+  coin: z.string().min(1).max(20).regex(/^[A-Z0-9]+$/),
+  slPx: positiveDecimalString.optional(),
+  tpPx: positiveDecimalString.optional(),
+  // If size is omitted, hlTpSl uses the full open position size.
+  size: positiveDecimalString.optional(),
   confirm: z.boolean().optional().default(false),
 });
 

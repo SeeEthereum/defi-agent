@@ -343,21 +343,22 @@ export async function hlRegister(_dryRun = false): Promise<HlResult<HlRegisterRe
   }
 }
 
-const REGISTER_TTL_MS = 24 * 60 * 60 * 1000;
-let registerCache: { at: number; result: HlResult<HlRegisterResult> } | null = null;
-
-export async function hlRegisterCached(force = false): Promise<HlResult<HlRegisterResult>> {
-  const now = Date.now();
-  if (!force && registerCache && now - registerCache.at < REGISTER_TTL_MS) {
-    return registerCache.result;
-  }
-  const result = await hlRegister();
-  registerCache = { at: now, result };
-  return result;
+// Historical note: an earlier version kept a 24h cache for register because
+// it wrapped a heavy plugin-binary call. The new `hlRegister` is just a
+// read of `getOnchainosAddress()` (which itself has a 5-min cache in http.ts),
+// so a second cache layer only adds risk of serving a stale wallet after an
+// account swap. The cached wrappers are kept as thin pass-throughs so the
+// /api/perp/register route doesn't need to change.
+export async function hlRegisterCached(_force = false): Promise<HlResult<HlRegisterResult>> {
+  void _force;
+  return hlRegister();
 }
 
-export function invalidateRegisterCache() {
-  registerCache = null;
+// Kept for API compatibility — callers use this when they detect a wallet
+// swap. The heavy lifting is now done by `invalidateHlClients()` in http.ts,
+// which clears the address cache that this function ultimately reads.
+export function invalidateRegisterCache(): void {
+  // no-op: no cache to invalidate here anymore.
 }
 
 // ── Write operations ─────────────────────────────────────────────────────────
@@ -438,7 +439,10 @@ export async function hlOrder(params: HlOrderParams): Promise<HlResult<unknown>>
       return ok(preview);
     }
 
-    // Optional leverage update
+    // Optional leverage update — must succeed before we place the order. If
+    // this fails silently and the previous leverage is different, the user
+    // gets a position sized for leverage X but opened at leverage Y, which
+    // changes the notional exposure and margin requirements. Fail fast.
     if (params.leverage !== undefined) {
       try {
         const client = await getExchangeClient();
@@ -448,8 +452,10 @@ export async function hlOrder(params: HlOrderParams): Promise<HlResult<unknown>>
           leverage: params.leverage,
         });
       } catch (e) {
-        // Leverage errors are soft — log and continue (HL will reject at order time if truly bad).
-        console.warn("[hl] updateLeverage failed:", (e as Error).message);
+        return err(
+          `Leverage update to ${params.leverage}x failed: ${(e as Error).message}. Order not placed.`,
+          { errorCode: "LEVERAGE_UPDATE_FAILED" }
+        );
       }
     }
 
@@ -477,40 +483,56 @@ export async function hlOrder(params: HlOrderParams): Promise<HlResult<unknown>>
       return err((firstErr as { error: string }).error);
     }
 
-    // Optional SL/TP as a follow-up trigger order
+    // Optional SL/TP as a follow-up trigger order.
+    // If the parent order succeeded but SL/TP fails, we return a SUCCESS result
+    // with a `tpslAttached: false` flag — the position is open and the user
+    // needs to know protection wasn't installed. We do NOT unwind the parent
+    // because HL doesn't support atomic bracket orders; unwinding creates
+    // another trade the user didn't ask for.
+    let tpslAttached: true | false | "n/a" = "n/a";
+    let tpslError: string | undefined;
     if ((params.slPx || params.tpPx) && !params.reduceOnly) {
       const oppSide = params.side === "buy" ? false : true;
-      const children: Array<{ a: number; b: boolean; p: string; s: string; r: boolean; t: { trigger: { isMarket: boolean; triggerPx: string; tpsl: "tp" | "sl" } } }> = [];
+      type TriggerOrder = { a: number; b: boolean; p: string; s: string; r: boolean; t: { trigger: { isMarket: boolean; triggerPx: string; tpsl: "tp" | "sl" } } };
+      const children: TriggerOrder[] = [];
       if (params.tpPx) {
+        const tpPx = roundPrice(Number(params.tpPx), asset.szDecimals);
         children.push({
-          a: asset.assetId,
-          b: oppSide,
-          p: roundPrice(Number(params.tpPx), asset.szDecimals),
-          s: sizeStr,
-          r: true,
-          t: { trigger: { isMarket: true, triggerPx: roundPrice(Number(params.tpPx), asset.szDecimals), tpsl: "tp" } },
+          a: asset.assetId, b: oppSide, p: tpPx, s: sizeStr, r: true,
+          t: { trigger: { isMarket: true, triggerPx: tpPx, tpsl: "tp" } },
         });
       }
       if (params.slPx) {
+        const slPx = roundPrice(Number(params.slPx), asset.szDecimals);
         children.push({
-          a: asset.assetId,
-          b: oppSide,
-          p: roundPrice(Number(params.slPx), asset.szDecimals),
-          s: sizeStr,
-          r: true,
-          t: { trigger: { isMarket: true, triggerPx: roundPrice(Number(params.slPx), asset.szDecimals), tpsl: "sl" } },
+          a: asset.assetId, b: oppSide, p: slPx, s: sizeStr, r: true,
+          t: { trigger: { isMarket: true, triggerPx: slPx, tpsl: "sl" } },
         });
       }
       if (children.length) {
         try {
-          await client.order({ orders: children, grouping: "normalTpsl" });
+          const tpslRes = await client.order({ orders: children, grouping: "normalTpsl" });
+          const childStatuses = tpslRes.response.data.statuses;
+          const childErr = childStatuses.find((s) => typeof s === "object" && s !== null && "error" in s);
+          if (childErr && typeof childErr === "object" && "error" in childErr) {
+            tpslAttached = false;
+            tpslError = (childErr as { error: string }).error;
+          } else {
+            tpslAttached = true;
+          }
         } catch (e) {
-          console.warn("[hl] attached TP/SL failed:", (e as Error).message);
+          tpslAttached = false;
+          tpslError = (e as Error).message;
         }
       }
     }
 
-    return ok({ statuses, preview: false });
+    return ok({
+      statuses,
+      preview: false,
+      tpslAttached,
+      ...(tpslError ? { tpslError, warning: `Position opened but TP/SL failed: ${tpslError}. Attach manually via the TP/SL panel.` } : {}),
+    });
   } catch (e) {
     return mapSdkError(e);
   }

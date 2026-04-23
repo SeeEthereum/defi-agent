@@ -212,9 +212,36 @@ export default function TradePage() {
     if (mkts.success) setPrices(mkts.data.prices ?? []);
   }, [authenticated]);
 
+  // Bootstrap on mount / when auth flips. Inline the effect body (instead of
+  // calling `bootstrap()` directly) so the React 19 lint can see that every
+  // setState call happens *after* the await — calling a useCallback that
+  // contains setState trips set-state-in-effect even though setState is
+  // itself async here.
   useEffect(() => {
-    bootstrap();
-  }, [bootstrap]);
+    if (!authenticated) return;
+    let cancelled = false;
+    (async () => {
+      const [reg, qs, pos, ord, mkts] = await Promise.all([
+        apiGet<RegisterData>("/api/perp/register"),
+        apiGet<QuickstartData>("/api/perp/quickstart"),
+        apiGet<PositionsData>("/api/perp/positions"),
+        apiGet<{ orders: OrderRow[] }>("/api/perp/orders"),
+        apiGet<{ markets: typeof FEATURED_MARKETS; prices: MarketPrice[] }>("/api/perp/markets"),
+      ]);
+      if (cancelled) return;
+      if (reg.success) {
+        setRegister(reg.data);
+        setRegisterErr(null);
+      } else {
+        setRegisterErr(reg.error);
+      }
+      if (qs.success) setQuickstart(qs.data);
+      if (pos.success) setPositions(pos.data);
+      if (ord.success) setOrders(ord.data.orders ?? []);
+      if (mkts.success) setPrices(mkts.data.prices ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [authenticated]);
 
   // Live refresh: positions every 5s, prices every 10s
   const refreshTimer = useRef<NodeJS.Timeout | null>(null);

@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlOrder } from "@/lib/hyperliquid/cli";
-import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
 import { z } from "zod";
 
 const schema = z.object({
-  coin: z.string().min(1),
+  coin: z.string().min(1).max(20).regex(/^[A-Z0-9]+$/, "coin must be uppercase alphanumeric"),
   side: z.enum(["buy", "sell"]),
-  size: z.string().min(1),
+  size: positiveDecimalString,
   type: z.enum(["market", "limit"]).optional().default("market"),
-  price: z.string().optional(),
+  price: positiveDecimalString.optional(),
+  // HL per-asset max leverage varies (up to 50x for BTC/ETH, lower for
+  // most alts). We cap at 50 at the edge; the SDK's updateLeverage will
+  // reject per-asset overrides server-side.
   leverage: z.number().int().min(1).max(50).optional(),
   isolated: z.boolean().optional(),
-  slPx: z.string().optional(),
-  tpPx: z.string().optional(),
+  slPx: positiveDecimalString.optional(),
+  tpPx: positiveDecimalString.optional(),
   reduceOnly: z.boolean().optional(),
   slippage: z.number().min(0.1).max(10).optional(),
   confirm: z.boolean().optional().default(false),

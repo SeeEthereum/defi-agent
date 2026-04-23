@@ -1,25 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlWithdraw } from "@/lib/hyperliquid/cli";
-import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
 import { z } from "zod";
 
+// HL withdraw minimum is > $1 — the bridge deducts a flat $1 fee, so anything
+// <= 1 USDC nets the user zero. hlWithdraw() re-checks internally too.
 const schema = z.object({
-  amount: z.string().min(1),
-  destination: z.string().optional(),
+  amount: positiveDecimalString.refine(
+    (v) => Number(v) > 1,
+    "withdraw amount must be > 1 USDC (covers $1 flat fee)"
+  ),
+  // EVM address: 0x + 40 hex chars. Case-insensitive.
+  destination: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, "destination must be a 0x-prefixed 20-byte EVM address")
+    .optional(),
   confirm: z.boolean().optional().default(false),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const params = schema.parse(await request.json());
-    // HL withdraw minimum is $1 (covers the fixed fee)
-    const n = Number(params.amount);
-    if (!Number.isFinite(n) || n <= 1) {
-      return NextResponse.json(
-        { success: false, error: "Withdraw amount must be > 1 USDC (covers $1 flat fee)" },
-        { status: 400 }
-      );
-    }
     const result = await hlWithdraw(params);
     return respond(result);
   } catch (error) {

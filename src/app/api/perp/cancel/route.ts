@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlCancel } from "@/lib/hyperliquid/cli";
-import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { respond, respondBinError, nonNegativeIntegerString } from "@/lib/hyperliquid/route-helper";
 import { z } from "zod";
 
 const schema = z.object({
-  coin: z.string().min(1),
-  orderId: z.string().min(1),
+  coin: z.string().min(1).max(20).regex(/^[A-Z0-9]+$/),
+  // HL order IDs are uint64; validate as a whole-number string.
+  orderId: nonNegativeIntegerString,
   confirm: z.boolean().optional().default(false),
 });
 

@@ -1,26 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { AuthContext, useAuthState } from "@/hooks/use-auth";
 
+// Derive the disclaimer state from localStorage via useSyncExternalStore so
+// React owns the subscription lifecycle. This avoids the set-state-in-effect
+// pattern that React 19 rightly flags: we're not "syncing" external state
+// into React state, we're *reading* external state every render.
+const DISCLAIMER_KEY = "defi-agent-disclaimer-accepted";
+
+function subscribeToStorage(cb: () => void): () => void {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+function getAcceptedClient(): boolean {
+  return localStorage.getItem(DISCLAIMER_KEY) != null;
+}
+function getAcceptedServer(): boolean {
+  // On the server we don't know the disclaimer state; render as "not yet
+  // accepted" so the spinner shows until the client hydrates. The client
+  // snapshot will then correct it on the next commit.
+  return false;
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const authState = useAuthState();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const accepted = useSyncExternalStore(subscribeToStorage, getAcceptedClient, getAcceptedServer);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const accepted = localStorage.getItem("defi-agent-disclaimer-accepted");
-    if (!accepted) {
-      router.replace("/welcome");
-    } else {
-      setReady(true);
-    }
-  }, [router]);
+    if (!accepted) router.replace("/welcome");
+  }, [accepted, router]);
+
+  const ready = accepted;
 
   if (!ready) {
     return (

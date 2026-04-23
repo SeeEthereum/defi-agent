@@ -28,6 +28,27 @@ function resolveBin(): string {
 
 const ONCHAINOS_BIN = resolveBin();
 
+/**
+ * Map an EIP-712 `domain.chainId` to the `--chain` flag onchainos expects.
+ * HL's phantom chainId 1337 isn't a real chain — signing just needs a valid
+ * onchainos key selector, and the HL account settles on Arbitrum, so fallback
+ * there. Unknown chainIds fall back to arbitrum too since our keystore uses
+ * the same address across all EVM chains.
+ */
+function chainIdToOnchainosChain(chainId: number): string {
+  switch (chainId) {
+    case 1: return "ethereum";
+    case 42161: return "arbitrum";
+    case 8453: return "base";
+    case 10: return "optimism";
+    case 137: return "polygon";
+    case 56: return "bsc";
+    case 43114: return "avalanche";
+    case 1337: // HL phantom agent — doesn't exist on-chain, HL settles on arbitrum
+    default: return "arbitrum";
+  }
+}
+
 export class OnchainosSignerError extends Error {
   constructor(message: string, public stderr?: string) {
     super(message);
@@ -88,11 +109,16 @@ export class OnchainosWallet {
       message: params.message,
     });
 
-    // HL requires Arbitrum for on-chain operations like usdClassTransfer/withdraw3
-    // but phantom-agent (order/cancel) uses chainId 1337 over a user-chain signature.
-    // onchainos needs a "chain" matching the `from` address key — arbitrum always works
-    // for this account since the same address is registered across all EVM chains.
-    const chain = "arbitrum";
+    // onchainos `--chain` selects which address/key in the keystore will sign.
+    // It is NOT required to match `domain.chainId` inside the typed data (which
+    // is part of what we're signing — HL's phantom-agent uses 1337 for L1
+    // actions, 42161 for user-signed withdraw3/usdClassTransfer).
+    //
+    // We derive the CLI chain from `domain.chainId` so that if the keystore
+    // is ever reconfigured with separate keys per chain, signing still routes
+    // to the right key. For HL's phantom chainId 1337 (not a real chain) we
+    // fall back to arbitrum, which is where HL settles.
+    const chain = chainIdToOnchainosChain(params.domain.chainId);
 
     return withOnchainosLock(async () => {
       let stdout = "";

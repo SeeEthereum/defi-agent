@@ -31,20 +31,31 @@ export function getInfoClient(): hl.InfoClient {
 }
 
 // ── Address resolution ──────────────────────────────────────────────────────
-// The onchainos wallet IS the HL master in this deployment.
+// The onchainos wallet IS the HL master in this deployment. The address is
+// cached with a short TTL so multi-account switches in the keystore are picked
+// up without needing a process restart. An explicit invalidateHlClients() is
+// also exposed for places that *know* the account just changed (e.g. after
+// an auth swap) and want to force re-resolution immediately.
 interface OnchainosAddressRecord {
   address: string;
   chainIndex?: string;
   chainName?: string;
 }
 
-let _cachedAddress: `0x${string}` | null = null;
+const ADDRESS_TTL_MS = 5 * 60 * 1000;
+let _cachedAddress: { at: number; value: `0x${string}` } | null = null;
 
 export async function getOnchainosAddress(): Promise<`0x${string}`> {
-  if (_cachedAddress) return _cachedAddress;
+  const now = Date.now();
+  if (_cachedAddress && now - _cachedAddress.at < ADDRESS_TTL_MS) {
+    return _cachedAddress.value;
+  }
+  // Env override bypasses the keystore entirely — useful for multi-tenant or
+  // testnet runners where the binary might report a different account.
   if (process.env.HL_MASTER_ADDRESS) {
-    _cachedAddress = process.env.HL_MASTER_ADDRESS.toLowerCase() as `0x${string}`;
-    return _cachedAddress;
+    const env = process.env.HL_MASTER_ADDRESS.toLowerCase() as `0x${string}`;
+    _cachedAddress = { at: now, value: env };
+    return env;
   }
   const result = await walletAddresses();
   if (!result.ok) {
@@ -57,23 +68,45 @@ export async function getOnchainosAddress(): Promise<`0x${string}`> {
   if (!arb?.address) {
     throw new Error("No EVM address found in onchainos wallet addresses response");
   }
-  _cachedAddress = arb.address.toLowerCase() as `0x${string}`;
-  return _cachedAddress;
+  const fresh = arb.address.toLowerCase() as `0x${string}`;
+
+  // If the address changed under us, drop the exchange client — it's bound
+  // to the previous wallet and must be rebuilt before any write.
+  if (_cachedAddress && _cachedAddress.value !== fresh) {
+    _exchangeClient = null;
+  }
+  _cachedAddress = { at: now, value: fresh };
+  return fresh;
 }
 
 // ── Exchange client (write) ─────────────────────────────────────────────────
 let _exchangeClient: hl.ExchangeClient | null = null;
+let _exchangeClientAddress: `0x${string}` | null = null;
 
 export async function getExchangeClient(): Promise<hl.ExchangeClient> {
-  if (_exchangeClient) return _exchangeClient;
   const address = await getOnchainosAddress();
+  // Defensive: if the address changed since last build, rebuild. getOnchainosAddress
+  // already clears _exchangeClient on change, but this keeps the invariant local.
+  if (_exchangeClient && _exchangeClientAddress === address) return _exchangeClient;
   const wallet = new OnchainosWallet(address);
   _exchangeClient = new hl.ExchangeClient({
     transport: getTransport(),
     wallet,
     isTestnet: IS_TESTNET,
   });
+  _exchangeClientAddress = address;
   return _exchangeClient;
+}
+
+/**
+ * Drop every module-level HL cache (address + exchange client). Safe to call
+ * at any time; next access rebuilds from the keystore. Route handlers should
+ * call this after events that imply a wallet swap (future multi-account UI).
+ */
+export function invalidateHlClients(): void {
+  _cachedAddress = null;
+  _exchangeClient = null;
+  _exchangeClientAddress = null;
 }
 
 export function isTestnet(): boolean {

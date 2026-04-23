@@ -40,19 +40,21 @@ export default function DashboardPage() {
   const { markets, isLoading: marketsLoading } = useFluidMarkets();
 
   const [pnl, setPnl] = useState<PnlOverview | null>(null);
-  const [pnlLoading, setPnlLoading] = useState(false);
 
-  // Fetch Portfolio PnL
+  // Fetch Portfolio PnL. All setState calls happen in async callbacks — the
+  // `loading` flag is redundant because `pnl === null` already covers it and
+  // sync setState in the effect body trips React 19's lint.
   useEffect(() => {
     if (!authenticated || !walletAddress) return;
-    setPnlLoading(true);
+    let cancelled = false;
     fetch(`/api/portfolio/pnl?address=${walletAddress}`)
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled) return;
         if (data.success) setPnl(data.data.overview);
       })
-      .catch(() => {})
-      .finally(() => setPnlLoading(false));
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [authenticated, walletAddress]);
 
   if (authLoading) {
@@ -200,7 +202,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Portfolio PnL */}
-      {!pnlLoading && pnl && pnl.totalTrades === 0 && pnl.totalPnl === 0 && (
+      {pnl && pnl.totalTrades === 0 && pnl.totalPnl === 0 && (
         <Card>
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-2">
@@ -218,7 +220,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
-      {!pnlLoading && pnl && (pnl.totalTrades > 0 || pnl.totalPnl !== 0) && (
+      {pnl && (pnl.totalTrades > 0 || pnl.totalPnl !== 0) && (
         <Card>
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-4">
