@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import type { CliResult } from "./types";
 import { appendBuilderCode } from "./builder-code";
+import { withOnchainosLock } from "./lock";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,18 +18,6 @@ function resolveBin(): string {
 }
 
 const ONCHAINOS_BIN = resolveBin();
-
-// Mutex to serialize CLI calls (prevents keyring conflicts)
-let lock: Promise<void> = Promise.resolve();
-
-function withMutex<T>(fn: () => Promise<T>): Promise<T> {
-  const prev = lock;
-  let resolve: () => void;
-  lock = new Promise((r) => {
-    resolve = r;
-  });
-  return prev.then(fn).finally(() => resolve!());
-}
 
 export class OkxCliError extends Error {
   constructor(
@@ -45,7 +34,7 @@ export async function runCli<T = unknown>(
   subcommands: string[],
   args: Record<string, string> = {}
 ): Promise<CliResult<T>> {
-  return withMutex(async () => {
+  return withOnchainosLock(async () => {
     const cmdArgs = [...subcommands];
     for (const [key, value] of Object.entries(args)) {
       if (value === "true") {

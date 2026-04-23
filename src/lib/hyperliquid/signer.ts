@@ -5,15 +5,17 @@
  * to the viem-local-account shape expected by @nktkas/hyperliquid's
  * ExchangeClient (AbstractViemLocalAccount).
  *
- * The onchainos keystore is single-threaded, so every signing call is
- * serialized behind a process-wide mutex (shared with src/lib/okx/cli.ts
- * semantics — each consumer owns its own mutex; the backend serializes
- * keystore access independently).
+ * The onchainos keystore is single-threaded and shared process-wide; every
+ * invocation goes through the unified `withOnchainosLock` mutex in
+ * src/lib/okx/lock.ts, which also serializes the okx/cli.ts runCli path —
+ * otherwise a signTypedData could race a walletBalance and corrupt keystore
+ * state.
  */
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
+import { withOnchainosLock } from "@/lib/okx/lock";
 
 const execFileAsync = promisify(execFile);
 
@@ -25,17 +27,6 @@ function resolveBin(): string {
 }
 
 const ONCHAINOS_BIN = resolveBin();
-
-// ── Mutex: serialize onchainos invocations (keystore is single-threaded) ─────
-let lock: Promise<void> = Promise.resolve();
-function withMutex<T>(fn: () => Promise<T>): Promise<T> {
-  const prev = lock;
-  let resolve: () => void;
-  lock = new Promise((r) => {
-    resolve = r;
-  });
-  return prev.then(fn).finally(() => resolve!());
-}
 
 export class OnchainosSignerError extends Error {
   constructor(message: string, public stderr?: string) {
@@ -103,7 +94,7 @@ export class OnchainosWallet {
     // for this account since the same address is registered across all EVM chains.
     const chain = "arbitrum";
 
-    return withMutex(async () => {
+    return withOnchainosLock(async () => {
       let stdout = "";
       let stderr = "";
       try {
