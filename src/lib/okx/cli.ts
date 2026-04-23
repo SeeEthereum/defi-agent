@@ -197,19 +197,35 @@ export async function walletBalance(
 }
 
 // Send command
+//
+// onchainos flags (verified against v2.3 --help):
+//   --recipient <addr>      (we previously emitted --receipt, which doesn't exist)
+//   --readable-amount <n>   human-readable ("1.5" USDC, "0.01" ETH) — CLI fetches
+//                           decimals and converts. We default to this because all
+//                           our callers pass decimal strings.
+//   --amt <n>               minimal units (wei). Pass via `amtMinimal` if you
+//                           already have wei (e.g. calldata value field).
+//   --contract-token, --from, --chain, --force unchanged.
 export async function walletSend(params: {
-  amount: string;
+  /** Human-readable decimal amount ("1.5"). Mutually exclusive with amtMinimal. */
+  amount?: string;
+  /** Minimal-unit whole-number amount ("1500000" for 1.5 USDC). Takes precedence. */
+  amtMinimal?: string;
   recipient: string;
   chain: string;
   from?: string;
   contractToken?: string;
   force?: boolean;
 }) {
+  if (!params.amount && !params.amtMinimal) {
+    throw new Error("walletSend requires either `amount` (readable) or `amtMinimal` (wei)");
+  }
   const args: Record<string, string> = {
-    amount: params.amount,
-    receipt: params.recipient,
+    recipient: params.recipient,
     chain: params.chain,
   };
+  if (params.amtMinimal) args.amt = params.amtMinimal;
+  else if (params.amount) args["readable-amount"] = params.amount;
   if (params.from) args.from = params.from;
   if (params.contractToken) args["contract-token"] = params.contractToken;
   if (params.force) args.force = "true";
