@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal, Fade, Swap } from "@/components/motion";
 import { FEATURED_MARKETS } from "@/lib/hyperliquid/markets";
 
 // ── Hyperliquid brand colors ──────────────────────────────────────────────────
@@ -92,7 +93,7 @@ type ApiResult<T> =
 
 function Spinner({ className = "" }: { className?: string }) {
   return (
-    <svg className={`animate-spin ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <svg className={`animate-spin-breathe ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="15" strokeLinecap="round" />
     </svg>
   );
@@ -461,60 +462,59 @@ export default function TradePage() {
         />
       </div>
 
-      {/* State-machine banner */}
-      {stage === "register_error" && (
-        <Banner tone="red" title="Setup Hyperliquid fallito">
-          {registerErr ?? "Impossibile configurare HL"}
-          <button
-            className="ml-2 underline text-xs"
-            onClick={async () => {
-              setRegisterErr(null);
-              const r = await apiGet<RegisterData>("/api/perp/register?force=true");
-              if (r.success) setRegister(r.data);
-              else setRegisterErr(r.error);
-            }}
-          >
-            Riprova
-          </button>
-        </Banner>
-      )}
-      {stage === "needs_agent" && register && (
-        <Banner tone="amber" title="Completa setup Hyperliquid">
-          {register.message ?? "È necessaria la registrazione del signing agent."}
-        </Banner>
-      )}
-      {stage === "needs_arb_funds" && quickstart && (
-        <Banner tone="amber" title="Fondi il tuo wallet Arbitrum">
-          <p className="mb-2">
-            Per iniziare a tradare servono almeno <strong>$5 USDC</strong> sul tuo wallet Arbitrum.
-            Attualmente hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong>.
-          </p>
-          <p className="text-xs">
-            Invia USDC a questo indirizzo su Arbitrum:
-          </p>
-          <code className="mt-1 block text-xs bg-background/40 px-2 py-1 rounded break-all select-all">
-            {quickstart.wallet}
-          </code>
-        </Banner>
-      )}
-      {stage === "needs_hl_deposit" && quickstart && (
-        <Banner tone="blue" title="Deposita USDC su Hyperliquid">
-          <p className="mb-2">
-            Hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong> USDC su Arbitrum.
-            Depositali su HL per iniziare a tradare (minimo $5, arrivo in 2–5 min).
-          </p>
-          <Button
-            size="sm"
-            onClick={() => {
-              setFundMode("deposit");
-              setFundAmount(String(Math.floor(quickstart.assets.arb_usdc_balance)));
-              setShowFund(true);
-            }}
-          >
-            Deposita ora
-          </Button>
-        </Banner>
-      )}
+      {/* State-machine banner — crossfades when the stage changes */}
+      <Swap tokenKey={stage}>
+        {stage === "register_error" ? (
+          <Banner tone="red" title="Setup Hyperliquid fallito">
+            {registerErr ?? "Impossibile configurare HL"}
+            <button
+              className="ml-2 underline text-xs"
+              onClick={async () => {
+                setRegisterErr(null);
+                const r = await apiGet<RegisterData>("/api/perp/register?force=true");
+                if (r.success) setRegister(r.data);
+                else setRegisterErr(r.error);
+              }}
+            >
+              Riprova
+            </button>
+          </Banner>
+        ) : stage === "needs_agent" && register ? (
+          <Banner tone="amber" title="Completa setup Hyperliquid">
+            {register.message ?? "È necessaria la registrazione del signing agent."}
+          </Banner>
+        ) : stage === "needs_arb_funds" && quickstart ? (
+          <Banner tone="amber" title="Fondi il tuo wallet Arbitrum">
+            <p className="mb-2">
+              Per iniziare a tradare servono almeno <strong>$5 USDC</strong> sul tuo wallet Arbitrum.
+              Attualmente hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong>.
+            </p>
+            <p className="text-xs">
+              Invia USDC a questo indirizzo su Arbitrum:
+            </p>
+            <code className="mt-1 block text-xs bg-background/40 px-2 py-1 rounded break-all select-all">
+              {quickstart.wallet}
+            </code>
+          </Banner>
+        ) : stage === "needs_hl_deposit" && quickstart ? (
+          <Banner tone="blue" title="Deposita USDC su Hyperliquid">
+            <p className="mb-2">
+              Hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong> USDC su Arbitrum.
+              Depositali su HL per iniziare a tradare (minimo $5, arrivo in 2–5 min).
+            </p>
+            <Button
+              size="sm"
+              onClick={() => {
+                setFundMode("deposit");
+                setFundAmount(String(Math.floor(quickstart.assets.arb_usdc_balance)));
+                setShowFund(true);
+              }}
+            >
+              Deposita ora
+            </Button>
+          </Banner>
+        ) : null}
+      </Swap>
 
       {/* Live prices strip */}
       <div className="mb-5">
@@ -567,73 +567,72 @@ export default function TradePage() {
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === "positions" && (
-        <PositionsTab
-          positions={positions}
-          closingCoin={closingCoin}
-          closeError={closeError}
-          onClose={closePosition}
-        />
-      )}
-      {tab === "trade" && (
-        <TradeTab
-          stage={stage}
-          side={orderSide}
-          setSide={setOrderSide}
-          type={orderType}
-          setType={setOrderType}
-          coin={orderCoin}
-          setCoin={setOrderCoin}
-          size={orderSize}
-          setSize={setOrderSize}
-          price={orderPrice}
-          setPrice={setOrderPrice}
-          leverage={orderLeverage}
-          setLeverage={setOrderLeverage}
-          slPx={orderSlPx}
-          setSlPx={setOrderSlPx}
-          tpPx={orderTpPx}
-          setTpPx={setOrderTpPx}
-          mark={currentMark}
-          preview={orderPreview}
-          loading={orderLoading}
-          confirming={orderConfirming}
-          error={orderError}
-          success={orderSuccess}
-          onPreview={submitOrderPreview}
-          onConfirm={submitOrderConfirm}
-          onCancelPreview={() => setOrderPreview(null)}
-        />
-      )}
-      {tab === "orders" && (
-        <OrdersTab orders={orders} onCancel={cancelOrder} />
-      )}
+      {/* Tab content — <Swap> crossfades between tabs */}
+      <Swap tokenKey={tab}>
+        {tab === "positions" ? (
+          <PositionsTab
+            positions={positions}
+            closingCoin={closingCoin}
+            closeError={closeError}
+            onClose={closePosition}
+          />
+        ) : tab === "trade" ? (
+          <TradeTab
+            stage={stage}
+            side={orderSide}
+            setSide={setOrderSide}
+            type={orderType}
+            setType={setOrderType}
+            coin={orderCoin}
+            setCoin={setOrderCoin}
+            size={orderSize}
+            setSize={setOrderSize}
+            price={orderPrice}
+            setPrice={setOrderPrice}
+            leverage={orderLeverage}
+            setLeverage={setOrderLeverage}
+            slPx={orderSlPx}
+            setSlPx={setOrderSlPx}
+            tpPx={orderTpPx}
+            setTpPx={setOrderTpPx}
+            mark={currentMark}
+            preview={orderPreview}
+            loading={orderLoading}
+            confirming={orderConfirming}
+            error={orderError}
+            success={orderSuccess}
+            onPreview={submitOrderPreview}
+            onConfirm={submitOrderConfirm}
+            onCancelPreview={() => setOrderPreview(null)}
+          />
+        ) : (
+          <OrdersTab orders={orders} onCancel={cancelOrder} />
+        )}
+      </Swap>
 
-      {/* Funding modal */}
-      {showFund && (
-        <FundModal
-          mode={fundMode}
-          setMode={setFundMode}
-          amount={fundAmount}
-          setAmount={setFundAmount}
-          arbBalance={quickstart?.assets.arb_usdc_balance ?? 0}
-          hlWithdrawable={quickstart?.assets.hl_withdrawable_usd ?? 0}
-          preview={fundPreview}
-          loading={fundLoading}
-          error={fundError}
-          success={fundSuccess}
-          onPreview={submitFundPreview}
-          onConfirm={submitFundConfirm}
-          onClose={() => {
-            setShowFund(false);
-            setFundPreview(null);
-            setFundError(null);
-            setFundSuccess(null);
-            setFundAmount("");
-          }}
-        />
-      )}
+      {/* Funding modal — always mounted so <Modal> can play exit animation */}
+      <FundModal
+        open={showFund}
+        mode={fundMode}
+        setMode={setFundMode}
+        amount={fundAmount}
+        setAmount={setFundAmount}
+        arbBalance={quickstart?.assets.arb_usdc_balance ?? 0}
+        hlWithdrawable={quickstart?.assets.hl_withdrawable_usd ?? 0}
+        preview={fundPreview}
+        loading={fundLoading}
+        error={fundError}
+        success={fundSuccess}
+        onPreview={submitFundPreview}
+        onConfirm={submitFundConfirm}
+        onClose={() => {
+          setShowFund(false);
+          setFundPreview(null);
+          setFundError(null);
+          setFundSuccess(null);
+          setFundAmount("");
+        }}
+      />
     </div>
   );
 }
@@ -694,11 +693,11 @@ function PositionsTab({
   }
   return (
     <div className="space-y-2">
-      {closeError && (
+      <Fade in={!!closeError}>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
           {closeError}
         </div>
-      )}
+      </Fade>
       {positions.positions.map((p) => {
         const isLong = p.side === "long";
         return (
@@ -969,16 +968,16 @@ function TradeTab(props: {
         </div>
       )}
 
-      {props.error && (
+      <Fade in={!!props.error}>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
           {props.error}
         </div>
-      )}
-      {props.success && (
+      </Fade>
+      <Fade in={!!props.success}>
         <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500">
           {props.success}
         </div>
-      )}
+      </Fade>
     </div>
   );
 }
@@ -1023,6 +1022,7 @@ function OrdersTab({
 }
 
 function FundModal(props: {
+  open: boolean;
   mode: "deposit" | "withdraw";
   setMode: (m: "deposit" | "withdraw") => void;
   amount: string;
@@ -1040,14 +1040,8 @@ function FundModal(props: {
   const isDeposit = props.mode === "deposit";
   const maxBalance = isDeposit ? props.arbBalance : props.hlWithdrawable;
   return (
-    <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-      onClick={props.onClose}
-    >
-      <div
-        className="bg-card border rounded-xl w-full max-w-sm p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal open={props.open} onClose={props.onClose} contentClassName="max-w-sm">
+      <div className="bg-card border rounded-xl w-full p-4">
         <div className="flex items-center gap-3 mb-4">
           <HyperliquidLogo size={28} />
           <h2 className="text-lg font-semibold">Hyperliquid</h2>
@@ -1114,52 +1108,50 @@ function FundModal(props: {
           )}
         </div>
 
-        {!props.preview && !props.success && (
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" onClick={props.onClose}>Annulla</Button>
-            <Button
-              onClick={props.onPreview}
-              disabled={props.loading || !props.amount}
-              style={{ background: HL_GREEN, color: "#000" }}
-            >
-              {props.loading ? <Spinner /> : "Anteprima"}
-            </Button>
-          </div>
-        )}
-
-        {props.preview && !props.success && (
-          <>
-            <pre className="text-[10px] bg-muted/30 p-2 rounded overflow-x-auto max-h-32 mb-3">
-              {JSON.stringify(props.preview, null, 2)}
-            </pre>
+        <Swap tokenKey={props.success ? "success" : props.preview ? "preview" : "idle"}>
+          {props.success ? (
+            <>
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500 mb-3">
+                {props.success}
+              </div>
+              <Button variant="outline" className="w-full" onClick={props.onClose}>Chiudi</Button>
+            </>
+          ) : props.preview ? (
+            <>
+              <pre className="text-[10px] bg-muted/30 p-2 rounded overflow-x-auto max-h-32 mb-3">
+                {JSON.stringify(props.preview, null, 2)}
+              </pre>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={props.onClose}>Annulla</Button>
+                <Button
+                  onClick={props.onConfirm}
+                  disabled={props.loading}
+                  style={{ background: HL_GREEN, color: "#000" }}
+                >
+                  {props.loading ? <Spinner /> : "Conferma"}
+                </Button>
+              </div>
+            </>
+          ) : (
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" onClick={props.onClose}>Annulla</Button>
               <Button
-                onClick={props.onConfirm}
-                disabled={props.loading}
+                onClick={props.onPreview}
+                disabled={props.loading || !props.amount}
                 style={{ background: HL_GREEN, color: "#000" }}
               >
-                {props.loading ? <Spinner /> : "Conferma"}
+                {props.loading ? <Spinner /> : "Anteprima"}
               </Button>
             </div>
-          </>
-        )}
+          )}
+        </Swap>
 
-        {props.success && (
-          <>
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500 mb-3">
-              {props.success}
-            </div>
-            <Button variant="outline" className="w-full" onClick={props.onClose}>Chiudi</Button>
-          </>
-        )}
-
-        {props.error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500 mt-3">
+        <Fade in={!!props.error} className="mt-3">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
             {props.error}
           </div>
-        )}
+        </Fade>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -277,11 +277,53 @@
   .gradient-bg {
     background: linear-gradient(135deg, oklch(0.96 0.01 270), oklch(0.98 0.005 220));
   }
+  /* Hover lift — Apple-like bounce out on hover, softer settle on leave.
+     Uses a custom cubic for overshoot + shadow that trails the translate
+     so depth feels attached to the card, not painted on. */
   .hover-lift {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
   }
   .hover-lift:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px oklch(0 0 0 / 8%);
+    transform: translateY(-3px);
+    box-shadow:
+      0 12px 28px -6px oklch(0 0 0 / 12%),
+      0 4px 10px -2px oklch(0 0 0 / 6%);
+  }
+  .hover-lift:active {
+    transform: translateY(-1px) scale(0.995);
+    transition:
+      transform 0.08s cubic-bezier(0.4, 0, 1, 1),
+      box-shadow 0.08s cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  /* Disabled fade — any element can opt in for a smooth 40% fade
+     when disabled rather than the default instant opacity-50 snap. */
+  .disabled-ramp[disabled],
+  .disabled-ramp[aria-disabled="true"] {
+    opacity: 0.5;
+    filter: saturate(0.7);
+    transition: opacity 0.15s ease, filter 0.15s ease;
+  }
+  .disabled-ramp:not([disabled]):not([aria-disabled="true"]) {
+    transition: opacity 0.2s ease, filter 0.2s ease;
+  }
+
+  /* Spinner breathing — layer a subtle opacity pulse under the rotation
+     so "loading" feels alive, not a dead rotor. Applied via
+     `animate-spin-breathe` class (replaces bare animate-spin). */
+  @keyframes spin-breathe-rotate {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes spin-breathe-opacity {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .animate-spin-breathe {
+    animation:
+      spin-breathe-rotate 1s linear infinite,
+      spin-breathe-opacity 1.6s ease-in-out infinite;
   }
 }

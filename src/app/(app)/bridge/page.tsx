@@ -5,6 +5,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
+import { Fade, NumberDisplay } from "@/components/motion";
+import { motion, AnimatePresence } from "motion/react";
 
 // Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
 const NATIVE_TOKEN_LIFI = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -87,7 +89,7 @@ function fromWei(amount: string, decimals: number): string {
 function Spinner({ className = "" }: { className?: string }) {
   return (
     <svg
-      className={`animate-spin ${className}`}
+      className={`animate-spin-breathe ${className}`}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -226,51 +228,59 @@ function TokenDropdown({
             disabled={loading}
             className="h-11 rounded-xl border-border/60 bg-white px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
           />
-          {showDropdown && !loading && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5">
-              {filtered.length === 0 && (
-                <div className="px-4 py-3 text-[13px] text-muted-foreground">
-                  No tokens found
-                </div>
-              )}
-              {filtered.map((t, i) => (
-                <button
-                  key={`${t.address}-${i}`}
-                  type="button"
-                  className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors"
-                  onClick={() => {
-                    onSelect(t);
-                    setQuery("");
-                    setShowDropdown(false);
-                  }}
-                >
-                  {t.logoURI && (
-                    <img
-                      src={t.logoURI}
-                      alt={t.symbol}
-                      width={28}
-                      height={28}
-                      className="rounded-full shrink-0"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <span className="font-semibold tracking-tight">
-                      {t.symbol}
-                    </span>
-                    <span className="text-muted-foreground text-xs truncate ml-2">
-                      {t.name.length > 24 ? t.name.slice(0, 22) + "..." : t.name}
-                    </span>
+          <AnimatePresence>
+            {showDropdown && !loading && (
+              <motion.div
+                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5 origin-top"
+                initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
+                animate={{ opacity: 1, scaleY: 1, y: 0 }}
+                exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
+                transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
+              >
+                {filtered.length === 0 && (
+                  <div className="px-4 py-3 text-[13px] text-muted-foreground">
+                    No tokens found
                   </div>
-                  {t.priceUSD && parseFloat(t.priceUSD) > 0 && (
-                    <span className="text-[11px] text-muted-foreground font-mono">
-                      ${parseFloat(t.priceUSD).toFixed(2)}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+                )}
+                {filtered.map((t, i) => (
+                  <button
+                    key={`${t.address}-${i}`}
+                    type="button"
+                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors"
+                    onClick={() => {
+                      onSelect(t);
+                      setQuery("");
+                      setShowDropdown(false);
+                    }}
+                  >
+                    {t.logoURI && (
+                      <img
+                        src={t.logoURI}
+                        alt={t.symbol}
+                        width={28}
+                        height={28}
+                        className="rounded-full shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold tracking-tight">
+                        {t.symbol}
+                      </span>
+                      <span className="text-muted-foreground text-xs truncate ml-2">
+                        {t.name.length > 24 ? t.name.slice(0, 22) + "..." : t.name}
+                      </span>
+                    </div>
+                    {t.priceUSD && parseFloat(t.priceUSD) > 0 && (
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        ${parseFloat(t.priceUSD).toFixed(2)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </div>
@@ -793,8 +803,8 @@ export default function BridgePage() {
                 <p className="text-[11px] font-medium text-indigo-500/80 uppercase tracking-wide mb-1">
                   You will receive
                 </p>
-                <p className="text-2xl font-bold tracking-tight text-indigo-900">
-                  {quoteReceiveAmount}{" "}
+                <p className="text-2xl font-bold tracking-tight text-indigo-900 tabular-nums">
+                  <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
                   <span className="text-base font-semibold text-indigo-600">
                     {quote.toToken.symbol}
                   </span>
@@ -861,8 +871,9 @@ export default function BridgePage() {
           )}
 
           {/* Error display */}
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
+          <Fade in={!!error}>
+            {error && (
+            <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 flex gap-3 items-start">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-500">
                   <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -886,11 +897,13 @@ export default function BridgePage() {
                 </svg>
               </button>
             </div>
-          )}
+            )}
+          </Fade>
 
           {/* Bridge result + status tracking */}
-          {bridgeResult && (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
+          <Fade in={!!bridgeResult}>
+            {bridgeResult && (
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 flex gap-3 items-start">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
                 {(!bridgeStatus || bridgeStatus.status === "PENDING" || bridgeStatus.status === "NOT_FOUND") ? (
                   <Spinner className="text-emerald-600" />
@@ -961,7 +974,8 @@ export default function BridgePage() {
                 </svg>
               </button>
             </div>
-          )}
+            )}
+          </Fade>
 
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">

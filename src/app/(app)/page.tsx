@@ -11,6 +11,7 @@ import { CHAINS } from "@/lib/chains";
 import { formatUsd } from "@/lib/utils";
 import Link from "next/link";
 import { TokenIcon } from "@/components/token-icon";
+import { NumberDisplay } from "@/components/motion";
 
 const CHAIN_COLORS: Record<number, string> = {
   1: "#627EEA",     // Ethereum
@@ -162,8 +163,14 @@ export default function DashboardPage() {
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1">
             Total Portfolio Value
           </p>
-          <p className="text-3xl font-semibold tracking-tight">
-            {balLoading ? "..." : formatUsd(String(totalUsd.toFixed(2)))}
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            {balLoading ? (
+              "..."
+            ) : totalUsd >= 1_000_000 ? (
+              formatUsd(String(totalUsd.toFixed(2)))
+            ) : (
+              <NumberDisplay value={totalUsd} decimals={2} prefix="$" />
+            )}
           </p>
           {/* Chain allocation bar */}
           {!balLoading && totalUsd > 0 && (
@@ -236,24 +243,36 @@ export default function DashboardPage() {
               </Badge>
             </div>
 
-            {/* PnL Summary Row */}
+            {/* PnL Summary Row — NumberDisplay morphs digits on update */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="rounded-xl bg-slate-50/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Total PnL</p>
                 <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {pnl.totalPnl >= 0 ? "+" : ""}{formatUsd(pnl.totalPnl.toFixed(2))}
+                  <NumberDisplay
+                    value={Math.abs(pnl.totalPnl)}
+                    decimals={2}
+                    prefix={pnl.totalPnl >= 0 ? "+$" : "-$"}
+                  />
                 </p>
               </div>
               <div className="rounded-xl bg-slate-50/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Realized</p>
                 <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {pnl.realizedPnl >= 0 ? "+" : ""}{formatUsd(pnl.realizedPnl.toFixed(2))}
+                  <NumberDisplay
+                    value={Math.abs(pnl.realizedPnl)}
+                    decimals={2}
+                    prefix={pnl.realizedPnl >= 0 ? "+$" : "-$"}
+                  />
                 </p>
               </div>
               <div className="rounded-xl bg-slate-50/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Unrealized</p>
                 <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {pnl.unrealizedPnl >= 0 ? "+" : ""}{formatUsd(pnl.unrealizedPnl.toFixed(2))}
+                  <NumberDisplay
+                    value={Math.abs(pnl.unrealizedPnl)}
+                    decimals={2}
+                    prefix={pnl.unrealizedPnl >= 0 ? "+$" : "-$"}
+                  />
                 </p>
               </div>
             </div>

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { toast } from "sonner";
 import { TokenIcon } from "@/components/token-icon";
+import { Fade, NumberDisplay } from "@/components/motion";
+import { motion, AnimatePresence } from "motion/react";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -85,7 +87,7 @@ function fromWei(amount: string, decimals: number): string {
 function Spinner({ className = "" }: { className?: string }) {
   return (
     <svg
-      className={`animate-spin ${className}`}
+      className={`animate-spin-breathe ${className}`}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -230,8 +232,15 @@ function TokenSelector({
             onFocus={() => setShowDropdown(true)}
             className="h-11 rounded-xl border-border/60 bg-white px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
           />
-          {showDropdown && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5">
+          <AnimatePresence>
+            {showDropdown && (
+            <motion.div
+              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5 origin-top"
+              initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
+              animate={{ opacity: 1, scaleY: 1, y: 0 }}
+              exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
+              transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
+            >
               {/* Show wallet tokens first when no search query */}
               {query.length === 0 && walletTokens && walletTokens.length > 0 && (
                 <>
@@ -322,8 +331,9 @@ function TokenSelector({
                   </button>
                 );
               })}
-            </div>
-          )}
+            </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </div>
@@ -927,20 +937,25 @@ export default function SwapPage() {
           {/* Quote result card */}
           {quoteDisplay && quoteDetails && (
             <div className="rounded-xl bg-gradient-to-br from-indigo-50 via-violet-50 to-purple-50 border border-indigo-100/60 overflow-hidden">
-              {/* Main receive amount */}
+              {/* Main receive amount — digits morph on quote refresh */}
               <div className="p-4 pb-3">
                 <p className="text-[11px] font-medium text-indigo-500/80 uppercase tracking-wide mb-1">
                   You will receive
                 </p>
-                <p className="text-2xl font-bold tracking-tight text-indigo-900">
-                  {quoteReceiveAmount}{" "}
+                <p className="text-2xl font-bold tracking-tight text-indigo-900 tabular-nums">
+                  <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
                   <span className="text-base font-semibold text-indigo-600">
                     {toToken?.symbol}
                   </span>
                 </p>
                 {quoteDetails.toUnitPrice && quoteReceiveAmount && (
-                  <p className="text-[12px] text-indigo-400 mt-0.5">
-                    ≈ ${(parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)).toFixed(2)} USD
+                  <p className="text-[12px] text-indigo-400 mt-0.5 tabular-nums">
+                    ≈ <NumberDisplay
+                        value={parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)}
+                        decimals={2}
+                        prefix="$"
+                        suffix=" USD"
+                      />
                   </p>
                 )}
               </div>
@@ -1023,8 +1038,9 @@ export default function SwapPage() {
           )}
 
           {/* Error display */}
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
+          <Fade in={!!error}>
+            {error && (
+            <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 flex gap-3 items-start">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-500">
                   <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1048,11 +1064,13 @@ export default function SwapPage() {
                 </svg>
               </button>
             </div>
-          )}
+            )}
+          </Fade>
 
           {/* Swap result display */}
-          {swapResult && (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
+          <Fade in={!!swapResult}>
+            {swapResult && (
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 flex gap-3 items-start">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
                 {swapResult.status === "confirming" ? (
                   <Spinner className="text-emerald-600" />
@@ -1104,7 +1122,8 @@ export default function SwapPage() {
                 </svg>
               </button>
             </div>
-          )}
+            )}
+          </Fade>
 
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">

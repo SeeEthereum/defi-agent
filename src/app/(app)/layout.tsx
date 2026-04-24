@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -30,6 +31,7 @@ function getAcceptedServer(): boolean {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const authState = useAuthState();
   const router = useRouter();
+  const pathname = usePathname();
   const accepted = useSyncExternalStore(subscribeToStorage, getAcceptedClient, getAcceptedServer);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -75,7 +77,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
           <main className="flex-1 overflow-y-auto">
             <div className="mx-auto max-w-5xl px-4 py-4 md:px-6 md:py-8 pb-24 md:pb-8">
-              {children}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={pathname}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  {children}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </main>
           {/* Mobile bottom navigation */}

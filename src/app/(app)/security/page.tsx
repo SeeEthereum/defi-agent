@@ -108,7 +108,7 @@ function getRiskBadge(level: string | undefined): { label: string; bg: string; t
 function Spinner({ className = "" }: { className?: string }) {
   return (
     <svg
-      className={`animate-spin ${className}`}
+      className={`animate-spin-breathe ${className}`}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
