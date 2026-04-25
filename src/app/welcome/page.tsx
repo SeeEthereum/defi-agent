@@ -206,63 +206,70 @@ export default function WelcomePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-background to-accent/30 p-4">
-      <div className="w-full max-w-lg">
+    <div className="voxr-halo relative min-h-screen flex flex-col items-center justify-center bg-background p-6">
+      {/* Soft halo behind the active slide, mirrors the auth hero. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-1/4 mx-auto h-[420px] max-w-2xl rounded-full opacity-50 blur-[110px]"
+        style={{ background: "radial-gradient(closest-side, oklch(0.55 0.3 295 / 0.45), transparent)" }}
+      />
+
+      <div className="relative w-full max-w-lg">
         {/* Slide content */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center h-20 w-20 rounded-3xl bg-primary/8 mb-6">
+        <div
+          key={currentSlide}
+          className="text-center mb-12 animate-kinetic-in"
+        >
+          <div className="inline-flex items-center justify-center h-20 w-20 rounded-3xl border border-border bg-card mb-7 shadow-[0_0_40px_-10px_oklch(0.62_0.27_295/0.5)]">
             {slide.icon}
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight mb-2">
+          <p className="text-eyebrow mb-4">{slide.subtitle}</p>
+          <h1 className="text-display-lg tracking-tight text-foreground mb-5">
             {slide.title}
           </h1>
-          <p className="text-sm font-medium text-primary/80 mb-4">
-            {slide.subtitle}
-          </p>
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+          <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
             {slide.description}
           </p>
         </div>
 
         {/* Dots */}
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-center justify-center gap-2 mb-9">
           {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => setCurrentSlide(i)}
-              className={`h-2 rounded-full transition-all duration-300 ${
+              aria-label={`Go to slide ${i + 1}`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
                 i === currentSlide
-                  ? "w-8 bg-primary"
-                  : "w-2 bg-border hover:bg-muted-foreground/30"
+                  ? "w-8 bg-primary shadow-[0_0_8px_oklch(0.62_0.27_295/0.7)]"
+                  : "w-1.5 bg-border hover:bg-muted-foreground/40"
               }`}
             />
           ))}
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex gap-3 justify-center">
           {currentSlide > 0 && (
-            <Button
-              variant="outline"
+            <button
               onClick={() => setCurrentSlide((s) => s - 1)}
-              className="flex-1 h-11 rounded-xl text-sm"
+              className="btn-pill-ghost"
             >
               Back
-            </Button>
+            </button>
           )}
-          <Button
+          <button
             onClick={handleNext}
-            className="flex-1 h-11 rounded-xl text-sm font-medium shadow-sm"
+            className="btn-pill-primary"
           >
-            {isLastSlide ? "Get Started" : "Continue"}
-          </Button>
+            {isLastSlide ? "Get Started →" : "Continue →"}
+          </button>
         </div>
 
         {/* Skip */}
         {!isLastSlide && (
           <button
             onClick={() => setShowDisclaimer(true)}
-            className="w-full mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="w-full mt-6 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors text-center"
           >
             Skip introduction
           </button>

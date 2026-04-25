@@ -170,14 +170,15 @@ export default function WalletPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight">Wallet</h1>
-        <p className="text-[13px] text-muted-foreground mt-0.5">Manage your assets across all chains</p>
+        <p className="text-eyebrow">MULTI-CHAIN</p>
+        <h1 className="mt-1.5 text-display-lg text-foreground">Wallet</h1>
+        <p className="text-[13px] text-muted-foreground mt-2">Manage your assets across all chains</p>
       </div>
 
       {/* Account card */}
-      <div className="rounded-2xl border border-border/60 bg-white shadow-sm shadow-black/[0.03] p-4">
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 font-bold text-[15px] shrink-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-950/40 text-indigo-600 font-bold text-[15px] shrink-0">
             {accountName ? accountName.slice(0, 2).toUpperCase() : "W1"}
           </div>
           <div className="flex-1 min-w-0">
@@ -351,7 +352,7 @@ export default function WalletPage() {
                     const isReceive = tx.direction === "IN";
                     const isSuccess = tx.txStatus === "SUCCESS";
                     const isError = tx.txStatus === "ERROR";
-                    const stateColor = isSuccess ? "text-emerald-600" : isError ? "text-red-500" : "text-amber-500";
+                    const stateColor = isSuccess ? "text-emerald-400" : isError ? "text-red-500" : "text-amber-500";
                     const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
                     const dateStr = tx.txTime
                       ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
@@ -390,8 +391,8 @@ export default function WalletPage() {
                       ? "https://solscan.io"
                       : "https://etherscan.io";
 
-                    const iconBg = iconType === "in" ? "bg-emerald-50" : iconType === "approve" ? "bg-amber-50" : iconType === "contract" ? "bg-violet-50" : "bg-indigo-50";
-                    const iconColor = iconType === "in" ? "text-emerald-600" : iconType === "approve" ? "text-amber-600" : iconType === "contract" ? "text-violet-500" : "text-indigo-500";
+                    const iconBg = iconType === "in" ? "bg-emerald-950/30" : iconType === "approve" ? "bg-amber-950/30" : iconType === "contract" ? "bg-violet-50" : "bg-indigo-50";
+                    const iconColor = iconType === "in" ? "text-emerald-400" : iconType === "approve" ? "text-amber-400" : iconType === "contract" ? "text-violet-500" : "text-indigo-500";
 
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">

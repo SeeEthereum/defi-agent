@@ -87,22 +87,22 @@ function getChainName(idx: string | number | undefined): string {
 function getRiskColor(level: string | undefined): string {
   if (!level) return "text-muted-foreground";
   const l = level.toLowerCase();
-  if (l === "high" || l === "3" || l === "danger") return "text-red-600";
-  if (l === "medium" || l === "2" || l === "warning") return "text-amber-600";
-  if (l === "low" || l === "1" || l === "safe" || l === "0") return "text-emerald-600";
+  if (l === "high" || l === "3" || l === "danger") return "text-red-400";
+  if (l === "medium" || l === "2" || l === "warning") return "text-amber-400";
+  if (l === "low" || l === "1" || l === "safe" || l === "0") return "text-emerald-400";
   return "text-muted-foreground";
 }
 
 function getRiskBadge(level: string | undefined): { label: string; bg: string; text: string } {
-  if (!level) return { label: "Unknown", bg: "bg-slate-100", text: "text-slate-600" };
+  if (!level) return { label: "Unknown", bg: "bg-secondary", text: "text-muted-foreground" };
   const l = level.toLowerCase();
   if (l === "high" || l === "3" || l === "danger")
-    return { label: "High Risk", bg: "bg-red-100", text: "text-red-700" };
+    return { label: "High Risk", bg: "bg-red-900/40", text: "text-red-300" };
   if (l === "medium" || l === "2" || l === "warning")
-    return { label: "Medium Risk", bg: "bg-amber-100", text: "text-amber-700" };
+    return { label: "Medium Risk", bg: "bg-amber-900/40", text: "text-amber-300" };
   if (l === "low" || l === "1" || l === "safe" || l === "0")
-    return { label: "Safe", bg: "bg-emerald-100", text: "text-emerald-700" };
-  return { label: level, bg: "bg-slate-100", text: "text-slate-600" };
+    return { label: "Safe", bg: "bg-emerald-900/40", text: "text-emerald-300" };
+  return { label: level, bg: "bg-secondary", text: "text-muted-foreground" };
 }
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -251,15 +251,15 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
 
       {/* Error */}
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 text-[13px] text-red-700">
+        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">
           {error}
         </div>
       )}
 
       {/* Results */}
       {scanned && results.length === 0 && !error && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 text-center">
-          <p className="text-[13px] font-medium text-emerald-700">
+        <div className="rounded-xl bg-emerald-950/30 border border-emerald-800/40 p-4 text-center">
+          <p className="text-[13px] font-medium text-emerald-300">
             No risky tokens found in your wallet
           </p>
         </div>
@@ -318,7 +318,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
                         {badge.label}
                       </span>
                       {isHoneypot && (
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-900/40 text-red-300">
                           Honeypot
                         </span>
                       )}
@@ -335,25 +335,25 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
                     {buyTax != null && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Buy Tax</span>
-                        <span className={Number(buyTax) > 5 ? "text-red-600 font-medium" : ""}>{Number(buyTax).toFixed(1)}%</span>
+                        <span className={Number(buyTax) > 5 ? "text-red-400 font-medium" : ""}>{Number(buyTax).toFixed(1)}%</span>
                       </div>
                     )}
                     {sellTax != null && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Sell Tax</span>
-                        <span className={Number(sellTax) > 5 ? "text-red-600 font-medium" : ""}>{Number(sellTax).toFixed(1)}%</span>
+                        <span className={Number(sellTax) > 5 ? "text-red-400 font-medium" : ""}>{Number(sellTax).toFixed(1)}%</span>
                       </div>
                     )}
                     {isMintable != null && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Mintable</span>
-                        <span className={isMintable ? "text-amber-600" : "text-emerald-600"}>{isMintable ? "Yes" : "No"}</span>
+                        <span className={isMintable ? "text-amber-400" : "text-emerald-400"}>{isMintable ? "Yes" : "No"}</span>
                       </div>
                     )}
                     {canPause != null && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Pausable</span>
-                        <span className={canPause ? "text-amber-600" : "text-emerald-600"}>{canPause ? "Yes" : "No"}</span>
+                        <span className={canPause ? "text-amber-400" : "text-emerald-400"}>{canPause ? "Yes" : "No"}</span>
                       </div>
                     )}
                     {holders != null && Number(holders) > 0 && (
@@ -367,7 +367,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
                   {/* Risk items */}
                   {risks.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-[11px] font-medium text-red-600 mb-1">Risk Factors:</p>
+                      <p className="text-[11px] font-medium text-red-400 mb-1">Risk Factors:</p>
                       <ul className="space-y-0.5">
                         {risks.map((r, j) => (
                           <li key={j} className="text-[11px] text-red-500 flex items-start gap-1.5">
@@ -513,18 +513,25 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
 
       {/* Error */}
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 text-[13px] text-red-700">
+        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">
           {error}
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — Voxr-style "all clear" hero with kinetic display. */}
       {fetched && approvals.length === 0 && !error && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 text-center">
-          <p className="text-[13px] font-medium text-emerald-700">
-            No active token approvals found
+        <div className="voxr-halo relative rounded-2xl border border-border bg-card p-10 text-center overflow-hidden">
+          <div
+            className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-60 w-[320px] rounded-full opacity-50 blur-[100px]"
+            style={{ background: "radial-gradient(closest-side, oklch(0.7 0.18 155 / 0.6), transparent)" }}
+          />
+          <p className="relative text-eyebrow animate-kinetic-in" style={{ color: "oklch(0.7 0.18 155)" }}>
+            ALL CLEAR
           </p>
-          <p className="text-[11px] text-emerald-600 mt-1">
+          <h2 className="relative mt-3 text-display-lg text-foreground animate-kinetic-in stagger-1">
+            No approvals.
+          </h2>
+          <p className="relative mt-3 text-[13px] text-muted-foreground animate-kinetic-in stagger-2">
             Your wallet has no outstanding ERC-20 or Permit2 approvals.
           </p>
         </div>
@@ -537,12 +544,12 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
             <p className="text-[13px] font-medium text-muted-foreground">
               {approvals.length} active approval{approvals.length !== 1 ? "s" : ""}
             </p>
-            <p className="text-[11px] text-amber-600 font-medium">
+            <p className="text-[11px] text-amber-400 font-medium">
               Revoke unused approvals to stay safe
             </p>
           </div>
           {revokeError && (
-            <div className="rounded-xl bg-red-50 border border-red-200/60 p-3 text-[12px] text-red-700">
+            <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-3 text-[12px] text-red-300">
               {revokeError}
             </div>
           )}
@@ -585,9 +592,9 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                       </span>
                     </div>
                     {isRevoked ? (
-                      <span className="text-[11px] font-semibold text-emerald-600">Revoked</span>
+                      <span className="text-[11px] font-semibold text-emerald-400">Revoked</span>
                     ) : isRisky ? (
-                      <span className="text-[11px] font-semibold text-red-600">At Risk</span>
+                      <span className="text-[11px] font-semibold text-red-400">At Risk</span>
                     ) : risk && (
                       <span className={`text-[11px] font-semibold ${riskColor}`}>
                         {risk}
@@ -611,7 +618,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                   {/* Allowance */}
                   <div className="text-[12px]">
                     <span className="text-muted-foreground">Amount: </span>
-                    <span className={`font-medium ${isUnlimited ? "text-amber-600" : ""}`}>
+                    <span className={`font-medium ${isUnlimited ? "text-amber-400" : ""}`}>
                       {isUnlimited
                         ? "Unlimited"
                         : item.remainAmtPrecise
@@ -625,7 +632,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                   {/* Tags */}
                   {item.tags && (
                     <div className="text-[11px]">
-                      <span className={`px-1.5 py-0.5 rounded-full ${item.tags === "isEoa" ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-muted-foreground"}`}>
+                      <span className={`px-1.5 py-0.5 rounded-full ${item.tags === "isEoa" ? "bg-amber-950/30 text-amber-400" : "bg-secondary text-muted-foreground"}`}>
                         {item.tags === "isEoa" ? "EOA (not a contract)" : item.tags}
                       </span>
                     </div>
@@ -640,7 +647,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                         }
                         disabled={isRevoking || !!revokingKey}
                         variant="outline"
-                        className="w-full h-8 rounded-lg text-[12px] font-semibold border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 disabled:opacity-50"
+                        className="w-full h-8 rounded-lg text-[12px] font-semibold border-red-200 text-red-400 hover:bg-red-950/30 hover:text-red-300 hover:border-red-300 disabled:opacity-50"
                       >
                         {isRevoking ? (
                           <span className="flex items-center gap-2">
@@ -660,7 +667,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                   )}
                   {isRevoked && (
                     <div className="pt-1">
-                      <div className="w-full h-8 rounded-lg text-[12px] font-semibold text-emerald-600 bg-emerald-50 flex items-center justify-center gap-1.5">
+                      <div className="w-full h-8 rounded-lg text-[12px] font-semibold text-emerald-400 bg-emerald-950/30 flex items-center justify-center gap-1.5">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20 6 9 17l-5-5" />
                         </svg>
@@ -698,16 +705,17 @@ export default function SecurityPage() {
     <div className="max-w-lg mx-auto space-y-5 py-2">
       {/* Header */}
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+        <p className="text-eyebrow">RISK · APPROVALS</p>
+        <h1 className="mt-1.5 text-display-lg text-foreground">
           Security
         </h1>
-        <p className="text-[13px] text-muted-foreground mt-0.5">
+        <p className="text-[13px] text-muted-foreground mt-2">
           Scan tokens for risks and manage your approvals
         </p>
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 p-1 rounded-xl bg-slate-100">
+      <div className="flex gap-1 p-1 rounded-xl bg-secondary">
         <button
           type="button"
           onClick={() => setTab("scanner")}
@@ -733,7 +741,7 @@ export default function SecurityPage() {
       </div>
 
       {/* Content */}
-      <div className="rounded-2xl border border-border/60 bg-white shadow-sm shadow-black/[0.03] p-5">
+      <div className="rounded-2xl border border-border/60 bg-card p-5">
         {tab === "scanner" ? (
           <TokenScannerTab walletAddress={walletAddress} />
         ) : (

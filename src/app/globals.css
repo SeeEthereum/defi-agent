@@ -48,39 +48,73 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Voxr-inspired dark palette ──────────────────────────────────────────
+   Pure-black base, single iridescent purple accent, near-white type.
+   Cards float at +4–6% lightness, popovers at +7–8%.
+   Borders are luminance-on-alpha so they read on any elev. */
 :root {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.13 0.02 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.02 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.02 260);
-  --primary: oklch(0.37 0.16 270);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.965 0.005 270);
-  --secondary-foreground: oklch(0.28 0.06 270);
-  --muted: oklch(0.965 0.005 270);
-  --muted-foreground: oklch(0.52 0.02 260);
-  --accent: oklch(0.955 0.01 270);
-  --accent-foreground: oklch(0.28 0.06 270);
-  --destructive: oklch(0.58 0.22 25);
-  --border: oklch(0.93 0.005 270);
-  --input: oklch(0.93 0.005 270);
-  --ring: oklch(0.55 0.15 270);
-  --chart-1: oklch(0.55 0.15 270);
-  --chart-2: oklch(0.65 0.18 160);
-  --chart-3: oklch(0.6 0.15 45);
-  --chart-4: oklch(0.7 0.12 200);
-  --chart-5: oklch(0.55 0.12 320);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.99 0.002 270);
-  --sidebar-foreground: oklch(0.13 0.02 260);
-  --sidebar-primary: oklch(0.37 0.16 270);
+  /* Surfaces */
+  --background: oklch(0.07 0.005 285);            /* near-black, faint cool tilt  */
+  --foreground: oklch(0.96 0.005 285);            /* off-white display text       */
+  --card: oklch(0.11 0.008 285);                  /* +4% elev                     */
+  --card-foreground: oklch(0.96 0.005 285);
+  --popover: oklch(0.13 0.012 285);               /* +6% elev                     */
+  --popover-foreground: oklch(0.96 0.005 285);
+  --sidebar: oklch(0.085 0.006 285);              /* between bg and card          */
+  --sidebar-foreground: oklch(0.96 0.005 285);
+  --sidebar-border: oklch(0.96 0.005 285 / 8%);
+  --sidebar-accent: oklch(0.96 0.005 285 / 6%);
+  --sidebar-accent-foreground: oklch(0.96 0.005 285);
+  --sidebar-primary: oklch(0.62 0.27 295);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.955 0.01 270);
-  --sidebar-accent-foreground: oklch(0.28 0.06 270);
-  --sidebar-border: oklch(0.93 0.005 270);
-  --sidebar-ring: oklch(0.55 0.15 270);
+  --sidebar-ring: oklch(0.62 0.27 295);
+
+  /* Brand — iridescent purple. Two stops define the gradient axis. */
+  --primary: oklch(0.62 0.27 295);                /* core violet                  */
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-2: oklch(0.55 0.3 285);               /* deeper, gradient endpoint    */
+  --primary-glow: oklch(0.7 0.28 305);            /* highlight, halos             */
+
+  /* Neutral surfaces / muted */
+  --secondary: oklch(0.96 0.005 285 / 6%);        /* glass tint over bg           */
+  --secondary-foreground: oklch(0.96 0.005 285);
+  --muted: oklch(0.96 0.005 285 / 5%);
+  --muted-foreground: oklch(0.96 0.005 285 / 55%);
+  --accent: oklch(0.96 0.005 285 / 8%);
+  --accent-foreground: oklch(0.96 0.005 285);
+
+  /* Status */
+  --destructive: oklch(0.65 0.24 27);
+  --success: oklch(0.7 0.18 155);
+
+  /* Borders / focus */
+  --border: oklch(0.96 0.005 285 / 9%);
+  --input: oklch(0.96 0.005 285 / 12%);
+  --ring: oklch(0.62 0.27 295 / 60%);
+
+  /* Chart hues — keep usable but pull toward the violet-cyan axis */
+  --chart-1: oklch(0.62 0.27 295);
+  --chart-2: oklch(0.7 0.18 155);
+  --chart-3: oklch(0.7 0.16 45);
+  --chart-4: oklch(0.7 0.18 220);
+  --chart-5: oklch(0.6 0.22 335);
+
+  --radius: 0.75rem;
+}
+
+/* Light "feature grid" islands — opt-in, used inside the auth marketing
+   section to mirror Voxr's dark→light→dark contrast. Only what's inside
+   `.voxr-light-section` flips; the rest of the app stays dark. */
+.voxr-light-section {
+  --background: oklch(0.97 0.005 75);             /* warm off-white              */
+  --foreground: oklch(0.18 0.01 285);
+  --card: oklch(0.99 0.003 75);
+  --card-foreground: oklch(0.18 0.01 285);
+  --muted-foreground: oklch(0.45 0.02 285);
+  --border: oklch(0.18 0.01 285 / 8%);
+  --primary: oklch(0.45 0.25 295);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 @layer base {
@@ -263,19 +297,35 @@
     animation: ai-text-gradient 4s ease-in-out infinite;
   }
 
+  /* Glass card — frosted dark, sits over the background and lets the
+     halo bleed through. Used on header/sidebar surfaces. */
   .glass-card {
-    background: oklch(1 0 0 / 80%);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: oklch(0.11 0.008 285 / 70%);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid oklch(from var(--foreground) l c h / 6%);
   }
+  /* Legacy gradient-text — points at the new iridescent ramp so existing
+     callers (sidebar, AI page, wallet) inherit the Voxr accent for free. */
   .gradient-text {
-    background: linear-gradient(135deg, oklch(0.37 0.16 270), oklch(0.55 0.18 290));
+    background: linear-gradient(
+      100deg,
+      oklch(0.7 0.28 305) 0%,
+      oklch(0.62 0.27 295) 50%,
+      oklch(0.65 0.22 230) 100%
+    );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  /* Legacy gradient-bg — subtle elev wash for callout strips (was a light
+     pastel, now a near-black tint with a violet cast). */
   .gradient-bg {
-    background: linear-gradient(135deg, oklch(0.96 0.01 270), oklch(0.98 0.005 220));
+    background: linear-gradient(
+      135deg,
+      oklch(0.11 0.012 295 / 80%),
+      oklch(0.09 0.006 280 / 80%)
+    );
   }
   /* Hover lift — Apple-like bounce out on hover, softer settle on leave.
      Uses a custom cubic for overshoot + shadow that trails the translate
@@ -325,5 +375,216 @@
     animation:
       spin-breathe-rotate 1s linear infinite,
       spin-breathe-opacity 1.6s ease-in-out infinite;
+  }
+
+  /* ── Voxr display utilities ───────────────────────────────────────────
+     Massive marketing-style typography. clamp() keeps it readable from
+     phone (40px) to ultra-wide (104px) without explicit breakpoints. */
+  .text-display-2xl {
+    font-size: clamp(2.75rem, 7.2vw, 6.5rem);   /* 44 → 104 px */
+    line-height: 0.94;
+    letter-spacing: -0.045em;
+    font-weight: 700;
+  }
+  .text-display-xl {
+    font-size: clamp(2.25rem, 5.6vw, 5rem);     /* 36 → 80 px  */
+    line-height: 0.96;
+    letter-spacing: -0.04em;
+    font-weight: 700;
+  }
+  .text-display-lg {
+    font-size: clamp(1.75rem, 4vw, 3.25rem);    /* 28 → 52 px  */
+    line-height: 1.0;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+  }
+  .text-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: oklch(from var(--foreground) l c h / 55%);
+  }
+
+  /* Iridescent text — purple → magenta → cyan, slow shimmer. */
+  .text-iridescent {
+    background: linear-gradient(
+      100deg,
+      oklch(0.7 0.28 305) 0%,
+      oklch(0.62 0.27 295) 30%,
+      oklch(0.65 0.22 230) 60%,
+      oklch(0.7 0.28 305) 100%
+    );
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: voxr-irisdescent-shift 8s ease-in-out infinite;
+  }
+  @keyframes voxr-irisdescent-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
+  }
+
+  /* Iridescent fill — for cube faces, accents, glow rings. */
+  .bg-iridescent {
+    background: linear-gradient(
+      135deg,
+      oklch(0.62 0.27 295) 0%,
+      oklch(0.55 0.3 285) 50%,
+      oklch(0.7 0.28 305) 100%
+    );
+  }
+
+  /* Pill primary CTA. The two-stop gradient + offset glow shadow gives
+     the "this button has weight" Voxr feel. Hover lifts the glow + shifts
+     the gradient axis 12deg, like the surface caught more light. */
+  .btn-pill-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;                             /* 44px              */
+    padding: 0 1.4rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--primary-foreground);
+    background: linear-gradient(
+      120deg,
+      var(--primary-glow) 0%,
+      var(--primary) 50%,
+      var(--primary-2) 100%
+    );
+    background-size: 180% auto;
+    background-position: 0% 50%;
+    box-shadow:
+      0 0 0 1px oklch(from var(--primary) l c h / 50%) inset,
+      0 8px 28px -10px oklch(from var(--primary) l c h / 70%),
+      0 2px 8px -2px oklch(from var(--primary) l c h / 50%);
+    transition:
+      background-position 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+      box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+      transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    will-change: transform, box-shadow;
+  }
+  .btn-pill-primary:hover:not([disabled]) {
+    background-position: 100% 50%;
+    box-shadow:
+      0 0 0 1px oklch(from var(--primary) l c h / 70%) inset,
+      0 14px 42px -10px oklch(from var(--primary) l c h / 85%),
+      0 4px 14px -2px oklch(from var(--primary) l c h / 65%);
+    transform: translateY(-1px);
+  }
+  .btn-pill-primary:active:not([disabled]) {
+    transform: translateY(0) scale(0.985);
+  }
+  .btn-pill-primary[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: saturate(0.6);
+  }
+
+  /* Pill ghost — neutral counterpart for secondary actions. */
+  .btn-pill-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding: 0 1.4rem;
+    border-radius: 9999px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    background: oklch(from var(--foreground) l c h / 6%);
+    border: 1px solid oklch(from var(--foreground) l c h / 10%);
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .btn-pill-ghost:hover:not([disabled]) {
+    background: oklch(from var(--foreground) l c h / 10%);
+    border-color: oklch(from var(--foreground) l c h / 16%);
+    transform: translateY(-1px);
+  }
+
+  /* Radial halo — the soft purple glow Voxr puts behind every hero.
+     Applied to a positioned ::before/::after via this ready-made layer. */
+  .voxr-halo {
+    position: relative;
+    isolation: isolate;
+  }
+  .voxr-halo::before {
+    content: "";
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 75%;
+    background: radial-gradient(
+      ellipse 60% 80% at 50% 0%,
+      oklch(0.55 0.3 295 / 0.35) 0%,
+      oklch(0.45 0.25 280 / 0.18) 40%,
+      transparent 70%
+    );
+    pointer-events: none;
+    z-index: -1;
+    filter: blur(40px);
+  }
+
+  /* Subtle dotted noise — tints the void so it doesn't feel flat. Applied
+     to the body via a wrapper, not at theme level (zero perf cost). */
+  .voxr-grain::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.035;
+    mix-blend-mode: screen;
+    background-image: radial-gradient(circle at 1px 1px, white 1px, transparent 0);
+    background-size: 3px 3px;
+  }
+
+  /* Voxr card — flatter than shadcn's, purple hairline on hover. */
+  .voxr-card {
+    background: oklch(from var(--foreground) l c h / 3%);
+    border: 1px solid oklch(from var(--foreground) l c h / 7%);
+    border-radius: 1rem;
+    transition:
+      background 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+      transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .voxr-card:hover {
+    background: oklch(from var(--foreground) l c h / 5%);
+    border-color: oklch(from var(--primary) l c h / 35%);
+    box-shadow: 0 0 0 1px oklch(from var(--primary) l c h / 18%),
+      0 18px 40px -16px oklch(from var(--primary) l c h / 30%);
+  }
+
+  /* Kinetic display — entrance-only stretch then settle.
+     Pair with an animation-delay if you want stagger. */
+  @keyframes voxr-kinetic-in {
+    0%   { transform: scaleY(1.6) translateY(8%); opacity: 0; filter: blur(12px); letter-spacing: -0.06em; }
+    60%  { opacity: 1; filter: blur(0); }
+    100% { transform: scaleY(1) translateY(0); letter-spacing: -0.045em; }
+  }
+  .animate-kinetic-in {
+    animation: voxr-kinetic-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: 50% 100%;
+    will-change: transform, opacity, filter;
+  }
+
+  /* Stagger helpers — apply on children of a kinetic container. */
+  .stagger-1  { animation-delay: 0.05s; }
+  .stagger-2  { animation-delay: 0.15s; }
+  .stagger-3  { animation-delay: 0.27s; }
+  .stagger-4  { animation-delay: 0.4s;  }
+
+  /* Outline / ring focus — purple, not the default ring color. */
+  .focus-ring-voxr:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px oklch(from var(--primary) l c h / 70%);
   }
 }

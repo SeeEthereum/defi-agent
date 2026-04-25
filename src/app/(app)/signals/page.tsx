@@ -187,18 +187,18 @@ function SignalsTab() {
       </Button>
 
       {/* Disclaimer */}
-      <div className="rounded-lg bg-amber-50 border border-amber-200/60 px-3 py-2">
-        <p className="text-[11px] text-amber-700 leading-relaxed">
+      <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 px-3 py-2">
+        <p className="text-[11px] text-amber-300 leading-relaxed">
           Signals are for informational purposes only and are <strong>NOT investment advice</strong>. Past performance does not guarantee future results.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 text-[13px] text-red-700">{error}</div>
+        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">{error}</div>
       )}
 
       {fetched && signals.length === 0 && !error && (
-        <div className="rounded-xl bg-slate-50 border border-border/60 p-6 text-center">
+        <div className="rounded-xl bg-secondary border border-border/60 p-6 text-center">
           <p className="text-[13px] text-muted-foreground">No signals found for this chain. Try a different chain or filter.</p>
         </div>
       )}
@@ -242,7 +242,7 @@ function SignalsTab() {
                     <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
                   </div>
                   {change != null && (
-                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-emerald-400" : "text-red-500"}`}>
                       {Number(change) >= 0 ? "+" : ""}{Number(change).toFixed(2)}%
                     </span>
                   )}
@@ -438,11 +438,11 @@ function LeaderboardTab() {
       </Button>
 
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 text-[13px] text-red-700">{error}</div>
+        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">{error}</div>
       )}
 
       {fetched && entries.length === 0 && !error && (
-        <div className="rounded-xl bg-slate-50 border border-border/60 p-6 text-center">
+        <div className="rounded-xl bg-secondary border border-border/60 p-6 text-center">
           <p className="text-[13px] text-muted-foreground">No leaderboard data for this chain/period.</p>
         </div>
       )}
@@ -485,7 +485,7 @@ function LeaderboardTab() {
                     {/* Stats row */}
                     <div className="flex gap-3 mt-1 text-[11px]">
                       {pnl != null && (
-                        <span className={Number(pnl) >= 0 ? "text-emerald-600" : "text-red-500"}>
+                        <span className={Number(pnl) >= 0 ? "text-emerald-400" : "text-red-500"}>
                           PnL: {formatUsd(pnl)}
                         </span>
                       )}
@@ -505,7 +505,7 @@ function LeaderboardTab() {
                         </span>
                       )}
                       {roi != null && (
-                        <span className={Number(roi) >= 0 ? "text-emerald-600" : "text-red-500"}>
+                        <span className={Number(roi) >= 0 ? "text-emerald-400" : "text-red-500"}>
                           ROI: {formatPct(roi)}
                         </span>
                       )}
@@ -541,16 +541,17 @@ export default function SignalsPage() {
     <div className="max-w-lg mx-auto space-y-5 py-2">
       {/* Header */}
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+        <p className="text-eyebrow">SMART MONEY · LEADERBOARD</p>
+        <h1 className="mt-1.5 text-display-lg text-foreground">
           Intelligence
         </h1>
-        <p className="text-[13px] text-muted-foreground mt-0.5">
+        <p className="text-[13px] text-muted-foreground mt-2">
           Smart money signals and top trader leaderboard
         </p>
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 p-1 rounded-xl bg-slate-100">
+      <div className="flex gap-1 p-1 rounded-xl bg-secondary">
         <button
           type="button"
           onClick={() => setTab("signals")}
@@ -576,7 +577,7 @@ export default function SignalsPage() {
       </div>
 
       {/* Content */}
-      <div className="rounded-2xl border border-border/60 bg-white shadow-sm shadow-black/[0.03] p-5">
+      <div className="rounded-2xl border border-border/60 bg-card p-5">
         {tab === "signals" ? <SignalsTab /> : <LeaderboardTab />}
       </div>
     </div>

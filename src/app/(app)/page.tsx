@@ -143,35 +143,32 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Greeting */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Good{" "}
-          {new Date().getHours() < 12
-            ? "morning"
-            : new Date().getHours() < 18
-              ? "afternoon"
-              : "evening"}
-          , {accountName || "there"}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Here&apos;s your portfolio overview
+        <p className="text-eyebrow">
+          {`Good ${
+            new Date().getHours() < 12
+              ? "morning"
+              : new Date().getHours() < 18
+                ? "afternoon"
+                : "evening"
+          } · ${accountName || "trader"}`}
         </p>
+        <h1 className="mt-2 text-display-lg text-foreground">
+          Portfolio
+        </h1>
       </div>
 
-      {/* Portfolio Value Card */}
-      <Card className="overflow-hidden">
-        <div className="gradient-bg px-5 py-5 sm:px-6">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1">
-            Total Portfolio Value
-          </p>
-          <p className="text-3xl font-semibold tracking-tight tabular-nums">
-            {balLoading ? (
-              "..."
-            ) : totalUsd >= 1_000_000 ? (
-              formatUsd(String(totalUsd.toFixed(2)))
-            ) : (
-              <NumberDisplay value={totalUsd} decimals={2} prefix="$" />
-            )}
-          </p>
+      {/* Portfolio Value Card — Voxr style: massive number, halo, no border. */}
+      <div className="voxr-halo relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-7 sm:px-7 sm:py-8">
+        <p className="text-eyebrow mb-3">Total value</p>
+        <p className="text-display-xl tabular-nums text-foreground">
+          {balLoading ? (
+            <span className="opacity-50">···</span>
+          ) : totalUsd >= 1_000_000 ? (
+            formatUsd(String(totalUsd.toFixed(2)))
+          ) : (
+            <NumberDisplay value={totalUsd} decimals={2} prefix="$" />
+          )}
+        </p>
           {/* Chain allocation bar */}
           {!balLoading && totalUsd > 0 && (
             <div className="mt-4">
@@ -205,8 +202,7 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
-        </div>
-      </Card>
+      </div>
 
       {/* Portfolio PnL */}
       {pnl && pnl.totalTrades === 0 && pnl.totalPnl === 0 && (
@@ -214,7 +210,7 @@ export default function DashboardPage() {
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
                   <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                   <polyline points="16 7 22 7 22 13" />
                 </svg>
@@ -232,7 +228,7 @@ export default function DashboardPage() {
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-4">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
                   <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                   <polyline points="16 7 22 7 22 13" />
                 </svg>
@@ -245,9 +241,9 @@ export default function DashboardPage() {
 
             {/* PnL Summary Row — NumberDisplay morphs digits on update */}
             <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+              <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Total PnL</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.totalPnl)}
                     decimals={2}
@@ -255,9 +251,9 @@ export default function DashboardPage() {
                   />
                 </p>
               </div>
-              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+              <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Realized</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.realizedPnl)}
                     decimals={2}
@@ -265,9 +261,9 @@ export default function DashboardPage() {
                   />
                 </p>
               </div>
-              <div className="rounded-xl bg-slate-50/80 p-3 text-center">
+              <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Unrealized</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.unrealizedPnl)}
                     decimals={2}
@@ -280,7 +276,7 @@ export default function DashboardPage() {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <div className="h-7 w-7 rounded-lg bg-blue-950/30 flex items-center justify-center shrink-0">
                   <span className="text-xs">📊</span>
                 </div>
                 <div>
@@ -298,7 +294,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                <div className="h-7 w-7 rounded-lg bg-emerald-950/30 flex items-center justify-center shrink-0">
                   <span className="text-xs">💰</span>
                 </div>
                 <div>
@@ -414,7 +410,7 @@ export default function DashboardPage() {
                     </div>
                     <Badge
                       variant="secondary"
-                      className="text-xs font-semibold text-emerald-600 bg-emerald-50"
+                      className="text-xs font-semibold text-emerald-400 bg-emerald-950/30"
                     >
                       {m.totalAprPercent.toFixed(2)}% APY
                     </Badge>

@@ -614,16 +614,17 @@ export default function BridgePage() {
     <div className="max-w-md mx-auto space-y-5 py-2">
       {/* Page header */}
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+        <p className="text-eyebrow">CROSS-CHAIN · LI.FI</p>
+        <h1 className="mt-1.5 text-display-lg text-foreground">
           Bridge
         </h1>
-        <p className="text-[13px] text-muted-foreground mt-0.5">
+        <p className="text-[13px] text-muted-foreground mt-2">
           Transfer tokens across chains via LI.FI
         </p>
       </div>
 
       {/* Main card */}
-      <div className="rounded-2xl border border-border/60 bg-white shadow-sm shadow-black/[0.03]">
+      <div className="voxr-card">
         <div className="p-5 space-y-5">
           {/* Source chain */}
           <ChainSelector
@@ -634,7 +635,7 @@ export default function BridgePage() {
           />
 
           {/* Your Assets section */}
-          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4">
+          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4">
             <p className="text-[13px] font-medium text-muted-foreground mb-2.5">
               Your Assets on {fromChainConfig?.name ?? "source chain"}
             </p>
@@ -663,7 +664,7 @@ export default function BridgePage() {
                     onClick={() => handleSelectWalletAsset(asset)}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100/60 text-[11px] font-bold text-indigo-600">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-950/40/60 text-[11px] font-bold text-indigo-600">
                         {asset.symbol.slice(0, 2)}
                       </div>
                       <div className="min-w-0">
@@ -691,7 +692,7 @@ export default function BridgePage() {
           </div>
 
           {/* Source token + amount */}
-          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4 space-y-3">
+          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4 space-y-3">
             <TokenDropdown
               tokens={fromTokens}
               selected={fromToken}
@@ -727,7 +728,7 @@ export default function BridgePage() {
                     <button
                       type="button"
                       onClick={handleMaxBalance}
-                      className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100"
+                      className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-950/40"
                     >
                       MAX
                     </button>
@@ -754,7 +755,7 @@ export default function BridgePage() {
             <button
               type="button"
               onClick={handleSwapChains}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-white shadow-sm shadow-black/[0.04] text-muted-foreground hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary text-muted-foreground hover:text-indigo-600 hover:border-indigo-300 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -782,7 +783,7 @@ export default function BridgePage() {
           />
 
           {/* Destination token selector */}
-          <div className="rounded-xl bg-slate-50/80 border border-border/40 p-4">
+          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4">
             <TokenDropdown
               tokens={toTokens}
               selected={toToken}
@@ -849,7 +850,7 @@ export default function BridgePage() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-500 shrink-0">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span className="text-[11px] font-medium text-emerald-600">
+                  <span className="text-[11px] font-medium text-emerald-400">
                     Zero commission — DeFi Agent does not charge any fees on bridges
                   </span>
                 </div>
@@ -861,7 +862,7 @@ export default function BridgePage() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-amber-500 shrink-0 mt-[1px]">
                         <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      <span className="text-[11px] text-amber-700 leading-relaxed">
+                      <span className="text-[11px] text-amber-300 leading-relaxed">
                         Two transactions required: first an ERC-20 <strong>approve</strong> for the bridge router, then the <strong>bridge</strong> itself. Both happen in sequence after you click Bridge.
                       </span>
                     </div>
@@ -873,8 +874,8 @@ export default function BridgePage() {
           {/* Error display */}
           <Fade in={!!error}>
             {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200/60 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
+            <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-900/40">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-500">
                   <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -883,14 +884,14 @@ export default function BridgePage() {
                 <p className="text-[13px] font-semibold text-red-800 mb-0.5">
                   Bridge Error
                 </p>
-                <p className="text-[12px] text-red-600 leading-relaxed">
+                <p className="text-[12px] text-red-400 leading-relaxed">
                   {error}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className="shrink-0 text-red-400 hover:text-red-600 transition-colors p-0.5"
+                className="shrink-0 text-red-400 hover:text-red-400 transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -903,12 +904,12 @@ export default function BridgePage() {
           {/* Bridge result + status tracking */}
           <Fade in={!!bridgeResult}>
             {bridgeResult && (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+            <div className="rounded-xl bg-emerald-950/30 border border-emerald-800/40 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-900/40">
                 {(!bridgeStatus || bridgeStatus.status === "PENDING" || bridgeStatus.status === "NOT_FOUND") ? (
-                  <Spinner className="text-emerald-600" />
+                  <Spinner className="text-emerald-400" />
                 ) : bridgeStatus.status === "DONE" ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-emerald-600">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 ) : (
@@ -925,7 +926,7 @@ export default function BridgePage() {
                     ? "Bridge Failed"
                     : "Bridge In Progress"}
                 </p>
-                <p className="text-[12px] text-emerald-600 leading-relaxed">
+                <p className="text-[12px] text-emerald-400 leading-relaxed">
                   {bridgeStatus?.substatusMessage ??
                     (bridgeStatus?.status === "DONE"
                       ? "Tokens have been delivered to the destination chain."
@@ -938,7 +939,7 @@ export default function BridgePage() {
                     href={`${fromChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeResult.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition-colors"
+                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-emerald-300 hover:text-emerald-900 underline underline-offset-2 transition-colors"
                   >
                     View on Explorer
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -951,7 +952,7 @@ export default function BridgePage() {
                     href={`${toChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeStatus.receiving.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1 text-[12px] font-medium text-emerald-700 hover:text-emerald-900 underline underline-offset-2 transition-colors"
+                    className="inline-flex items-center gap-1 mt-1 text-[12px] font-medium text-emerald-300 hover:text-emerald-900 underline underline-offset-2 transition-colors"
                   >
                     Receiving tx on {toChainConfig?.name}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -967,7 +968,7 @@ export default function BridgePage() {
                   setBridgeStatus(null);
                   if (pollRef.current) clearInterval(pollRef.current);
                 }}
-                className="shrink-0 text-emerald-400 hover:text-emerald-600 transition-colors p-0.5"
+                className="shrink-0 text-emerald-400 hover:text-emerald-400 transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -983,7 +984,7 @@ export default function BridgePage() {
               onClick={handleGetQuote}
               disabled={quoteLoading || !fromToken || !toToken || !amount}
               variant="outline"
-              className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-slate-50 active:bg-slate-100 transition-all"
+              className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-secondary active:bg-secondary transition-all"
             >
               {quoteLoading ? (
                 <span className="flex items-center gap-2">

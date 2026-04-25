@@ -415,10 +415,15 @@ export default function TradePage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   if (!authenticated) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+      <div className="voxr-halo flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
         <HyperliquidLogo size={48} />
-        <h1 className="text-2xl font-bold mt-4">Hyperliquid Perpetuals</h1>
-        <p className="text-muted-foreground mt-2">Accedi per tradare perpetual con leva fino a 50×.</p>
+        <p className="text-eyebrow mt-6 animate-kinetic-in">PERPETUAL DEX · 50× LEVERAGE</p>
+        <h1 className="mt-4 text-display-xl text-foreground animate-kinetic-in stagger-1">
+          Hyperliquid <span className="text-iridescent">Perps</span>
+        </h1>
+        <p className="text-muted-foreground mt-4 max-w-sm animate-kinetic-in stagger-2">
+          Sign in to trade perpetuals with leverage up to 50×.
+        </p>
       </div>
     );
   }
@@ -426,11 +431,11 @@ export default function TradePage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 pb-28 md:pb-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-center gap-3 mb-6">
         <HyperliquidLogo size={36} />
-        <div className="flex-1">
-          <h1 className="text-xl font-bold">Trade</h1>
-          <p className="text-[11px] text-muted-foreground">Hyperliquid perpetual DEX · settled in USDC</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-eyebrow">HYPERLIQUID · USDC</p>
+          <h1 className="text-display-lg text-foreground">Trade</h1>
         </div>
         <Button
           variant="outline"
