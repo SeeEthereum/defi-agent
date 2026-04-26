@@ -595,7 +595,7 @@ export default function EarnPage() {
               key={tab.id}
               onClick={() => setActiveChain(tab.id)}
               className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 cursor-pointer ${
-                activeChain === tab.id ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                activeChain === tab.id ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {tab.label}

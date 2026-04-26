@@ -199,7 +199,7 @@ function TokenSelector({
         {label}
       </p>
       {token ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-white px-4 h-11">
+        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary px-4 h-11">
           <TokenIcon symbol={token.symbol} size={24} />
           <span className="font-semibold text-sm tracking-tight">
             {token.symbol}
@@ -211,7 +211,7 @@ function TokenSelector({
           )}
           <button
             type="button"
-            className="ml-auto text-[13px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
+            className="ml-auto text-[13px] font-medium text-primary hover:text-primary transition-colors"
             onClick={() => {
               onSelect(null as unknown as TokenInfo);
               setQuery("");
@@ -230,12 +230,12 @@ function TokenSelector({
               setShowDropdown(true);
             }}
             onFocus={() => setShowDropdown(true)}
-            className="h-11 rounded-xl border-border/60 bg-white px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
+            className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-primary/25 focus-visible:border-primary"
           />
           <AnimatePresence>
             {showDropdown && (
             <motion.div
-              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5 origin-top"
+              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-secondary shadow-lg shadow-black/5 origin-top"
               initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
               animate={{ opacity: 1, scaleY: 1, y: 0 }}
               exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
@@ -251,7 +251,7 @@ function TokenSelector({
                     <button
                       key={`wallet-${wt.address}-${i}`}
                       type="button"
-                      className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors"
+                      className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors"
                       onClick={() => {
                         onSelect({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals });
                         setQuery("");
@@ -285,7 +285,7 @@ function TokenSelector({
               {/* Search results */}
               {query.length > 0 && searching && (
                 <div className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
-                  <Spinner className="text-indigo-500" />
+                  <Spinner className="text-primary" />
                   Searching...
                 </div>
               )}
@@ -303,7 +303,7 @@ function TokenSelector({
                   <button
                     key={`${parsed.address}-${i}`}
                     type="button"
-                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl"
                     onClick={() => {
                       onSelect(parsed);
                       setQuery("");
@@ -718,7 +718,7 @@ export default function SwapPage() {
               Network
             </p>
             <select
-              className="flex h-11 w-full rounded-xl border border-border/60 bg-white px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+              className="flex h-11 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                 backgroundRepeat: "no-repeat",
@@ -751,7 +751,7 @@ export default function SwapPage() {
                   <button
                     type="button"
                     onClick={() => setShowSlippage(!showSlippage)}
-                    className="text-[12px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-1"
+                    className="text-[12px] font-medium text-primary hover:text-primary transition-colors flex items-center gap-1"
                   >
                     {slippage}%
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showSlippage ? "rotate-180 transition-transform" : "transition-transform"}>
@@ -768,7 +768,7 @@ export default function SwapPage() {
                     key={s}
                     type="button"
                     onClick={() => { setSlippage(s); setShowSlippage(false); }}
-                    className={`flex-1 h-8 rounded-lg text-[12px] font-semibold transition-colors ${slippage === s ? "bg-indigo-600 text-white" : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"}`}
+                    className={`flex-1 h-8 rounded-lg text-[12px] font-semibold transition-colors ${slippage === s ? "bg-primary text-white" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
                   >
                     {s}%
                   </button>
@@ -777,7 +777,7 @@ export default function SwapPage() {
                   <input
                     type="text"
                     placeholder="Custom"
-                    className="w-full h-8 rounded-lg border border-border/60 bg-white px-2 text-[12px] font-semibold text-center outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full h-8 rounded-lg border border-border/60 bg-secondary px-2 text-[12px] font-semibold text-center outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
                     onBlur={(e) => {
                       const v = parseFloat(e.target.value);
                       if (!isNaN(v) && v > 0 && v <= 50) { setSlippage(v.toString()); setShowSlippage(false); }
@@ -799,7 +799,7 @@ export default function SwapPage() {
               <span>Advanced Settings</span>
               <span className="flex items-center gap-2">
                 {gasLevel !== "average" && (
-                  <span className="text-[11px] font-semibold text-indigo-500 capitalize">{gasLevel}</span>
+                  <span className="text-[11px] font-semibold text-primary capitalize">{gasLevel}</span>
                 )}
                 {mevProtection && mevAvailable && (
                   <span className="text-[11px] font-semibold text-emerald-500">MEV Protected</span>
@@ -820,7 +820,7 @@ export default function SwapPage() {
                         key={level}
                         type="button"
                         onClick={() => setGasLevel(level)}
-                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-indigo-600 text-white" : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"}`}
+                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-primary text-white" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
                       >
                         {level === "slow" ? "🐢 Slow" : level === "average" ? "⚡ Average" : "🚀 Fast"}
                       </button>
@@ -844,9 +844,9 @@ export default function SwapPage() {
                     type="button"
                     disabled={!mevAvailable}
                     onClick={() => setMevProtection(!mevProtection)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-emerald-500/30" : "bg-gray-200"}`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-emerald-500/30" : "bg-muted"}`}
                   >
-                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
+                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-secondary shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
                 </div>
               </div>
@@ -878,7 +878,7 @@ export default function SwapPage() {
                   setQuote(null);
                   setError(null);
                 }}
-                className="h-11 rounded-xl border-border/60 bg-white px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
+                className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
               />
               {fromToken && (() => {
                 const bal = walletTokens.find(
@@ -892,7 +892,7 @@ export default function SwapPage() {
                     {bal && parseFloat(bal.balance) > 0 && (
                       <button
                         type="button"
-                        className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+                        className="text-[11px] font-semibold text-primary hover:text-primary transition-colors"
                         onClick={() => setAmount(bal.balance)}
                       >
                         MAX
@@ -937,20 +937,20 @@ export default function SwapPage() {
 
           {/* Quote result card */}
           {quoteDisplay && quoteDetails && (
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50 via-violet-50 to-purple-50 border border-indigo-100/60 overflow-hidden">
+            <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
               {/* Main receive amount — digits morph on quote refresh */}
               <div className="p-4 pb-3">
-                <p className="text-[11px] font-medium text-indigo-500/80 uppercase tracking-wide mb-1">
+                <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
                   You will receive
                 </p>
-                <p className="text-2xl font-bold tracking-tight text-indigo-900 tabular-nums">
+                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                   <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
-                  <span className="text-base font-semibold text-indigo-600">
+                  <span className="text-base font-semibold text-primary">
                     {toToken?.symbol}
                   </span>
                 </p>
                 {quoteDetails.toUnitPrice && quoteReceiveAmount && (
-                  <p className="text-[12px] text-indigo-400 mt-0.5 tabular-nums">
+                  <p className="text-[12px] text-primary/80 mt-0.5 tabular-nums">
                     ≈ <NumberDisplay
                         value={parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)}
                         decimals={2}
@@ -962,7 +962,7 @@ export default function SwapPage() {
               </div>
 
               {/* Details grid */}
-              <div className="border-t border-indigo-100/60 bg-white/60 px-4 py-3 space-y-2.5">
+              <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
                 {/* Slippage */}
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] text-muted-foreground">Slippage</span>
@@ -1020,7 +1020,7 @@ export default function SwapPage() {
                 {quoteDetails.dexName && (
                   <div className="flex items-center justify-between">
                     <span className="text-[12px] text-muted-foreground">Route</span>
-                    <span className="text-[12px] font-medium text-indigo-600">
+                    <span className="text-[12px] font-medium text-primary">
                       {String(quoteDetails.dexName)}
                     </span>
                   </div>
@@ -1148,7 +1148,7 @@ export default function SwapPage() {
             <Button
               onClick={handleSwap}
               disabled={swapLoading || !quote}
-              className="flex-1 h-11 rounded-xl shadow-sm bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-[13px] font-semibold transition-all"
+              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
             >
               {swapLoading ? (
                 <span className="flex items-center gap-2">
@@ -1172,7 +1172,7 @@ export default function SwapPage() {
 
       {/* ── Trending Tokens ───────────────────────────────────────── */}
       {trendingTokens.length > 0 && (
-        <div className="mt-6 rounded-2xl border border-border/50 bg-white/80 backdrop-blur-sm shadow-sm shadow-black/[0.03] overflow-hidden">
+        <div className="mt-6 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm shadow-sm shadow-black/[0.03] overflow-hidden">
           <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-base">🔥</span>
@@ -1195,7 +1195,7 @@ export default function SwapPage() {
                   <button
                     key={`${t.address}-${i}`}
                     type="button"
-                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-indigo-50/40 active:bg-indigo-50/60 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-primary/8 active:bg-primary/15 transition-colors text-left"
                     onClick={() => {
                       const chainConfig = Object.values(CHAINS).find(c => c.swapName === chain);
                       setToToken({

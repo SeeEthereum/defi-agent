@@ -150,7 +150,7 @@ function SignalsTab() {
         <div>
           <p className="text-[13px] font-medium text-muted-foreground mb-2">Chain</p>
           <select
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-3 text-sm font-medium outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={chain}
             onChange={(e) => setChain(e.target.value)}
           >
@@ -162,7 +162,7 @@ function SignalsTab() {
         <div>
           <p className="text-[13px] font-medium text-muted-foreground mb-2">Wallet Type</p>
           <select
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-3 text-sm font-medium outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={walletType}
             onChange={(e) => setWalletType(e.target.value)}
           >
@@ -177,7 +177,7 @@ function SignalsTab() {
       <Button
         onClick={handleFetch}
         disabled={loading}
-        className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2"><Spinner /> Loading signals...</span>
@@ -229,7 +229,7 @@ function SignalsTab() {
             const holders = tokenObj?.holders as string | undefined;
 
             return (
-              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-white p-4">
+              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-secondary p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -300,7 +300,7 @@ function SignalsTab() {
                 {types.length > 0 && (
                   <div className="flex gap-1.5 mt-2.5 flex-wrap">
                     {types.map((t, j) => (
-                      <span key={j} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                      <span key={j} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
                         {WALLET_TYPE_LABELS[t] ?? t}
                       </span>
                     ))}
@@ -374,7 +374,7 @@ function LeaderboardTab() {
       <div>
         <p className="text-[13px] font-medium text-muted-foreground mb-2">Chain</p>
         <select
-          className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-3 text-sm font-medium outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+          className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
           value={chain}
           onChange={(e) => setChain(e.target.value)}
         >
@@ -395,8 +395,8 @@ function LeaderboardTab() {
                 onClick={() => setTimeFrame(k)}
                 className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
                   timeFrame === k
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"
+                    ? "bg-primary text-white"
+                    : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
                 }`}
               >
                 {v}
@@ -414,8 +414,8 @@ function LeaderboardTab() {
                 onClick={() => setSortBy(k)}
                 className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
                   sortBy === k
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"
+                    ? "bg-primary text-white"
+                    : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
                 }`}
               >
                 {v}
@@ -428,7 +428,7 @@ function LeaderboardTab() {
       <Button
         onClick={handleFetch}
         disabled={loading}
-        className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2"><Spinner /> Loading...</span>
@@ -463,11 +463,11 @@ function LeaderboardTab() {
             const wType = e.walletType ?? e.wallet_type;
 
             return (
-              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-white px-4 py-3">
+              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-secondary px-4 py-3">
                 <div className="flex items-center gap-3">
                   {/* Rank */}
                   <span className={`text-[13px] font-bold w-6 text-center tabular-nums shrink-0 ${
-                    i < 3 ? "text-indigo-600" : "text-muted-foreground/50"
+                    i < 3 ? "text-primary" : "text-muted-foreground/50"
                   }`}>
                     {i + 1}
                   </span>
@@ -477,7 +477,7 @@ function LeaderboardTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] font-semibold font-mono">{abbreviate(addr)}</span>
                       {wType && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-violet-400">
                           {WALLET_TYPE_LABELS[wType] ?? wType}
                         </span>
                       )}
@@ -557,7 +557,7 @@ export default function SignalsPage() {
           onClick={() => setTab("signals")}
           className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
             tab === "signals"
-              ? "bg-white text-foreground shadow-sm"
+              ? "bg-secondary text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -568,7 +568,7 @@ export default function SignalsPage() {
           onClick={() => setTab("leaderboard")}
           className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
             tab === "leaderboard"
-              ? "bg-white text-foreground shadow-sm"
+              ? "bg-secondary text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

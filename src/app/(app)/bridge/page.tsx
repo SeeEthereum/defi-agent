@@ -130,7 +130,7 @@ function ChainSelector({
         {label}
       </p>
       <select
-        className="flex h-11 w-full rounded-xl border border-border/60 bg-white px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+        className="flex h-11 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
           backgroundRepeat: "no-repeat",
@@ -190,7 +190,7 @@ function TokenDropdown({
         {label ?? "Token"}
       </p>
       {selected ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-white px-4 h-11">
+        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary px-4 h-11">
           {selected.logoURI && (
             <img
               src={selected.logoURI}
@@ -209,7 +209,7 @@ function TokenDropdown({
           </span>
           <button
             type="button"
-            className="ml-auto text-[13px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
+            className="ml-auto text-[13px] font-medium text-primary hover:text-primary transition-colors"
             onClick={() => onSelect(null as unknown as BridgeTokenInfo)}
           >
             Change
@@ -226,12 +226,12 @@ function TokenDropdown({
             }}
             onFocus={() => setShowDropdown(true)}
             disabled={loading}
-            className="h-11 rounded-xl border-border/60 bg-white px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
+            className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-primary/25 focus-visible:border-primary"
           />
           <AnimatePresence>
             {showDropdown && !loading && (
               <motion.div
-                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-white shadow-lg shadow-black/5 origin-top"
+                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-secondary shadow-lg shadow-black/5 origin-top"
                 initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
                 animate={{ opacity: 1, scaleY: 1, y: 0 }}
                 exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
@@ -246,7 +246,7 @@ function TokenDropdown({
                   <button
                     key={`${t.address}-${i}`}
                     type="button"
-                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/50 active:bg-indigo-50 flex items-center gap-3 text-sm transition-colors"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors"
                     onClick={() => {
                       onSelect(t);
                       setQuery("");
@@ -658,13 +658,13 @@ export default function BridgePage() {
                       fromToken &&
                       (fromToken.address.toLowerCase() === asset.address.toLowerCase() ||
                         fromToken.symbol.toLowerCase() === asset.symbol.toLowerCase())
-                        ? "bg-indigo-50 border border-indigo-200/60"
-                        : "hover:bg-white active:bg-indigo-50/50 border border-transparent"
+                        ? "bg-primary/15 border border-primary/30"
+                        : "hover:bg-secondary active:bg-primary/12 border border-transparent"
                     }`}
                     onClick={() => handleSelectWalletAsset(asset)}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-950/40/60 text-[11px] font-bold text-indigo-600">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
                         {asset.symbol.slice(0, 2)}
                       </div>
                       <div className="min-w-0">
@@ -728,7 +728,7 @@ export default function BridgePage() {
                     <button
                       type="button"
                       onClick={handleMaxBalance}
-                      className="text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-950/40"
+                      className="text-[11px] font-semibold text-primary hover:text-primary transition-colors px-1.5 py-0.5 rounded bg-primary/15 hover:bg-primary/15"
                     >
                       MAX
                     </button>
@@ -745,7 +745,7 @@ export default function BridgePage() {
                   setQuote(null);
                   setError(null);
                 }}
-                className="h-11 rounded-xl border-border/60 bg-white px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-400"
+                className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
               />
             </div>
           </div>
@@ -755,7 +755,7 @@ export default function BridgePage() {
             <button
               type="button"
               onClick={handleSwapChains}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary text-muted-foreground hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -799,23 +799,23 @@ export default function BridgePage() {
 
           {/* Quote result */}
           {quote && quoteReceiveAmount && (
-            <div className="rounded-xl bg-gradient-to-br from-indigo-50 via-violet-50 to-purple-50 border border-indigo-100/60 overflow-hidden">
+            <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
               <div className="p-4 pb-3">
-                <p className="text-[11px] font-medium text-indigo-500/80 uppercase tracking-wide mb-1">
+                <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
                   You will receive
                 </p>
-                <p className="text-2xl font-bold tracking-tight text-indigo-900 tabular-nums">
+                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                   <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
-                  <span className="text-base font-semibold text-indigo-600">
+                  <span className="text-base font-semibold text-primary">
                     {quote.toToken.symbol}
                   </span>
                 </p>
-                <p className="text-[12px] text-indigo-400 mt-0.5">
+                <p className="text-[12px] text-primary/80 mt-0.5">
                   on {toChainConfig?.name ?? "destination chain"}
                 </p>
               </div>
 
-              <div className="border-t border-indigo-100/60 bg-white/60 px-4 py-3 space-y-2.5">
+              <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] text-muted-foreground">Bridge</span>
                   <span className="text-[12px] font-medium text-foreground capitalize">
@@ -998,7 +998,7 @@ export default function BridgePage() {
             <Button
               onClick={handleBridge}
               disabled={bridgeLoading || !quote}
-              className="flex-1 h-11 rounded-xl shadow-sm bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-[13px] font-semibold transition-all"
+              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
             >
               {bridgeLoading ? (
                 <span className="flex items-center gap-2">

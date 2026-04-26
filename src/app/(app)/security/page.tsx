@@ -178,8 +178,8 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
           onClick={() => setMode("wallet")}
           className={`flex-1 h-9 rounded-lg text-[12px] font-semibold transition-colors ${
             mode === "wallet"
-              ? "bg-indigo-600 text-white"
-              : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"
+              ? "bg-primary text-white"
+              : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
           }`}
         >
           Scan My Wallet
@@ -189,8 +189,8 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
           onClick={() => setMode("manual")}
           className={`flex-1 h-9 rounded-lg text-[12px] font-semibold transition-colors ${
             mode === "manual"
-              ? "bg-indigo-600 text-white"
-              : "bg-white border border-border/60 text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"
+              ? "bg-primary text-white"
+              : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
           }`}
         >
           Scan Specific Tokens
@@ -204,7 +204,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
             Select chain
           </p>
           <select
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-4 text-sm font-medium text-foreground outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={chain}
             onChange={(e) => setChain(e.target.value)}
           >
@@ -227,7 +227,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
             placeholder="e.g. 1:0xdac17f958d2ee523a2206206994597c13d831ec7"
             value={manualTokens}
             onChange={(e) => setManualTokens(e.target.value)}
-            className="h-10 rounded-xl border-border/60 bg-white text-sm"
+            className="h-10 rounded-xl border-border/60 bg-secondary text-sm"
           />
           <p className="text-[11px] text-muted-foreground/60 mt-1 px-1">
             Chain IDs: 1=Ethereum, 42161=Arbitrum, 8453=Base, 56=BNB, 137=Polygon
@@ -238,7 +238,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
       <Button
         onClick={handleScan}
         disabled={loading || (mode === "manual" && !manualTokens.trim()) || (mode === "wallet" && !chain)}
-        className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2">
@@ -307,7 +307,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
             return (
               <div
                 key={`${addr}-${i}`}
-                className="rounded-xl border border-border/60 bg-white overflow-hidden"
+                className="rounded-xl border border-border/60 bg-secondary overflow-hidden"
               >
                 {/* Header */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-border/30">
@@ -484,7 +484,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
           Filter by chain (optional)
         </p>
         <select
-          className="flex h-10 w-full rounded-xl border border-border/60 bg-white px-4 text-sm font-medium text-foreground outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+          className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
           value={chain}
           onChange={(e) => setChain(e.target.value)}
         >
@@ -500,7 +500,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
       <Button
         onClick={handleFetch}
         disabled={loading}
-        className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2">
@@ -578,7 +578,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
             return (
               <div
                 key={`${tokenAddr}-${spender}-${i}`}
-                className={`rounded-xl border bg-white overflow-hidden ${
+                className={`rounded-xl border bg-secondary overflow-hidden ${
                   isRevoked ? "border-emerald-200 opacity-60" : isRisky ? "border-red-200" : "border-border/60"
                 }`}
               >
@@ -721,7 +721,7 @@ export default function SecurityPage() {
           onClick={() => setTab("scanner")}
           className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
             tab === "scanner"
-              ? "bg-white text-foreground shadow-sm"
+              ? "bg-secondary text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -732,7 +732,7 @@ export default function SecurityPage() {
           onClick={() => setTab("approvals")}
           className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
             tab === "approvals"
-              ? "bg-white text-foreground shadow-sm"
+              ? "bg-secondary text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

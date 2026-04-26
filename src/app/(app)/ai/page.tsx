@@ -552,18 +552,18 @@ export default function AiPage() {
             <div className="relative flex h-28 w-28 items-center justify-center animate-ai-float">
               {/* Expanding rings */}
               <span className="absolute h-16 w-16 rounded-2xl border border-violet-400/30 animate-ai-ring" />
-              <span className="absolute h-16 w-16 rounded-2xl border border-indigo-400/20 animate-ai-ring-delay" />
+              <span className="absolute h-16 w-16 rounded-2xl border border-primary/20 animate-ai-ring-delay" />
 
               {/* Orbit dot 1 — violet */}
               <span className="pointer-events-none absolute top-1/2 left-1/2 h-2.5 w-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_3px_oklch(0.55_0.28_290/0.7)] animate-ai-orbit-lg-1" />
               {/* Orbit dot 2 — cyan */}
               <span className="pointer-events-none absolute top-1/2 left-1/2 h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_7px_3px_oklch(0.65_0.22_200/0.6)] animate-ai-orbit-lg-2" />
               {/* Orbit dot 3 — indigo */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_2px_oklch(0.5_0.24_260/0.6)] animate-ai-orbit-lg-3" />
+              <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_2px_oklch(0.5_0.24_260/0.6)] animate-ai-orbit-lg-3" />
 
               {/* Main icon */}
               <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 via-indigo-500/15 to-cyan-500/15 border border-violet-400/25 flex items-center justify-center animate-ai-glow">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600 animate-ai-spin-slow">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-400 animate-ai-spin-slow">
                   <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
                 </svg>
               </div>
@@ -581,7 +581,7 @@ export default function AiPage() {
                 <button
                   key={s}
                   style={{ animation: `ai-fade-up 0.45s ease both ${0.25 + i * 0.07}s`, opacity: 0 }}
-                  className="rounded-xl border border-violet-200/60 bg-violet-50/60 px-3 py-2 text-[12px] text-violet-700/80 hover:bg-violet-100/80 hover:text-violet-800 hover:border-violet-300/70 transition-colors text-left shadow-sm"
+                  className="rounded-xl border border-primary/25 bg-secondary px-3 py-2 text-[12px] text-foreground/70 hover:bg-primary/15 hover:text-foreground hover:border-primary/40 transition-colors text-left shadow-sm"
                   onClick={() => sendMessage(s)}
                 >
                   {s}
@@ -685,7 +685,7 @@ export default function AiPage() {
                 }
               }}
               disabled={loading}
-              className="w-full resize-none rounded-2xl border border-violet-200/50 bg-violet-50/30 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-violet-400/30 focus:border-violet-400/40 disabled:opacity-60 overflow-hidden animate-ai-input"
+              className="w-full resize-none rounded-2xl border border-primary/20 bg-secondary/60 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary disabled:opacity-60 overflow-hidden animate-ai-input"
               style={{ minHeight: "44px" }}
             />
           </div>

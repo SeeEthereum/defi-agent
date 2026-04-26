@@ -178,7 +178,7 @@ export default function WalletPage() {
       {/* Account card */}
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-950/40 text-indigo-600 font-bold text-[15px] shrink-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary font-bold text-[15px] shrink-0">
             {accountName ? accountName.slice(0, 2).toUpperCase() : "W1"}
           </div>
           <div className="flex-1 min-w-0">
@@ -193,7 +193,7 @@ export default function WalletPage() {
                   if (id) handleSwitchAccount(id);
                 }}
                 disabled={switchingAccount}
-                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-white text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-indigo-300 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border/60 bg-secondary text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors disabled:opacity-50"
               >
                 {switchingAccount ? (
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -208,7 +208,7 @@ export default function WalletPage() {
             <button
               onClick={handleAddAccount}
               disabled={addingAccount}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-indigo-600 text-white text-[12px] font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-white text-[12px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {addingAccount ? (
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -226,16 +226,16 @@ export default function WalletPage() {
       <Tabs defaultValue="balances">
         <div className="overflow-x-auto pb-1 -mx-1 px-1">
         <TabsList className="h-10 rounded-full bg-muted/60 p-1 w-max min-w-full">
-          <TabsTrigger value="balances" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="balances" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-secondary data-[state=active]:shadow-sm">
             Balances
           </TabsTrigger>
-          <TabsTrigger value="history" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm" onClick={() => { if (!historyLoaded) loadHistory(); }}>
+          <TabsTrigger value="history" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-secondary data-[state=active]:shadow-sm" onClick={() => { if (!historyLoaded) loadHistory(); }}>
             History
           </TabsTrigger>
-          <TabsTrigger value="deposit" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="deposit" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-secondary data-[state=active]:shadow-sm">
             Deposit
           </TabsTrigger>
-          <TabsTrigger value="send" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="send" className="rounded-full px-3 sm:px-5 text-[13px] font-medium data-[state=active]:bg-secondary data-[state=active]:shadow-sm">
             Send
           </TabsTrigger>
         </TabsList>
@@ -391,8 +391,8 @@ export default function WalletPage() {
                       ? "https://solscan.io"
                       : "https://etherscan.io";
 
-                    const iconBg = iconType === "in" ? "bg-emerald-950/30" : iconType === "approve" ? "bg-amber-950/30" : iconType === "contract" ? "bg-violet-50" : "bg-indigo-50";
-                    const iconColor = iconType === "in" ? "text-emerald-400" : iconType === "approve" ? "text-amber-400" : iconType === "contract" ? "text-violet-500" : "text-indigo-500";
+                    const iconBg = iconType === "in" ? "bg-emerald-950/30" : iconType === "approve" ? "bg-amber-950/30" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
+                    const iconColor = iconType === "in" ? "text-emerald-400" : iconType === "approve" ? "text-amber-400" : iconType === "contract" ? "text-violet-400" : "text-primary";
 
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
@@ -443,7 +443,7 @@ export default function WalletPage() {
                               href={`${explorerBase}/tx/${tx.txHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[11px] text-indigo-500 hover:text-indigo-700 font-mono"
+                              className="text-[11px] text-primary hover:text-primary font-mono"
                             >
                               {tx.txHash.slice(0, 6)}…{tx.txHash.slice(-4)}
                             </a>
@@ -615,7 +615,7 @@ export default function WalletPage() {
                     />
                     <button
                       type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary hover:text-primary transition-colors"
                       onClick={() => {
                         const chainBal = balancesByChain[parseInt(sendForm.chain)];
                         const tokens = chainBal?.tokens ?? [];
