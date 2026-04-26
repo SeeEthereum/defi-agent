@@ -1,8 +1,8 @@
 # DeFi Agent
 
-**AI-powered DeFi management platform built on OKX Agentic Wallet.**
+**AI-powered, non-custodial DeFi command center built on OKX Agentic Wallet.**
 
-Trade any token, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with an AI assistant that can do it all via chat.
+Swap any token, bridge across chains, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with a conversational AI agent that can execute every operation by chat. Email login, TEE custody, no seed phrases.
 
 > Created by [0xSalvo](https://x.com/salvodisobey)
 
@@ -157,7 +157,8 @@ No seed phrases. No browser extensions. Just email login and you're in.
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 15 (App Router), React 19, Tailwind CSS, shadcn/ui |
+| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/ui |
+| Visual identity | Voxr-inspired dark theme — OKLCH tokens, iridescent 3D prop (Three.js + R3F + drei), procedural Lightformer environment, Apple-style motion (`motion/react`) |
 | Backend | Next.js API Routes (35+ endpoints) |
 | Wallet | OKX Agentic Wallet (TEE) via `onchainos` CLI |
 | Swap | OKX DEX Aggregator API (HMAC-SHA256 auth) |

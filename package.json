@@ -2,6 +2,7 @@
   "name": "defi-app",
   "version": "0.1.0",
   "private": true,
+  "description": "AI-powered, non-custodial DeFi command center — swap, bridge, earn, scan, and track smart money across 6 chains via a conversational agent. OKX TEE custody, no seed phrases.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

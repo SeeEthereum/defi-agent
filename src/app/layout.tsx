@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "DeFi Agent - AI-Powered DeFi Management",
   description:
-    "Manage your DeFi portfolio with AI assistance. Swap, lend, and earn across multiple chains.",
+    "Non-custodial DeFi command center. Swap, bridge, earn yield, scan for risks, and track smart money across 6 chains — orchestrated by a conversational AI agent. Email login, OKX TEE custody, no seed phrases.",
 };
 
 export default function RootLayout({
