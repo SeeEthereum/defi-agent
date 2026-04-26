@@ -233,6 +233,13 @@ export async function walletContractCall(params: {
    * calls that don't transfer native value.
    */
   amt?: string;
+  /**
+   * Optional gas limit override. Like `amt`, this maps to a CLI flag that
+   * expects a non-negative DECIMAL integer string. Hex strings (e.g.
+   * LI.FI's `transactionRequest.gasLimit = "0x298dfa"`) are auto-normalized
+   * to decimal below — but if you have the value in decimal already, just
+   * pass it as-is.
+   */
   gasLimit?: string;
   from?: string;
   mevProtection?: boolean;
@@ -258,7 +265,15 @@ export async function walletContractCall(params: {
   }
   if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
   if (params.amt && params.amt !== "0") args.amt = params.amt;
-  if (params.gasLimit) args["gas-limit"] = params.gasLimit;
+  if (params.gasLimit) {
+    // `--gas-limit` rejects hex (the CLI errors with `must be a non-negative
+    // integer, got "0x..."`). Normalize defensively so callers can forward
+    // third-party tx requests (LI.FI, 0x, OKX DEX) verbatim without each
+    // having to remember to decode.
+    args["gas-limit"] = params.gasLimit.startsWith("0x")
+      ? BigInt(params.gasLimit).toString()
+      : params.gasLimit;
+  }
   if (params.from) args.from = params.from;
   if (params.mevProtection) args["mev-protection"] = "true";
   if (params.jitoUnsignedTx) args["jito-unsigned-tx"] = params.jitoUnsignedTx;
