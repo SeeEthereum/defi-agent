@@ -458,7 +458,11 @@
     );
     background-size: 180% auto;
     background-position: 0% 50%;
+    /* Inset top-edge highlight (the white "glass" line on Voxr pills) +
+       outer hairline + offset glow shadow. The inset highlight is what
+       gives the button its glossy, dimensional read against pure black. */
     box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.22),
       0 0 0 1px oklch(from var(--primary) l c h / 50%) inset,
       0 8px 28px -10px oklch(from var(--primary) l c h / 70%),
       0 2px 8px -2px oklch(from var(--primary) l c h / 50%);
@@ -471,6 +475,7 @@
   .btn-pill-primary:hover:not([disabled]) {
     background-position: 100% 50%;
     box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.28),
       0 0 0 1px oklch(from var(--primary) l c h / 70%) inset,
       0 14px 42px -10px oklch(from var(--primary) l c h / 85%),
       0 4px 14px -2px oklch(from var(--primary) l c h / 65%);
@@ -518,15 +523,19 @@
     position: absolute;
     inset: -20% -10% auto -10%;
     height: 75%;
+    /* Halo is a Voxr signature — at 0.35/0.18 it whispered. Voxr renders
+       it as a confident wash, so we lift the inner stop to 0.55 and the
+       mid stop to 0.32, then double the blur radius for a softer, fuller
+       glow that survives on pure-black backgrounds. */
     background: radial-gradient(
       ellipse 60% 80% at 50% 0%,
-      oklch(0.55 0.3 295 / 0.35) 0%,
-      oklch(0.45 0.25 280 / 0.18) 40%,
+      oklch(0.55 0.3 295 / 0.55) 0%,
+      oklch(0.45 0.25 280 / 0.32) 40%,
       transparent 70%
     );
     pointer-events: none;
     z-index: -1;
-    filter: blur(40px);
+    filter: blur(120px);
   }
 
   /* Subtle dotted noise — tints the void so it doesn't feel flat. Applied

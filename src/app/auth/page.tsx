@@ -135,7 +135,7 @@ export default function AuthPage() {
               <span className="text-iridescent">Start commanding them.</span>
             </h1>
 
-            <p className="mt-7 max-w-md text-[15px] leading-relaxed text-muted-foreground animate-kinetic-in stagger-2">
+            <p className="mt-7 max-w-md text-[15px] leading-relaxed text-foreground/70 animate-kinetic-in stagger-2">
               One assistant. Every chain. Every protocol. Trade, swap, bridge and
               earn from a single pane — your keys never leave OKX TEE.
             </p>
@@ -236,14 +236,34 @@ export default function AuthPage() {
             </div>
           </div>
 
-          {/* ── 3D prop ── */}
+          {/* ── 3D prop + stat line ── */}
           <div className="md:col-span-5 lg:col-span-5 relative min-h-[300px] md:min-h-[520px]">
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
               <IridescentProp className="h-[460px] w-[460px] max-w-full" />
+              {/* Anchor stat — fills the right-column air the prop alone
+                  doesn't, in eyebrow + tabular-nums tone. */}
+              <p className="mt-2 text-[11px] tracking-[0.18em] uppercase text-foreground/55 tabular-nums">
+                <span className="text-foreground/80 font-semibold">1</span> sign-in
+                <span className="mx-2 opacity-40">·</span>
+                <span className="text-foreground/80 font-semibold">6</span> chains
+                <span className="mx-2 opacity-40">·</span>
+                zero seed phrases
+              </p>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Bleed — soft fade from dark hero into the light island so the
+          dark→light hand-off feels intentional, not a guillotine cut. */}
+      <div
+        aria-hidden="true"
+        className="h-32 -mb-px"
+        style={{
+          background:
+            "linear-gradient(to bottom, transparent 0%, oklch(0.965 0.005 85 / 0.35) 60%, oklch(0.965 0.005 85) 100%)",
+        }}
+      />
 
       {/* ── LIGHT FEATURE GRID ─────────────────────────────────────────
           Mirrors Voxr's "Power Up Your Pipeline" panel — a light island
