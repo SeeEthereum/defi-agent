@@ -44,7 +44,15 @@ function chainIdToOnchainosChain(chainId: number): string {
     case 137: return "polygon";
     case 56: return "bsc";
     case 43114: return "avalanche";
-    case 1337: // HL phantom agent — doesn't exist on-chain, HL settles on arbitrum
+    // HL phantom-agent for L1 trading actions (signL1Action). chainId 1337
+    // never settles on-chain — HL just embeds it in the EIP-712 domain so the
+    // recovered EOA is unambiguous. Settlement happens on Arbitrum.
+    case 1337: return "arbitrum";
+    // HL user-signed actions (withdraw3, usdClassTransfer, approveAgent) use
+    // signatureChainId = 0x66eee (= 421614). Same story: it's an embedded
+    // domain id, not a real settlement chain. Route to arbitrum for the
+    // keystore selector.
+    case 421614: return "arbitrum";
     default: return "arbitrum";
   }
 }

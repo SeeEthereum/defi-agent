@@ -117,6 +117,25 @@ function roundPrice(price: number, szDecimals: number): string {
   return (Math.round(price * factor) / factor).toFixed(decimals);
 }
 
+/**
+ * Worst-fill limit price for a market trigger order (TP/SL).
+ *
+ * HL's `trigger.isMarket = true` orders still require a limit `p` field —
+ * it's the worst-acceptable fill price. The HL UI default (and the
+ * hyperliquid-plugin default) is 10% slippage tolerance: when the trigger
+ * fires, the close should fill at any price within 10% of triggerPx in the
+ * appropriate direction.
+ *
+ * - Closing a long → side=sell → fills at any price ≥ p → p = triggerPx * 0.9
+ * - Closing a short → side=buy → fills at any price ≤ p → p = triggerPx * 1.1
+ *
+ * Without this buffer (`p = triggerPx`), a fast move past the trigger leaves
+ * the market order unfillable and the position unprotected.
+ */
+function tpslWorstFillPx(triggerPx: number, isBuyToClose: boolean): number {
+  return isBuyToClose ? triggerPx * 1.1 : triggerPx * 0.9;
+}
+
 // ── Read operations ──────────────────────────────────────────────────────────
 
 export interface HlQuickstart {
@@ -459,71 +478,78 @@ export async function hlOrder(params: HlOrderParams): Promise<HlResult<unknown>>
       }
     }
 
-    const client = await getExchangeClient();
-    const res = await client.order({
-      orders: [
-        {
-          a: asset.assetId,
-          b: params.side === "buy",
-          p: pxStr,
-          s: sizeStr,
-          r: params.reduceOnly ?? false,
-          t: isMarket
-            ? { limit: { tif: "Ioc" } }
-            : { limit: { tif: "Gtc" } },
-        },
-      ],
-      grouping: "na",
-    });
+    // Atomic bracket: parent + optional TP/SL go in ONE order request.
+    // Prior code submitted them as two separate `client.order()` calls, which
+    // (a) breaks HL's `normalTpsl` semantics ("children activate only when
+    // the entry fills" + "if entry partially fills, children activate
+    // proportionally"), and (b) opens a window where the parent fills but
+    // the second request fails, leaving the position unprotected. With the
+    // unified request, HL atomically links the children to the entry.
+    const wantsBracket = (params.slPx || params.tpPx) && !params.reduceOnly;
+    const oppSide = params.side === "buy" ? false : true;
 
-    // Check for per-order errors
-    const statuses = res.response.data.statuses;
-    const firstErr = statuses.find((s) => typeof s === "object" && s !== null && "error" in s);
-    if (firstErr && typeof firstErr === "object" && "error" in firstErr) {
-      return err((firstErr as { error: string }).error);
+    type ParentOrder = { a: number; b: boolean; p: string; s: string; r: boolean; t: { limit: { tif: "Ioc" | "Gtc" | "Alo" | "FrontendMarket" } } };
+    type TriggerOrder = { a: number; b: boolean; p: string; s: string; r: boolean; t: { trigger: { isMarket: boolean; triggerPx: string; tpsl: "tp" | "sl" } } };
+    const orders: Array<ParentOrder | TriggerOrder> = [
+      {
+        a: asset.assetId,
+        b: params.side === "buy",
+        p: pxStr,
+        s: sizeStr,
+        r: params.reduceOnly ?? false,
+        t: isMarket
+          ? { limit: { tif: "Ioc" } }
+          : { limit: { tif: "Gtc" } },
+      },
+    ];
+
+    if (wantsBracket && params.tpPx) {
+      const tpTrigger = roundPrice(Number(params.tpPx), asset.szDecimals);
+      const tpLimit = roundPrice(tpslWorstFillPx(Number(tpTrigger), oppSide), asset.szDecimals);
+      orders.push({
+        a: asset.assetId, b: oppSide, p: tpLimit, s: sizeStr, r: true,
+        t: { trigger: { isMarket: true, triggerPx: tpTrigger, tpsl: "tp" } },
+      });
+    }
+    if (wantsBracket && params.slPx) {
+      const slTrigger = roundPrice(Number(params.slPx), asset.szDecimals);
+      const slLimit = roundPrice(tpslWorstFillPx(Number(slTrigger), oppSide), asset.szDecimals);
+      orders.push({
+        a: asset.assetId, b: oppSide, p: slLimit, s: sizeStr, r: true,
+        t: { trigger: { isMarket: true, triggerPx: slTrigger, tpsl: "sl" } },
+      });
     }
 
-    // Optional SL/TP as a follow-up trigger order.
-    // If the parent order succeeded but SL/TP fails, we return a SUCCESS result
-    // with a `tpslAttached: false` flag — the position is open and the user
-    // needs to know protection wasn't installed. We do NOT unwind the parent
-    // because HL doesn't support atomic bracket orders; unwinding creates
-    // another trade the user didn't ask for.
+    const client = await getExchangeClient();
+    const res = await client.order({
+      orders,
+      grouping: orders.length > 1 ? "normalTpsl" : "na",
+    });
+
+    const statuses = res.response.data.statuses;
+
+    // Parent is statuses[0]. If it errored, the children (if any) are moot —
+    // they're orphaned by HL anyway since `normalTpsl` ties them to the entry.
+    const parentStatus = statuses[0];
+    if (typeof parentStatus === "object" && parentStatus !== null && "error" in parentStatus) {
+      return err((parentStatus as { error: string }).error);
+    }
+
+    // Children are statuses[1..]. If a child errored, the position IS open
+    // (parent succeeded) but TP/SL didn't attach. We surface a warning rather
+    // than unwinding — there's no atomic rollback in HL, and unwinding would
+    // create a separate trade the user didn't ask for.
     let tpslAttached: true | false | "n/a" = "n/a";
     let tpslError: string | undefined;
-    if ((params.slPx || params.tpPx) && !params.reduceOnly) {
-      const oppSide = params.side === "buy" ? false : true;
-      type TriggerOrder = { a: number; b: boolean; p: string; s: string; r: boolean; t: { trigger: { isMarket: boolean; triggerPx: string; tpsl: "tp" | "sl" } } };
-      const children: TriggerOrder[] = [];
-      if (params.tpPx) {
-        const tpPx = roundPrice(Number(params.tpPx), asset.szDecimals);
-        children.push({
-          a: asset.assetId, b: oppSide, p: tpPx, s: sizeStr, r: true,
-          t: { trigger: { isMarket: true, triggerPx: tpPx, tpsl: "tp" } },
-        });
-      }
-      if (params.slPx) {
-        const slPx = roundPrice(Number(params.slPx), asset.szDecimals);
-        children.push({
-          a: asset.assetId, b: oppSide, p: slPx, s: sizeStr, r: true,
-          t: { trigger: { isMarket: true, triggerPx: slPx, tpsl: "sl" } },
-        });
-      }
-      if (children.length) {
-        try {
-          const tpslRes = await client.order({ orders: children, grouping: "normalTpsl" });
-          const childStatuses = tpslRes.response.data.statuses;
-          const childErr = childStatuses.find((s) => typeof s === "object" && s !== null && "error" in s);
-          if (childErr && typeof childErr === "object" && "error" in childErr) {
-            tpslAttached = false;
-            tpslError = (childErr as { error: string }).error;
-          } else {
-            tpslAttached = true;
-          }
-        } catch (e) {
-          tpslAttached = false;
-          tpslError = (e as Error).message;
-        }
+    if (statuses.length > 1) {
+      const childErr = statuses.slice(1).find(
+        (s) => typeof s === "object" && s !== null && "error" in s
+      );
+      if (childErr && typeof childErr === "object" && "error" in childErr) {
+        tpslAttached = false;
+        tpslError = (childErr as { error: string }).error;
+      } else {
+        tpslAttached = true;
       }
     }
 
@@ -602,18 +628,24 @@ export async function hlTpSl(params: HlTpSlParams): Promise<HlResult<unknown>> {
 
     const client = await getExchangeClient();
     const orders: Array<{ a: number; b: boolean; p: string; s: string; r: boolean; t: { trigger: { isMarket: boolean; triggerPx: string; tpsl: "tp" | "sl" } } }> = [];
+    // Trigger price is what the user asked for; the limit `p` field is the
+    // worst-acceptable fill — set 10% off so the close actually fills when
+    // the trigger fires (matches HL UI default and the hyperliquid-plugin
+    // behavior).
     if (params.tpPx) {
-      const px = roundPrice(Number(params.tpPx), asset.szDecimals);
+      const trigger = roundPrice(Number(params.tpPx), asset.szDecimals);
+      const limit = roundPrice(tpslWorstFillPx(Number(trigger), oppSide), asset.szDecimals);
       orders.push({
-        a: asset.assetId, b: oppSide, p: px, s: sizeStr, r: true,
-        t: { trigger: { isMarket: true, triggerPx: px, tpsl: "tp" } },
+        a: asset.assetId, b: oppSide, p: limit, s: sizeStr, r: true,
+        t: { trigger: { isMarket: true, triggerPx: trigger, tpsl: "tp" } },
       });
     }
     if (params.slPx) {
-      const px = roundPrice(Number(params.slPx), asset.szDecimals);
+      const trigger = roundPrice(Number(params.slPx), asset.szDecimals);
+      const limit = roundPrice(tpslWorstFillPx(Number(trigger), oppSide), asset.szDecimals);
       orders.push({
-        a: asset.assetId, b: oppSide, p: px, s: sizeStr, r: true,
-        t: { trigger: { isMarket: true, triggerPx: px, tpsl: "sl" } },
+        a: asset.assetId, b: oppSide, p: limit, s: sizeStr, r: true,
+        t: { trigger: { isMarket: true, triggerPx: trigger, tpsl: "sl" } },
       });
     }
     const res = await client.order({ orders, grouping: "normalTpsl" });
