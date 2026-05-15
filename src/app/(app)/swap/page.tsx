@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
-import { toast } from "sonner";
 import { TokenIcon } from "@/components/token-icon";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { motion, AnimatePresence } from "motion/react";

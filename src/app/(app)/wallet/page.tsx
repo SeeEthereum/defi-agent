@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useAllChainBalances } from "@/hooks/use-balances";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

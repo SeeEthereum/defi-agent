@@ -1,5 +1,23 @@
 import crypto from "crypto";
 
+/**
+ * Resolve a required env var or throw a clear error.
+ *
+ * Prior code used `process.env.X!` non-null assertions. If a var was
+ * unset, HMAC would compute against the literal string "undefined" and
+ * OKX would return a generic 401 — nearly impossible to diagnose. Now
+ * we fail loud with a message that names the missing key.
+ *
+ * Resolved on every request (not at module load) so that tests can
+ * monkey-patch process.env between cases, and Render env-var rotations
+ * take effect on the next request rather than requiring a redeploy.
+ */
+function requireEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing required env var: ${name}`);
+  return v;
+}
+
 function signRequest(
   timestamp: string,
   method: string,
@@ -8,7 +26,7 @@ function signRequest(
 ): string {
   const prehash = timestamp + method.toUpperCase() + path + body;
   return crypto
-    .createHmac("sha256", process.env.OKX_SECRET_KEY!)
+    .createHmac("sha256", requireEnv("OKX_SECRET_KEY"))
     .update(prehash)
     .digest("base64");
 }
@@ -23,9 +41,9 @@ export async function okxApiRequest<T = unknown>(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "OK-ACCESS-KEY": process.env.OKX_API_KEY!,
+    "OK-ACCESS-KEY": requireEnv("OKX_API_KEY"),
     "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": process.env.OKX_PASSPHRASE!,
+    "OK-ACCESS-PASSPHRASE": requireEnv("OKX_PASSPHRASE"),
     "OK-ACCESS-SIGN": signRequest(timestamp, method, path, bodyStr),
   };
 

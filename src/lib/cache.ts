@@ -32,6 +32,33 @@ type Entry<T> = {
 const store = new Map<string, Entry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
 
+// Hard cap on entries. With 8 routes × N param variants the working set is
+// small in practice (tens of entries), but a long-running process accreting
+// keys it never queries again (e.g. an old chain that nobody loads anymore)
+// would grow unbounded without this. When we cross the cap we evict expired
+// entries first; if that's not enough, we drop the oldest entries by
+// insertion order. Map iteration is insertion-ordered in JS, so the first
+// keys we see are the oldest.
+const MAX_ENTRIES = 5000;
+
+function sweepIfNeeded(): void {
+  if (store.size < MAX_ENTRIES) return;
+  const now = Date.now();
+  // First pass: drop expired entries.
+  for (const [k, entry] of store) {
+    if (entry.expiresAt <= now) store.delete(k);
+  }
+  if (store.size < MAX_ENTRIES) return;
+  // Second pass: drop the oldest until we're back under the cap.
+  const overflow = store.size - Math.floor(MAX_ENTRIES * 0.8);
+  let dropped = 0;
+  for (const k of store.keys()) {
+    if (dropped >= overflow) break;
+    store.delete(k);
+    dropped++;
+  }
+}
+
 /**
  * Get-or-compute with TTL + single-flight.
  *
@@ -60,6 +87,7 @@ export async function memoTTL<T>(
   const promise = (async () => {
     try {
       const value = await fetcher();
+      sweepIfNeeded();
       store.set(key, { value, expiresAt: Date.now() + ttlMs });
       return value;
     } finally {

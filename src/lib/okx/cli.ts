@@ -45,7 +45,7 @@ export async function runCli<T = unknown>(
     }
 
     try {
-      const { stdout, stderr } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
+      const { stdout } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
         timeout: 30_000,
         env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
       });

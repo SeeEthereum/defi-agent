@@ -14,7 +14,11 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { token, amount, chain } = schema.parse(body);
+    // `amount` is validated by the schema but not forwarded — we always
+    // approve max uint256 (see comment further down where the actual
+    // approve calldata is built). Keep it in the schema so callers
+    // continue to send it without a 400, but extract only what we use.
+    const { token, chain } = schema.parse(body);
 
     const chainConfig = getChainBySwapName(chain);
     if (!chainConfig) {

@@ -158,7 +158,7 @@ export async function getUserPositions(
           // Skip individual fToken errors
         }
       }
-    } catch (error) {
+    } catch {
       // Fallback to hardcoded list if getFTokensEntireData fails
       console.error(`[Fluid] getFTokensEntireData failed on chain ${chainIndex}, using hardcoded list`);
       const fTokens = getFTokensForChain(chainIndex);
