@@ -102,7 +102,10 @@ async function resolveAsset(coin: string): Promise<{ assetId: number; szDecimals
 }
 
 // Round size down to the max allowed decimals for an asset.
-function roundSize(size: number, szDecimals: number): string {
+// Exported (rather than module-private) so they can be unit-tested. They
+// are pure math; no side effects, no external state. Callers inside cli.ts
+// use them directly; the tests live in cli.test.ts.
+export function roundSize(size: number, szDecimals: number): string {
   const factor = Math.pow(10, szDecimals);
   const rounded = Math.floor(size * factor) / factor;
   return rounded.toFixed(szDecimals);
@@ -110,7 +113,7 @@ function roundSize(size: number, szDecimals: number): string {
 
 // HL price tick rules: perps allow up to 5 significant figures and at most
 // (6 - szDecimals) decimal places.
-function roundPrice(price: number, szDecimals: number): string {
+export function roundPrice(price: number, szDecimals: number): string {
   if (!Number.isFinite(price) || price <= 0) return price.toString();
   const maxDecimals = Math.max(0, 6 - szDecimals);
   // Limit to 5 significant figures.
@@ -137,7 +140,7 @@ function roundPrice(price: number, szDecimals: number): string {
  * Without this buffer (`p = triggerPx`), a fast move past the trigger leaves
  * the market order unfillable and the position unprotected.
  */
-function tpslWorstFillPx(triggerPx: number, isBuyToClose: boolean): number {
+export function tpslWorstFillPx(triggerPx: number, isBuyToClose: boolean): number {
   return isBuyToClose ? triggerPx * 1.1 : triggerPx * 0.9;
 }
 

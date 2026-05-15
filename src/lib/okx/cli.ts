@@ -30,6 +30,22 @@ export class OkxCliError extends Error {
   }
 }
 
+/**
+ * onchainos `--gas-limit` expects a non-negative DECIMAL integer string.
+ * LI.FI's transactionRequest returns gas limits as hex strings (e.g.
+ * "0x298dfa" = 2,723,322). Other aggregators may too. Normalize defensively
+ * so callers can forward third-party tx requests verbatim without each
+ * having to remember to BigInt-decode.
+ *
+ * Exported (rather than module-private) so the test in cli.test.ts can
+ * pin the conversion against the original bug report. Bug was first hit
+ * via LI.FI bridge on 2026-05-14 ("--gas-limit must be a non-negative
+ * integer, got \"0x298dfa\"").
+ */
+export function normalizeGasLimit(raw: string): string {
+  return raw.startsWith("0x") ? BigInt(raw).toString() : raw;
+}
+
 export async function runCli<T = unknown>(
   subcommands: string[],
   args: Record<string, string> = {}
@@ -295,13 +311,7 @@ export async function walletContractCall(params: {
   if (params.unsignedTx) args["unsigned-tx"] = params.unsignedTx;
   if (params.amt && params.amt !== "0") args.amt = params.amt;
   if (params.gasLimit) {
-    // `--gas-limit` rejects hex (the CLI errors with `must be a non-negative
-    // integer, got "0x..."`). Normalize defensively so callers can forward
-    // third-party tx requests (LI.FI, 0x, OKX DEX) verbatim without each
-    // having to remember to decode.
-    args["gas-limit"] = params.gasLimit.startsWith("0x")
-      ? BigInt(params.gasLimit).toString()
-      : params.gasLimit;
+    args["gas-limit"] = normalizeGasLimit(params.gasLimit);
   }
   if (params.from) args.from = params.from;
   if (params.mevProtection) args["mev-protection"] = "true";
