@@ -12,14 +12,33 @@ doc tracks two things:
 
 ---
 
-## 2026-05-15 — Market API moved to x402 pay-per-use
+## 2026-05-15 — Market API moves to x402 pay-per-use (free until 2026-06-01)
 
 After the v3.3.2 binary audit (below), OKX shipped a **paid tier** for the
-Market API. Source:
+Market API. Hard deadline confirmed by OKX email to the account holder
+on 2026-05-15 (excerpt):
+
+> "Starting soon, the Market API will no longer be available for free, but
+> don't worry, we've got you covered during the transition phase **until
+> 1st of June**. **Those changes are not applicable to OKX DEX API**.
+> You'll retain free access for the next 30 days, giving you time to switch
+> over to our new pay-per-call model via x402 on X Layer."
+
+Sources:
 [how-to-finish-api-payment](https://web3.okx.com/onchainos/dev-docs/market/how-to-finish-api-payment),
 [market-api-fee](https://web3.okx.com/onchainos/dev-docs/market/market-api-fee).
 
-### Cost model
+### What is and isn't affected
+
+| Product family | Affected? | Our routes |
+|---|---|---|
+| **Market API** (price, kline, signals, leaderboard, tracker, portfolio, MemePump, BubbleMap) | **YES — paid from 2026-06-01** | `/api/market/*`, `/api/signals`, `/api/leaderboard`, `/api/tracker`, `/api/tokens/*`, `/api/portfolio/*` |
+| **OKX DEX API** (swap quote/approve/execute, cross-chain) | **NO — stays free per OKX email** | `/api/swap/*`, `/api/bridge/*` (LI.FI side is external anyway) |
+| **Wallet API** (login, balance, addresses, send, contract-call, sign-message, history) | Not in this announcement → unaffected | `/api/wallet/*`, every signing/broadcast path |
+| **Security API** (token-scan, dapp-scan, approvals, tx-scan) | Not in this announcement → unaffected | `/api/security/*` |
+| **Gateway API** (gas, simulate) | Not in this announcement → unaffected | `/api/gateway/*` |
+
+### Cost model (Market API only)
 
 - **Free per API key, monthly:** 1,000,000 basic requests + 100,000 premium
   requests. Resets on the 1st of each month, does NOT roll over.
@@ -27,8 +46,8 @@ Market API. Source:
 - **Settlement asset:** USDG on X Layer (chain 196) —
   `0x4ae46a509f6b1d9056937ba4500cb143933d2dc8`. USDT on X Layer
   (`0x779ded0c9e1022225f8e0630b35a9b54be713736`) is also accepted.
-- **Grace period:** 30 days from launch date (date not officially published;
-  empirical first sighting in our smoke test on 2026-05-15).
+- **Grace period ends: 2026-06-01.** Per OKX email; not a rolling 30-day
+  window from first 402 sighting.
 - **Rate limit:** soft — contact OKX BD team for higher RPS.
 
 ### Our usage mapped to tiers
@@ -88,18 +107,42 @@ production:
      `payment pay` separately, attach the proof, retry the original
      request. More control, more code.
 
-### Decision: defer payment integration until grace ends
+### Decision deadline: 2026-06-01
 
 Reasoning at time of writing:
-- We have 30 days of grace from first sighting (2026-05-15 → ~2026-06-15).
+- Free until 2026-06-01 (~17 days from this commit).
 - Free quota (1M basic + 100K premium) is generous for our traffic shape.
-- Operational risk of holding USDG balance on X Layer + writing payment
-  middleware now is not justified before we see actual 402s in logs.
+- Only Market API is affected — swap, bridge, wallet ops, security scans,
+  gateway gas continue to work for free. So a worst-case "no payment"
+  posture still leaves the app's core flows operational; only `/signals`,
+  `/leaderboard`, market price widgets, and tracker would degrade.
 - The new logging in `runCli` will surface grace expiry the moment it
   happens.
 
-**Action item before 2026-06-15:** revisit. Either confirm we stayed under
-quota (no payment work needed), or implement mitigation path 1 + 3.
+**Pre-2026-06-01 checklist:**
+
+1. **Audit cache TTLs on the Market-API-backed routes** — `/api/market/*`,
+   `/api/signals`, `/api/leaderboard`, `/api/tracker`, `/api/tokens/*`,
+   `/api/portfolio/*`. Move SWR `revalidateOnFocus` off on the premium
+   routes; bump server-side memo to 30s on signal/leaderboard and 15s on
+   tracker.
+2. **Decision on payment integration** — pick one:
+   - **(a) Skip:** accept that on 2026-06-01 premium endpoints return the
+     confirming notification body instead of data. Show a graceful "Live
+     data unavailable" state in `/signals` and `/leaderboard`. Lowest risk,
+     worst UX. Recoverable: flip to (b) anytime after.
+   - **(b) Payment default:** run `onchainos payment default set --asset
+     0x4ae46a509f6b1d9056937ba4500cb143933d2dc8 --chain 196` once at deploy.
+     Fund the deployment wallet with ~$20 USDG on X Layer. Auto-pays
+     post-quota. Add circuit breaker: max N premium calls/min per API key.
+   - **(c) Explicit middleware:** intercept `confirming: true` in `runCli`,
+     call `payment pay` per request, attach proof, retry. Maximum control
+     and observability. Roughly 1 day of engineering.
+
+The recommended starting point is **(a) + path-1 cache work**: it's
+zero-risk, takes the financial decision off the critical path, and gives
+us empirical data from the new logs on how often we'd actually hit the
+quota. We can upgrade to (b) or (c) at any later date.
 
 ---
 
