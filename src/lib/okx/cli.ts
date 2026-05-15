@@ -53,6 +53,23 @@ export async function runCli<T = unknown>(
       let parsed: T | undefined;
       try {
         const json = JSON.parse(stdout);
+
+        // `confirming: true` means the server returned an x402-style
+        // payment-required notification (e.g. MARKET_API_OLD_USER_POST_GRACE_*
+        // from the new paid Market API tier). The CLI does NOT auto-pay; it
+        // hands us the payment terms and expects the caller to either:
+        //   (a) call `payment default set <asset>` once globally, OR
+        //   (b) re-invoke with an explicit payment proof from `payment pay`.
+        // Log the notification structure so operators can see when grace
+        // expires or when we cross a quota — without surfacing payment
+        // requirements as application errors during the grace window.
+        if (json.confirming === true) {
+          console.warn("[onchainos] confirming response (payment / grace notification)", {
+            cmd: subcommands.join(" "),
+            notifications: json.notifications,
+          });
+        }
+
         if (json.ok !== undefined) {
           return { ok: json.ok, data: json.data as T, raw: stdout.trim() };
         }
@@ -85,11 +102,23 @@ export async function runCli<T = unknown>(
         stdout: err.stdout,
       });
 
-      // Exit code 2 = confirming response (not an error)
+      // Exit code 2 = confirming response (not an error). The CLI surfaces
+      // payment-required (x402) notifications via this path: a JSON body
+      // with `confirming: true` + a `notifications[]` array describing
+      // either grace-period status or the over-quota payment terms
+      // (asset/amount/chain). We log so operators can monitor when grace
+      // ends and when the quota gets exhausted; the caller still sees
+      // `ok: true` so today's grace-period traffic isn't degraded into
+      // user-visible errors. See docs/onchainos-upgrade-notes.md for the
+      // pricing tiers and the proposed payment integration path.
       if (err.exitCode === 2 && err.stdout) {
         try {
           const json = JSON.parse(err.stdout);
           if (json.confirming) {
+            console.warn("[onchainos] confirming response (payment / grace notification, exit=2)", {
+              cmd: subcommands.join(" "),
+              notifications: json.notifications,
+            });
             return { ok: true, data: json as T, raw: err.stdout };
           }
         } catch {

@@ -12,6 +12,97 @@ doc tracks two things:
 
 ---
 
+## 2026-05-15 — Market API moved to x402 pay-per-use
+
+After the v3.3.2 binary audit (below), OKX shipped a **paid tier** for the
+Market API. Source:
+[how-to-finish-api-payment](https://web3.okx.com/onchainos/dev-docs/market/how-to-finish-api-payment),
+[market-api-fee](https://web3.okx.com/onchainos/dev-docs/market/market-api-fee).
+
+### Cost model
+
+- **Free per API key, monthly:** 1,000,000 basic requests + 100,000 premium
+  requests. Resets on the 1st of each month, does NOT roll over.
+- **Over-quota:** `$0.0001/req` basic, `$0.0005/req` premium.
+- **Settlement asset:** USDG on X Layer (chain 196) —
+  `0x4ae46a509f6b1d9056937ba4500cb143933d2dc8`. USDT on X Layer
+  (`0x779ded0c9e1022225f8e0630b35a9b54be713736`) is also accepted.
+- **Grace period:** 30 days from launch date (date not officially published;
+  empirical first sighting in our smoke test on 2026-05-15).
+- **Rate limit:** soft — contact OKX BD team for higher RPS.
+
+### Our usage mapped to tiers
+
+| Our route | onchainos command | Tier | Cost/req |
+|---|---|---|---|
+| `/api/wallet/{balances,addresses,send,history,accounts}` | `wallet ...` | **not gated** | $0 |
+| `/api/swap/{quote,approve,execute}` | DEX HTTP API + `wallet contract-call` | **not gated** | $0 |
+| `/api/bridge/{quote,execute,status,tokens}` | LI.FI HTTP + `wallet contract-call` | **not gated** (LI.FI external) | $0 |
+| `/api/security/{token-scan,dapp-scan,approvals,tx-scan,revoke}` | `security ...` | **not in published tier list** — treated as not gated unless 402 fires | $0 (probable) |
+| `/api/market/{price,kline}` | `market price` / `market kline` | basic | $0.0001 |
+| `/api/tokens/{search,trending}` | `token search` / `token hot-tokens` | basic | $0.0001 |
+| `/api/portfolio/pnl` | `market portfolio-recent-pnl` / `portfolio-dex-history` | basic | $0.0001 |
+| `/api/market/index` (we don't call this currently) | `market index` (price-info) | premium | $0.0005 |
+| `/api/signals` | `signal list` | **premium** | $0.0005 |
+| `/api/leaderboard` | `leaderboard list` | **premium** | $0.0005 |
+| `/api/tracker` | `market address-tracker-activities` | **premium** | $0.0005 |
+| `/api/gateway/gas` | `gateway gas` | not in tier list | $0 (probable) |
+
+### Confirming-response handling (already wired)
+
+`src/lib/okx/cli.ts:runCli` was updated 2026-05-15 to detect
+`{ confirming: true, notifications: [...] }` responses (both via stdout
+parsing and via exit code 2) and log them with the originating subcommand.
+Today this just logs; the request still resolves `ok: true` and downstream
+parsers see the notification wrapper as data. Side effects to watch in
+production:
+
+- A `MARKET_API_OLD_USER_POST_GRACE_INTRO` log entry tells us OKX has
+  enabled the paid tier on this API key. Note the date — grace ends 30
+  days later.
+- A `MARKET_API_OLD_USER_POST_GRACE_OVER_QUOTA` log entry means we crossed
+  the free quota. Until we wire payment, premium/basic data calls will
+  return the notification body instead of price/signal/leaderboard data.
+
+### Mitigation playbook (in order of "cheapest first")
+
+1. **Cache aggressively (no new infra)**
+   - Premium endpoints: longer TTLs in SWR + server-side memo. Signal list
+     and leaderboard are public data — 30s cache is reasonable. Address
+     tracker activity is more time-sensitive — 15s.
+   - Basic endpoints: market price / kline can ride SWR 10s revalidation.
+2. **Defer or drop low-value premium calls**
+   - `market index` (price-info) — not currently called. Don't add.
+   - `address-tracker-activities` — used by `/signals` deep-tab. Consider
+     loading lazily on tab activation only.
+3. **Wire `payment default set` for USDG/X-Layer (NEEDS DECISION)**
+   - One-shot CLI call at deploy time. Documented at
+     `https://web3.okx.com/onchainos/dev-docs/market/how-to-finish-api-payment`.
+   - Requires the deployed wallet to hold USDG on X Layer. Operational
+     burden: top up monthly (estimated ~$5–50/mo at our likely traffic).
+   - Risk: silent overspend if a bug causes loop calls. Mitigation: monitor
+     `MARKET_API_OLD_USER_POST_GRACE_OVER_QUOTA` log and add a circuit
+     breaker (max N premium calls per minute per API key).
+4. **Implement explicit x402 middleware in `runCli` (advanced)**
+   - On `confirming: true`, parse `notifications[].data.payment[]`, call
+     `payment pay` separately, attach the proof, retry the original
+     request. More control, more code.
+
+### Decision: defer payment integration until grace ends
+
+Reasoning at time of writing:
+- We have 30 days of grace from first sighting (2026-05-15 → ~2026-06-15).
+- Free quota (1M basic + 100K premium) is generous for our traffic shape.
+- Operational risk of holding USDG balance on X Layer + writing payment
+  middleware now is not justified before we see actual 402s in logs.
+- The new logging in `runCli` will surface grace expiry the moment it
+  happens.
+
+**Action item before 2026-06-15:** revisit. Either confirm we stayed under
+quota (no payment work needed), or implement mitigation path 1 + 3.
+
+---
+
 ## 2026-05-15 — Upgrade v2.3.0 → v3.3.2
 
 ### Audit method
