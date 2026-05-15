@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tokenSearch } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `token search` is Basic ($0.0001/req post-quota). Search results for a
+// given query string are stable — the same "USDC" lookup returns the same
+// token list for hours. 60s is conservative; a higher TTL would be safe.
+const TOKEN_SEARCH_TTL_MS = 60_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,8 +20,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await tokenSearch(query, chain);
-    return NextResponse.json({ success: true, data: result.data });
+    const key = cacheKey(["tokenSearch", query.toLowerCase(), chain]);
+    const data = await memoTTL(key, TOKEN_SEARCH_TTL_MS, async () => {
+      const result = await tokenSearch(query, chain);
+      return result.data;
+    });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Token search failed";

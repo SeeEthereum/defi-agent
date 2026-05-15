@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPrice } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `market price` is Basic ($0.0001/req post-quota). Token prices move
+// fast but a 10s server-side memo cuts polling thunder — the UI's SWR
+// poll interval is typically 30s+, so 10s rarely shows stale data.
+const PRICE_TTL_MS = 10_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,8 +20,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await marketPrice({ address, chain });
-    return NextResponse.json({ success: true, data: result.data });
+    const key = cacheKey(["price", chain, address.toLowerCase()]);
+    const data = await memoTTL(key, PRICE_TTL_MS, async () => {
+      const result = await marketPrice({ address, chain });
+      return result.data;
+    });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Price query failed";

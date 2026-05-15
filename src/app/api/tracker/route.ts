@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addressTrackerActivities } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `address-tracker-activities` is Premium ($0.0005/req post-quota). More
+// time-sensitive than leaderboard (it's a live trade feed) — 15s keeps
+// the UI feeling fresh while still cutting most call volume.
+const TRACKER_TTL_MS = 15_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,17 +19,24 @@ export async function GET(request: NextRequest) {
     const minMarketCap = searchParams.get("minMarketCap") ?? undefined;
     const maxMarketCap = searchParams.get("maxMarketCap") ?? undefined;
 
-    const result = await addressTrackerActivities({
-      trackerType,
-      walletAddress,
-      tradeType,
-      chain,
-      minVolume,
-      maxVolume,
-      minMarketCap,
-      maxMarketCap,
+    const key = cacheKey([
+      "tracker", trackerType, walletAddress, tradeType, chain,
+      minVolume, maxVolume, minMarketCap, maxMarketCap,
+    ]);
+    const data = await memoTTL(key, TRACKER_TTL_MS, async () => {
+      const result = await addressTrackerActivities({
+        trackerType,
+        walletAddress,
+        tradeType,
+        chain,
+        minVolume,
+        maxVolume,
+        minMarketCap,
+        maxMarketCap,
+      });
+      return result.data;
     });
-    return NextResponse.json({ success: true, data: result.data });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Tracker query failed";

@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPortfolioOverview, marketPortfolioRecentPnl } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
 
 // PnL supported chains (from onchainos market portfolio-supported-chains)
 const PNL_CHAINS = ["1", "8453", "56"]; // Ethereum, Base, BNB Chain
+
+// `portfolio-overview` is Premium ($0.0005/req post-quota) AND we fan out to
+// 3 chains + 1 recent-pnl per request = up to 4 premium calls per dashboard
+// load. This is by far our most expensive route per request — caching here
+// is the single biggest spend cut. Aggregate result is keyed by address.
+// 60s matches the dashboard refresh cadence and bounds the worst-case
+// per-user spend to 1 premium call/min/chain (instead of 4/load).
+const PORTFOLIO_TTL_MS = 60_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,6 +24,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const key = cacheKey(["portfolioPnl", address.toLowerCase()]);
+    const payload = await memoTTL(key, PORTFOLIO_TTL_MS, () => computePnl(address));
+    return NextResponse.json({ success: true, data: payload });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch portfolio PnL";
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
+  }
+}
+
+async function computePnl(address: string) {
     // Fetch PnL overview for all supported chains in parallel
     const overviewResults = await Promise.allSettled(
       PNL_CHAINS.map(async (chainId) => {
@@ -95,32 +118,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        overview: {
-          realizedPnl: totalRealizedPnl,
-          unrealizedPnl: totalUnrealizedPnl,
-          totalPnl: totalRealizedPnl + totalUnrealizedPnl,
-          buyVolume: totalBuyVolume,
-          sellVolume: totalSellVolume,
-          buyCount: totalBuyCount,
-          sellCount: totalSellCount,
-          tokenCount: totalTokenCount,
-          winRate: totalTrades > 0 ? weightedWinRate / totalTrades : 0,
-          totalTrades,
-        },
-        chainBreakdown,
-        recentPnl,
-        supportedChains: PNL_CHAINS,
+    return {
+      overview: {
+        realizedPnl: totalRealizedPnl,
+        unrealizedPnl: totalUnrealizedPnl,
+        totalPnl: totalRealizedPnl + totalUnrealizedPnl,
+        buyVolume: totalBuyVolume,
+        sellVolume: totalSellVolume,
+        buyCount: totalBuyCount,
+        sellCount: totalSellCount,
+        tokenCount: totalTokenCount,
+        winRate: totalTrades > 0 ? weightedWinRate / totalTrades : 0,
+        totalTrades,
       },
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch portfolio PnL";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
-  }
+      chainBreakdown,
+      recentPnl,
+      supportedChains: PNL_CHAINS,
+    };
 }

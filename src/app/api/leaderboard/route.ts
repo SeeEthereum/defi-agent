@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leaderboardList } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `leaderboard list` is Premium ($0.0005/req post-quota). Time frames are
+// 1d/3d/7d/1m/3m so the rankings move slowly — 60s is conservative.
+const LEADERBOARD_TTL_MS = 60_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,8 +21,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await leaderboardList({ chain, timeFrame, sortBy, walletType });
-    return NextResponse.json({ success: true, data: result.data });
+    const key = cacheKey(["leaderboard", chain, timeFrame, sortBy, walletType]);
+    const data = await memoTTL(key, LEADERBOARD_TTL_MS, async () => {
+      const result = await leaderboardList({ chain, timeFrame, sortBy, walletType });
+      return result.data;
+    });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Leaderboard query failed";

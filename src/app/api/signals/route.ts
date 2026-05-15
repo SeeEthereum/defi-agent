@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signalList } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `signal list` is a Premium-tier Market API endpoint ($0.0005/req post-quota
+// from 2026-06-01). Public deterministic data → safe to cache aggressively.
+// 30s matches the smart-money refresh cadence the UI implies.
+const SIGNALS_TTL_MS = 30_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,19 +29,27 @@ export async function GET(request: NextRequest) {
     const minLiquidityUsd = searchParams.get("minLiquidityUsd") ?? undefined;
     const maxLiquidityUsd = searchParams.get("maxLiquidityUsd") ?? undefined;
 
-    const result = await signalList({
-      chain,
-      walletType,
-      minAmountUsd,
-      maxAmountUsd,
-      minAddressCount,
-      tokenAddress,
-      minMarketCapUsd,
-      maxMarketCapUsd,
-      minLiquidityUsd,
-      maxLiquidityUsd,
+    const key = cacheKey([
+      "signals", chain, walletType, minAmountUsd, maxAmountUsd,
+      minAddressCount, tokenAddress, minMarketCapUsd, maxMarketCapUsd,
+      minLiquidityUsd, maxLiquidityUsd,
+    ]);
+    const data = await memoTTL(key, SIGNALS_TTL_MS, async () => {
+      const result = await signalList({
+        chain,
+        walletType,
+        minAmountUsd,
+        maxAmountUsd,
+        minAddressCount,
+        tokenAddress,
+        minMarketCapUsd,
+        maxMarketCapUsd,
+        minLiquidityUsd,
+        maxLiquidityUsd,
+      });
+      return result.data;
     });
-    return NextResponse.json({ success: true, data: result.data });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Signal query failed";

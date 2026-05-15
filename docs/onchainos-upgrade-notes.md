@@ -121,11 +121,24 @@ Reasoning at time of writing:
 
 **Pre-2026-06-01 checklist:**
 
-1. **Audit cache TTLs on the Market-API-backed routes** — `/api/market/*`,
-   `/api/signals`, `/api/leaderboard`, `/api/tracker`, `/api/tokens/*`,
-   `/api/portfolio/*`. Move SWR `revalidateOnFocus` off on the premium
-   routes; bump server-side memo to 30s on signal/leaderboard and 15s on
-   tracker.
+1. **Server-side TTL cache on Market-API-backed routes — DONE.** See
+   `src/lib/cache.ts` (`memoTTL` + single-flight) wired into every paid
+   route. Applied TTLs:
+
+   | Route | Tier | TTL | Reasoning |
+   |---|---|---|---|
+   | `/api/signals` | premium | 30s | Smart-money refresh cadence |
+   | `/api/leaderboard` | premium | 60s | Time frames are 1d/3d/7d/1m/3m — rankings move slowly |
+   | `/api/tracker` | premium | 15s | Live trade feed — short TTL to stay fresh |
+   | `/api/portfolio/pnl` | premium ×4 fan-out | 60s | Single biggest spend cut — aggregate keyed by address |
+   | `/api/market/price` | basic | 10s | Per-token spot price |
+   | `/api/market/kline` | basic | 30s | Candle data is intrinsically discretized |
+   | `/api/tokens/trending` | basic | 30s | Hot list rotates slowly |
+   | `/api/tokens/search` | basic | 60s | "USDC" → same result for hours |
+
+   Single-flight collapses concurrent calls to the same key into one
+   underlying fetch — important so a dashboard load that fires 10 price
+   calls in parallel doesn't all miss a cold cache and stampede.
 2. **Decision on payment integration** — pick one:
    - **(a) Skip:** accept that on 2026-06-01 premium endpoints return the
      confirming notification body instead of data. Show a graceful "Live

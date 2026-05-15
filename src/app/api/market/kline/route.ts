@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketKline } from "@/lib/okx/cli";
+import { memoTTL, cacheKey } from "@/lib/cache";
+
+// `market kline` is Basic ($0.0001/req post-quota). Candle data is
+// inherently discretized — a 30s memo aligns reasonably with intraday bar
+// granularities (1m+) and only causes one-bar-of-staleness at the edge.
+const KLINE_TTL_MS = 30_000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,8 +22,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await marketKline({ address, chain, bar, limit });
-    return NextResponse.json({ success: true, data: result.data });
+    const key = cacheKey(["kline", chain, address.toLowerCase(), bar, limit]);
+    const data = await memoTTL(key, KLINE_TTL_MS, async () => {
+      const result = await marketKline({ address, chain, bar, limit });
+      return result.data;
+    });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Kline query failed";
