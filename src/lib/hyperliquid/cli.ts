@@ -16,6 +16,11 @@
  * "register" concept is a no-op beyond confirming we know the address.
  */
 import { getInfoClient, getExchangeClient, getOnchainosAddress } from "./http";
+import {
+  detectHlSigningAddress,
+  getHlUserAddress,
+  invalidateHlSigningAddressCache,
+} from "./probe";
 import { walletBalance, walletSend } from "@/lib/okx/cli";
 
 // ── Structured responses ─────────────────────────────────────────────────────
@@ -176,7 +181,10 @@ async function fetchArbUsdcBalance(address: string): Promise<number> {
 
 export async function hlQuickstart(address?: string): Promise<HlResult<HlQuickstart>> {
   try {
-    const user = ((address ?? (await getOnchainosAddress())) as `0x${string}`).toLowerCase() as `0x${string}`;
+    // For HL info queries we want the EOA (the address HL actually
+    // recovers signatures to). If the caller passed an explicit address,
+    // honor it as-is — they presumably know what they're doing.
+    const user = ((address ?? (await getHlUserAddress())) as `0x${string}`).toLowerCase() as `0x${string}`;
     const info = getInfoClient();
     const [state, arbBal] = await Promise.all([
       info.clearinghouseState({ user }),
@@ -249,7 +257,8 @@ export interface HlPositionsResult {
 export async function hlPositions(address?: string, _showOrders = false): Promise<HlResult<HlPositionsResult>> {
   void _showOrders;
   try {
-    const user = ((address ?? (await getOnchainosAddress())) as `0x${string}`).toLowerCase() as `0x${string}`;
+    // Same EOA-aware resolution as hlQuickstart.
+    const user = ((address ?? (await getHlUserAddress())) as `0x${string}`).toLowerCase() as `0x${string}`;
     const state = await getInfoClient().clearinghouseState({ user });
     const positions: HlPosition[] = state.assetPositions.map((ap) => {
       const p = ap.position;
@@ -318,7 +327,8 @@ export interface HlOrdersResult {
 
 export async function hlOrders(coin?: string): Promise<HlResult<HlOrdersResult>> {
   try {
-    const user = (await getOnchainosAddress()) as `0x${string}`;
+    // Info query keyed by HL user (the EOA recovered from our signatures).
+    const user = (await getHlUserAddress()) as `0x${string}`;
     const raw = await getInfoClient().openOrders({ user });
     const orders = raw
       .filter((o) => !coin || o.coin === coin)
@@ -338,24 +348,72 @@ export async function hlOrders(coin?: string): Promise<HlResult<HlOrdersResult>>
   }
 }
 
-// ── Registration (no-op: onchainos address IS the master) ────────────────────
+// ── Registration: detect AA vs EOA signing address ───────────────────────────
 
 export interface HlRegisterResult {
-  status: "ready" | "needs_agent" | "registered";
+  /**
+   * - `"ready"`: AA wallet address equals the EOA HL recovers from
+   *   signatures. The legacy assumption holds; nothing else to do.
+   * - `"setup_required"`: AA != EOA. The user's HL account lives at the
+   *   EOA, not at the AA. Operator must either deposit USDC to the EOA
+   *   directly (option 1) or register the EOA as an API wallet via the
+   *   HL web UI (option 2).
+   */
+  status: "ready" | "setup_required";
+  /** The wallet address surfaced by `onchainos wallet addresses` (AA). */
   hl_address: string;
-  hl_signing_address?: string;
+  /** The EOA that ECDSA-recovers from HL EIP-712 signatures. */
+  hl_signing_address: string;
   message?: string;
+  options?: {
+    option_1_recommended: {
+      description: string;
+      command: string;
+    };
+    option_2_existing_account: {
+      description: string;
+      url: string;
+      steps: string[];
+    };
+  };
 }
 
 export async function hlRegister(_dryRun = false): Promise<HlResult<HlRegisterResult>> {
   void _dryRun;
   try {
-    const addr = await getOnchainosAddress();
+    const { aa, eoa, match } = await detectHlSigningAddress();
+    if (match) {
+      return ok<HlRegisterResult>({
+        status: "ready",
+        hl_address: aa,
+        hl_signing_address: eoa,
+        message: "onchainos wallet address matches the HL signing key. No extra setup needed.",
+      });
+    }
     return ok<HlRegisterResult>({
-      status: "ready",
-      hl_address: addr,
-      hl_signing_address: addr,
-      message: "onchainos wallet is the HL master; no agent required.",
+      status: "setup_required",
+      hl_address: aa,
+      hl_signing_address: eoa,
+      message:
+        "onchainos is in AA (account-abstraction) mode: the wallet address is a smart contract, but Hyperliquid recovers ECDSA signatures to the underlying EOA. Your HL account lives at the EOA, not the AA. Choose one of the two setup paths below.",
+      options: {
+        option_1_recommended: {
+          description:
+            "Deposit USDC directly to your EOA on Arbitrum, creating a fresh HL account tied to that key. Recommended for new HL users.",
+          command: `Send USDC to ${eoa} on Arbitrum, then call /api/perp/deposit`,
+        },
+        option_2_existing_account: {
+          description:
+            "If you already have funds at your AA address on HL, register the EOA as an API wallet via the Hyperliquid web UI.",
+          url: "https://app.hyperliquid.xyz/settings/api-wallets",
+          steps: [
+            "1. Open https://app.hyperliquid.xyz/settings/api-wallets in the same browser session as your existing HL account",
+            "2. Click 'Add API Wallet'",
+            `3. Enter the signing address: ${eoa}`,
+            "4. Sign the approval with your connected wallet",
+          ],
+        },
+      },
     });
   } catch (e) {
     return mapSdkError(e);
@@ -363,21 +421,19 @@ export async function hlRegister(_dryRun = false): Promise<HlResult<HlRegisterRe
 }
 
 // Historical note: an earlier version kept a 24h cache for register because
-// it wrapped a heavy plugin-binary call. The new `hlRegister` is just a
-// read of `getOnchainosAddress()` (which itself has a 5-min cache in http.ts),
-// so a second cache layer only adds risk of serving a stale wallet after an
-// account swap. The cached wrappers are kept as thin pass-throughs so the
-// /api/perp/register route doesn't need to change.
+// it wrapped a heavy plugin-binary call. The new `hlRegister` reads
+// `detectHlSigningAddress` (which itself caches the probe for 24h in
+// probe.ts), so the cached wrapper just forwards.
 export async function hlRegisterCached(_force = false): Promise<HlResult<HlRegisterResult>> {
   void _force;
   return hlRegister();
 }
 
 // Kept for API compatibility — callers use this when they detect a wallet
-// swap. The heavy lifting is now done by `invalidateHlClients()` in http.ts,
-// which clears the address cache that this function ultimately reads.
+// swap. Now invalidates BOTH the address cache (http.ts) and the
+// signing-address probe cache (probe.ts).
 export function invalidateRegisterCache(): void {
-  // no-op: no cache to invalidate here anymore.
+  invalidateHlSigningAddressCache();
 }
 
 // ── Write operations ─────────────────────────────────────────────────────────
@@ -572,7 +628,7 @@ export interface HlCloseParams {
 
 export async function hlClose(params: HlCloseParams): Promise<HlResult<unknown>> {
   try {
-    const user = (await getOnchainosAddress()) as `0x${string}`;
+    const user = (await getHlUserAddress()) as `0x${string}`;
     const state = await getInfoClient().clearinghouseState({ user });
     const pos = state.assetPositions.find((ap) => ap.position.coin === params.coin);
     if (!pos) return err(`No open position on ${params.coin}`);
@@ -604,7 +660,7 @@ export interface HlTpSlParams {
 export async function hlTpSl(params: HlTpSlParams): Promise<HlResult<unknown>> {
   try {
     if (!params.slPx && !params.tpPx) return err("At least one of slPx or tpPx is required");
-    const user = (await getOnchainosAddress()) as `0x${string}`;
+    const user = (await getHlUserAddress()) as `0x${string}`;
     const state = await getInfoClient().clearinghouseState({ user });
     const pos = state.assetPositions.find((ap) => ap.position.coin === params.coin);
     if (!pos) return err(`No open position on ${params.coin} — TP/SL needs an active position`);
@@ -702,6 +758,28 @@ export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unkno
     }
 
     const address = await getOnchainosAddress();
+
+    // Guard: if AA != EOA, sending USDC from the AA to the HL bridge would
+    // credit the AA's HL account, but our HL signing key is the EOA — so
+    // the funds would land on an account we can't sign for. The proper fix
+    // is a permit-based deposit that names the EOA explicitly as the
+    // recipient (HL bridge's batchedDepositWithPermit). Until that's wired,
+    // refuse the deposit with a clear pointer to the register flow.
+    try {
+      const { match, eoa, aa } = await detectHlSigningAddress();
+      if (!match) {
+        return err(
+          `Deposit blocked: onchainos AA address (${aa}) differs from HL signing EOA (${eoa}). ` +
+            `A USDC transfer from the AA would credit the AA's HL account, which our signing key cannot control. ` +
+            `Call /api/perp/register to see the supported setup paths (option 1: deposit USDC directly to ${eoa}).`,
+          { errorCode: "AA_EOA_MISMATCH" }
+        );
+      }
+    } catch {
+      // probe failed (e.g. session expired) — fall through and let the
+      // downstream `walletSend` surface the real auth error
+    }
+
     const arbBal = await fetchArbUsdcBalance(address);
     if (arbBal < n) {
       return err(
