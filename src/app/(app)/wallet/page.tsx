@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { CHAINS } from "@/lib/chains";
 import { formatUsd } from "@/lib/utils";
+import { GasStationModal } from "@/components/gas-station-modal";
+import type { GasStationConfirming } from "@/lib/okx/types";
 import { toast } from "sonner";
 
 interface TxEntry {
@@ -41,6 +43,7 @@ export default function WalletPage() {
     tokenKey: "native",
   });
   const [sending, setSending] = useState(false);
+  const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const [switchingAccount, setSwitchingAccount] = useState(false);
@@ -136,8 +139,10 @@ export default function WalletPage() {
     );
   }
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Extracted from the form handler so the Gas Station modal can re-run
+  // the same send after the gas token is set up (form state is only reset
+  // on success, so a retry reuses the user's input untouched).
+  const submitSend = async () => {
     setSending(true);
     const contractToken = sendForm.tokenKey !== "native" ? sendForm.tokenKey : undefined;
     try {
@@ -155,6 +160,9 @@ export default function WalletPage() {
       if (data.success) {
         toast.success(`Transaction sent! Hash: ${data.data?.txHash || "pending"}`);
         setSendForm({ recipient: "", amount: "", chain: "1", tokenKey: "native" });
+      } else if (data.requiresGasStation) {
+        // Insufficient native gas — offer stablecoin gas payment via modal.
+        setGasStation(data.gasStation);
       } else {
         toast.error(data.error || "Send failed");
       }
@@ -165,10 +173,25 @@ export default function WalletPage() {
     }
   };
 
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitSend();
+  };
+
   const evmAddress = walletAddress;
 
   return (
     <div className="space-y-6">
+      <GasStationModal
+        open={gasStation !== null}
+        chain={sendForm.chain}
+        payload={gasStation}
+        onClose={() => setGasStation(null)}
+        onResolved={() => {
+          setGasStation(null);
+          void submitSend();
+        }}
+      />
       <div>
         <p className="text-eyebrow">MULTI-CHAIN</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">Wallet</h1>

@@ -97,6 +97,15 @@ Use propose_withdraw to let users withdraw their supplied assets from Fluid lend
 - **get_gas_price**: Get current gas prices (slow/average/fast) for a specific chain
   - Use when the user asks "how much is gas?" or before proposing expensive operations on Ethereum
 
+## Gas Station (pay gas with stablecoins)
+- **gas_station_status**: Read-only check of whether the wallet can pay gas in USDT/USDC/USDG on an EVM chain via OKX Gas Station (a relayer pays the native gas; the stablecoin repays it in the same transaction, plus a service fee).
+  - Use it when a transaction failed for insufficient native gas, or the user asks "can I pay gas with USDC?" / "I have no ETH for gas".
+  - If the recommendation says Gas Station needs enabling, tell the user the Swap/Bridge/Send pages will prompt them to enable it when they next transact — first-time activation requires their explicit confirmation there. Don't promise you can enable it yourself.
+  - NEVER call Gas Station free: a service fee in the chosen stablecoin always applies. Surface the fee when known.
+  - Keep internal mechanics (EIP-7702, delegation, relayer IDs) out of replies — speak only of "enabling Gas Station" and "which stablecoin pays gas".
+  - Not available on Solana. On X Layer gas is already free — no Gas Station needed.
+  - When ranking solutions for "insufficient gas" problems: Gas Station with an existing stablecoin balance first, topping up native token second, switching chain/account last.
+
 ## Smart Money Intelligence
 - **get_smart_money_signals**: Get aggregated buy signals from smart money, KOLs, and whale wallets
   - Requires a chain name; optionally filter by wallet type (1=Smart Money, 2=KOL, 3=Whales)

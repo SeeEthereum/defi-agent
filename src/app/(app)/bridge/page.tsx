@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { Fade, NumberDisplay } from "@/components/motion";
+import { GasStationModal } from "@/components/gas-station-modal";
+import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
 
 // Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
@@ -303,6 +305,7 @@ export default function BridgePage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
+  const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<StatusData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -560,6 +563,10 @@ export default function BridgePage() {
             }
           }, 10_000);
         }
+      } else if (data.requiresGasStation) {
+        // Insufficient native gas on the source chain — backend offers
+        // stablecoin gas payment. Modal handles pick + setup, then re-runs.
+        setGasStation(data.gasStation);
       } else {
         setError(data.error || "Bridge execution failed");
       }
@@ -612,6 +619,16 @@ export default function BridgePage() {
 
   return (
     <div className="max-w-md mx-auto space-y-5 py-2">
+      <GasStationModal
+        open={gasStation !== null}
+        chain={String(fromChainIndex)}
+        payload={gasStation}
+        onClose={() => setGasStation(null)}
+        onResolved={() => {
+          setGasStation(null);
+          void handleBridge();
+        }}
+      />
       {/* Page header */}
       <div>
         <p className="text-eyebrow">CROSS-CHAIN · LI.FI</p>

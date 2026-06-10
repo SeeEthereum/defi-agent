@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { TokenIcon } from "@/components/token-icon";
 import { Fade, NumberDisplay } from "@/components/motion";
+import { GasStationModal } from "@/components/gas-station-modal";
+import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -353,6 +355,7 @@ export default function SwapPage() {
   const [swapStep, setSwapStep] = useState<"idle" | "approving" | "waiting_approve" | "swapping">("idle");
   const [error, setError] = useState<{ type: "quote" | "swap"; title: string; message: string } | null>(null);
   const [swapResult, setSwapResult] = useState<{ status: string; message: string; txHash?: string; mevProtected?: boolean; securityWarning?: string | null } | null>(null);
+  const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [slippage, setSlippage] = useState("0.5");
   const [autoSlippage, setAutoSlippage] = useState(false);
   const [showSlippage, setShowSlippage] = useState(false);
@@ -647,6 +650,10 @@ export default function SwapPage() {
         setQuote(null);
         setAmount("");
         setError(null);
+      } else if (data.requiresGasStation) {
+        // Insufficient native gas — backend offers stablecoin gas payment.
+        // The modal handles token pick + setup, then re-runs handleSwap.
+        setGasStation(data.gasStation);
       } else {
         const err = friendlyError(data.error || "Swap failed. Please try again.");
         setError({ type: "swap", ...err });
@@ -697,6 +704,16 @@ export default function SwapPage() {
 
   return (
     <div className="max-w-md mx-auto space-y-5 py-2">
+      <GasStationModal
+        open={gasStation !== null}
+        chain={String(Object.values(CHAINS).find((c) => c.swapName === chain)?.chainIndex ?? "")}
+        payload={gasStation}
+        onClose={() => setGasStation(null)}
+        onResolved={() => {
+          setGasStation(null);
+          void handleSwap();
+        }}
+      />
       {/* Page header */}
       <div>
         <p className="text-eyebrow">DEX AGGREGATOR</p>

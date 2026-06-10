@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletSend } from "@/lib/okx/cli";
+import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { isValidEvmAddress, normalizeAddress } from "@/lib/utils";
 import { SUPPORTED_CHAIN_IDS } from "@/lib/chains";
@@ -38,6 +39,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
+    const gasStation = gasStationResponseFor(error);
+    if (gasStation) return gasStation;
+
     const message =
       error instanceof Error ? error.message : "Send failed";
     return NextResponse.json(

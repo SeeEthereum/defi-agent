@@ -18,6 +18,7 @@ DeFi Agent is a non-custodial DeFi platform that combines:
 - **Security Center** — scan tokens for honeypots and rug pulls, manage and revoke ERC-20 approvals, check DApps for phishing
 - **Smart Money Intelligence** — track whale/KOL/smart money buy signals and view top trader leaderboards
 - **Market Data** — real-time token prices, candlestick charts, gas prices across all chains
+- **Gas Station** — pay gas with USDT/USDC/USDG when you have no native token: swap, bridge, and send prompt you to enable it on the fly (a small service fee in the chosen stablecoin applies)
 - **AI Assistant** — a conversational interface powered by GPT-4.1 that can execute any operation the app supports, including bridging
 - **Hardware-grade Security** — private keys live inside OKX's TEE (Trusted Execution Environment), never exposed to the app or the user
 
@@ -164,7 +165,7 @@ No seed phrases. No browser extensions. Just email login and you're in.
 | Swap | OKX DEX Aggregator API (HMAC-SHA256 auth) |
 | Bridge | LI.FI Aggregator (20+ bridge protocols, cross-token) |
 | Lending | Fluid Protocol (ERC-4626, on-chain resolver via viem) |
-| AI | OpenAI GPT-4.1 with function calling (21 tools) |
+| AI | OpenAI GPT-4.1 with function calling (27 tools) |
 | Security | OKX Security APIs (token-scan, dapp-scan, tx-scan, approvals) |
 | Market Data | OKX Market APIs (price, kline, index, signals, leaderboard) |
 | Attribution | ERC-8021 Builder Codes (transaction attribution) |
@@ -258,7 +259,7 @@ src/
 │   └── portfolio/pnl/        # DEX PnL overview
 ├── lib/
 │   ├── ai/
-│   │   ├── orchestrator.ts   # GPT-4.1 agentic loop (21 tools)
+│   │   ├── orchestrator.ts   # GPT-4.1 agentic loop (27 tools)
 │   │   ├── tools.ts          # Tool definitions
 │   │   └── system-prompt.ts  # AI system prompt
 │   ├── okx/

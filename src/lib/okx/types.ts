@@ -48,6 +48,37 @@ export interface WalletAddresses {
   solana: Array<{ address: string; chainIndex: string; chainName: string }>;
 }
 
+/**
+ * One entry of the Gas Station `tokenList` returned inside a Confirming
+ * response (exit code 2). `feeTokenAddress` + `relayerId` are the values
+ * the second-phase call must pass back verbatim as `--gas-token-address` /
+ * `--relayer-id` — never fabricate them.
+ */
+export interface GasStationToken {
+  feeTokenAddress: string;
+  relayerId?: string;
+  symbol?: string;
+  feeTokenSymbol?: string;
+  sufficient?: boolean;
+  balance?: string;
+  serviceCharge?: string;
+  serviceChargeSymbol?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Structured payload extracted from a Gas Station Confirming response.
+ * `status` is the backend enum (FIRST_TIME_PROMPT, PENDING_UPGRADE,
+ * REENABLE_ONLY, READY_TO_USE, INSUFFICIENT_ALL, HAS_PENDING_TX) when it
+ * could be parsed; the raw `message` is authoritative for display.
+ */
+export interface GasStationConfirming {
+  status?: string;
+  message: string;
+  tokenList: GasStationToken[];
+  defaultGasTokenAddress?: string;
+}
+
 export interface SendResult {
   txHash: string;
 }

@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
-import type { CliResult } from "./types";
+import type { CliResult, GasStationConfirming, GasStationToken } from "./types";
 import { appendBuilderCode } from "./builder-code";
 import { withOnchainosLock } from "./lock";
 
@@ -28,6 +28,85 @@ export class OkxCliError extends Error {
     super(`onchainos ${command} failed: ${stderr || "unknown error"}`);
     this.name = "OkxCliError";
   }
+}
+
+/**
+ * Thrown when the CLI returns a Gas Station Confirming response: the
+ * backend detected insufficient native gas and wants the user to pick a
+ * stablecoin (and possibly approve first-time activation) before the
+ * transaction can proceed. This is NOT a failure — callers that support
+ * Gas Station catch this, surface the token picker to the user, and
+ * re-invoke the same command with `gasTokenAddress` + `relayerId`
+ * (+ `enableGasStation` on first activation). Callers that don't catch it
+ * fail loudly instead of mis-parsing the Confirming JSON as a tx result.
+ */
+export class GasStationConfirmingError extends Error {
+  constructor(
+    public command: string,
+    public payload: GasStationConfirming
+  ) {
+    super(
+      `Gas Station confirmation required: ${payload.status ?? "user must pick a gas token"}`
+    );
+    this.name = "GasStationConfirmingError";
+  }
+}
+
+/**
+ * Detect whether a `confirming: true` CLI response is a Gas Station
+ * prompt (vs an x402 payment notification, which carries `notifications[]`).
+ * Gas Station Confirmings carry the scene in `message` (e.g.
+ * "gasStationStatus: FIRST_TIME_PROMPT") and the token list in `next`
+ * (stringified JSON with `feeTokenAddress` / `relayerId` per entry).
+ * Returns null when the markers don't match — caller falls through to the
+ * x402 handling.
+ *
+ * Exported for unit tests.
+ */
+export function parseGasStationConfirming(
+  json: Record<string, unknown>
+): GasStationConfirming | null {
+  if (json.confirming !== true) return null;
+
+  const message = typeof json.message === "string" ? json.message : "";
+  const statusFromField =
+    typeof json.gasStationStatus === "string" ? json.gasStationStatus : undefined;
+  const statusFromMessage = message.match(
+    /\b(FIRST_TIME_PROMPT|PENDING_UPGRADE|REENABLE_ONLY|READY_TO_USE|INSUFFICIENT_ALL|HAS_PENDING_TX)\b/
+  )?.[1];
+
+  // Token list lives in `next` (stringified JSON) or inline on the response.
+  let tokenList: GasStationToken[] = [];
+  let defaultGasTokenAddress: string | undefined;
+  const sources: unknown[] = [json];
+  if (typeof json.next === "string") {
+    try {
+      sources.push(JSON.parse(json.next));
+    } catch {
+      // next is free text, not JSON
+    }
+  } else if (json.next && typeof json.next === "object") {
+    sources.push(json.next);
+  }
+  for (const src of sources) {
+    const s = src as Record<string, unknown>;
+    const list = (s.gasStationTokenList ?? s.tokenList) as unknown;
+    if (Array.isArray(list) && list.length > 0) {
+      tokenList = list.filter(
+        (t): t is GasStationToken =>
+          !!t && typeof t === "object" && "feeTokenAddress" in t
+      );
+    }
+    if (typeof s.defaultGasTokenAddress === "string") {
+      defaultGasTokenAddress = s.defaultGasTokenAddress;
+    }
+  }
+
+  const status = statusFromField ?? statusFromMessage;
+  const mentionsGasStation = /gas\s*station/i.test(message);
+  if (!status && !mentionsGasStation && tokenList.length === 0) return null;
+
+  return { status, message, tokenList, defaultGasTokenAddress };
 }
 
 /**
@@ -70,16 +149,25 @@ export async function runCli<T = unknown>(
       try {
         const json = JSON.parse(stdout);
 
-        // `confirming: true` means the server returned an x402-style
-        // payment-required notification (e.g. MARKET_API_OLD_USER_POST_GRACE_*
-        // from the new paid Market API tier). The CLI does NOT auto-pay; it
-        // hands us the payment terms and expects the caller to either:
-        //   (a) call `payment default set <asset>` once globally, OR
-        //   (b) re-invoke with an explicit payment proof from `payment pay`.
-        // Log the notification structure so operators can see when grace
-        // expires or when we cross a quota — without surfacing payment
-        // requirements as application errors during the grace window.
+        // `confirming: true` has two distinct meanings:
+        //
+        // 1. Gas Station prompt — the backend wants the user to pick a
+        //    stablecoin to pay gas (insufficient native balance). Detected
+        //    by gasStationStatus / tokenList markers; surfaced as a typed
+        //    error so callers show the picker instead of mis-parsing the
+        //    Confirming JSON as a transaction result.
+        //
+        // 2. x402-style payment notification (e.g.
+        //    MARKET_API_OLD_USER_POST_GRACE_* from the paid Market API
+        //    tier), carrying a `notifications[]` array. The CLI does NOT
+        //    auto-pay; we log the terms so operators can see when grace
+        //    expires or quota is crossed — without degrading traffic into
+        //    user-visible errors.
         if (json.confirming === true) {
+          const gasStation = parseGasStationConfirming(json);
+          if (gasStation) {
+            throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
+          }
           console.warn("[onchainos] confirming response (payment / grace notification)", {
             cmd: subcommands.join(" "),
             notifications: json.notifications,
@@ -90,8 +178,12 @@ export async function runCli<T = unknown>(
           return { ok: json.ok, data: json.data as T, raw: stdout.trim() };
         }
         parsed = json as T;
-      } catch {
-        // stdout is not JSON
+      } catch (parseOrConfirming) {
+        // Re-throw the typed Confirming signal — only swallow JSON.parse
+        // failures (stdout is not JSON).
+        if (parseOrConfirming instanceof GasStationConfirmingError) {
+          throw parseOrConfirming;
+        }
       }
 
       return {
@@ -100,6 +192,10 @@ export async function runCli<T = unknown>(
         raw: stdout.trim(),
       };
     } catch (error: unknown) {
+      // Typed Confirming signal from the success path above — not an exec
+      // failure; propagate untouched so callers can show the token picker.
+      if (error instanceof GasStationConfirmingError) throw error;
+
       const err = error as {
         code?: string;
         exitCode?: number;
@@ -118,26 +214,38 @@ export async function runCli<T = unknown>(
         stdout: err.stdout,
       });
 
-      // Exit code 2 = confirming response (not an error). The CLI surfaces
-      // payment-required (x402) notifications via this path: a JSON body
-      // with `confirming: true` + a `notifications[]` array describing
-      // either grace-period status or the over-quota payment terms
-      // (asset/amount/chain). We log so operators can monitor when grace
-      // ends and when the quota gets exhausted; the caller still sees
-      // `ok: true` so today's grace-period traffic isn't degraded into
-      // user-visible errors. See docs/onchainos-upgrade-notes.md for the
-      // pricing tiers and the proposed payment integration path.
+      // Exit code 2 = confirming response (not an error). Two cases:
+      //
+      // 1. Gas Station prompt (insufficient native gas): detected via
+      //    gasStationStatus / tokenList markers and re-thrown typed, so the
+      //    calling route can surface the stablecoin picker. Returning
+      //    ok:true here would hand the Confirming JSON to tx-result parsing
+      //    and produce a phantom "submitted" success.
+      //
+      // 2. x402 payment notification (`notifications[]` array): grace /
+      //    over-quota terms for the paid Market API tier. We log for
+      //    operators and return ok:true so grace-period traffic isn't
+      //    degraded into user-visible errors. See
+      //    docs/onchainos-upgrade-notes.md for pricing tiers and the
+      //    proposed payment integration path.
       if (err.exitCode === 2 && err.stdout) {
         try {
           const json = JSON.parse(err.stdout);
           if (json.confirming) {
+            const gasStation = parseGasStationConfirming(json);
+            if (gasStation) {
+              throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
+            }
             console.warn("[onchainos] confirming response (payment / grace notification, exit=2)", {
               cmd: subcommands.join(" "),
               notifications: json.notifications,
             });
             return { ok: true, data: json as T, raw: err.stdout };
           }
-        } catch {
+        } catch (confirmingOrParse) {
+          if (confirmingOrParse instanceof GasStationConfirmingError) {
+            throw confirmingOrParse;
+          }
           // not JSON confirming response
         }
       }
@@ -250,6 +358,15 @@ export async function walletSend(params: {
   from?: string;
   contractToken?: string;
   force?: boolean;
+  /**
+   * Gas Station phase-2 params. Only pass these when re-invoking after a
+   * GasStationConfirmingError — values come verbatim from the Confirming
+   * payload's tokenList (never fabricate). `enableGasStation` is required
+   * additionally on FIRST_TIME_PROMPT / PENDING_UPGRADE / REENABLE_ONLY.
+   */
+  gasTokenAddress?: string;
+  relayerId?: string;
+  enableGasStation?: boolean;
 }) {
   if (!params.amount && !params.amtMinimal) {
     throw new Error("walletSend requires either `amount` (readable) or `amtMinimal` (wei)");
@@ -263,6 +380,9 @@ export async function walletSend(params: {
   if (params.from) args.from = params.from;
   if (params.contractToken) args["contract-token"] = params.contractToken;
   if (params.force) args.force = "true";
+  if (params.gasTokenAddress) args["gas-token-address"] = params.gasTokenAddress;
+  if (params.relayerId) args["relayer-id"] = params.relayerId;
+  if (params.enableGasStation) args["enable-gas-station"] = "true";
   return runCli(["wallet", "send"], args);
 }
 
@@ -298,6 +418,14 @@ export async function walletContractCall(params: {
    * calldata length or reject trailing bytes.
    */
   skipBuilderCode?: boolean;
+  /**
+   * Gas Station phase-2 params — same contract as walletSend: only pass
+   * after catching GasStationConfirmingError, with values copied verbatim
+   * from the Confirming payload's tokenList.
+   */
+  gasTokenAddress?: string;
+  relayerId?: string;
+  enableGasStation?: boolean;
 }) {
   const args: Record<string, string> = {
     to: params.to,
@@ -320,7 +448,128 @@ export async function walletContractCall(params: {
   if (params.aaDexTokenAmount)
     args["aa-dex-token-amount"] = params.aaDexTokenAmount;
   if (params.force) args.force = "true";
+  if (params.gasTokenAddress) args["gas-token-address"] = params.gasTokenAddress;
+  if (params.relayerId) args["relayer-id"] = params.relayerId;
+  if (params.enableGasStation) args["enable-gas-station"] = "true";
   return runCli(["wallet", "contract-call"], args);
+}
+
+// ── Gas Station management commands ─────────────────────────────────────────
+// Pay gas in stablecoin (USDT/USDC/USDG) via EIP-7702 delegation + relayer.
+// State is scoped per (account, chain). See
+// skills/okx-agentic-wallet/references/gas-station.md in okx/onchainos-skills.
+
+/**
+ * The gas-station subcommands print MORE THAN ONE top-level JSON document
+ * to stdout (an account-resolution doc, then the result doc), which makes
+ * the single JSON.parse in runCli fall back to returning raw text. This
+ * scans for top-level documents (brace-depth, string-aware) and returns
+ * the last one, unwrapping the standard `{ ok, data }` envelope.
+ * Returns undefined when no JSON document is found.
+ *
+ * Exported for unit tests.
+ */
+export function parseLastJsonDoc(raw: string): unknown {
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  let last: unknown;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          last = JSON.parse(raw.slice(start, i + 1));
+        } catch {
+          // malformed segment — keep scanning
+        }
+        start = -1;
+      }
+    }
+  }
+  if (last && typeof last === "object" && "data" in (last as Record<string, unknown>)) {
+    return (last as Record<string, unknown>).data;
+  }
+  return last;
+}
+
+/** Run a gas-station subcommand and normalize the multi-doc stdout. */
+async function runGasStationCli(
+  subcommands: string[],
+  args: Record<string, string>
+) {
+  const result = await runCli(subcommands, args);
+  if (typeof result.data === "string") {
+    const parsed = parseLastJsonDoc(result.data);
+    if (parsed !== undefined) return { ...result, data: parsed };
+  }
+  return result;
+}
+
+/**
+ * Read-only pre-flight: returns `recommendation` (READY /
+ * ENABLE_GAS_STATION / REENABLE_GAS_STATION / PENDING_UPGRADE /
+ * INSUFFICIENT_ALL / HAS_PENDING_TX), `tokenList`, and
+ * `gasStationActivated`. Never broadcasts; safe to call repeatedly.
+ */
+export async function gasStationStatus(chain: string, from?: string) {
+  const args: Record<string, string> = { chain };
+  if (from) args.from = from;
+  return runGasStationCli(["wallet", "gas-station", "status"], args);
+}
+
+/**
+ * Standalone first-time activation (EIP-7702 delegation + default token).
+ * Pre-condition: the user explicitly consented — activation is an
+ * irreversible on-chain action. Idempotent: same token returns
+ * alreadyActivated=true.
+ */
+export async function gasStationSetup(params: {
+  chain: string;
+  gasTokenAddress: string;
+  relayerId: string;
+  from?: string;
+}) {
+  const args: Record<string, string> = {
+    chain: params.chain,
+    "gas-token-address": params.gasTokenAddress,
+    "relayer-id": params.relayerId,
+  };
+  if (params.from) args.from = params.from;
+  return runGasStationCli(["wallet", "gas-station", "setup"], args);
+}
+
+/** Flag flip only — requires the chain's delegation to already exist. */
+export async function gasStationEnable(chain: string) {
+  return runGasStationCli(["wallet", "gas-station", "enable"], { chain });
+}
+
+/** Flag flip only — delegation stays on-chain, so re-enabling is instant. */
+export async function gasStationDisable(chain: string) {
+  return runGasStationCli(["wallet", "gas-station", "disable"], { chain });
+}
+
+export async function gasStationUpdateDefaultToken(
+  chain: string,
+  gasTokenAddress: string
+) {
+  return runGasStationCli(["wallet", "gas-station", "update-default-token"], {
+    chain,
+    "gas-token-address": gasTokenAddress,
+  });
 }
 
 // History command

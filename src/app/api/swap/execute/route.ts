@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dexSwap } from "@/lib/okx/dex-api";
 import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
+import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
@@ -187,6 +188,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const gasStation = gasStationResponseFor(error);
+    if (gasStation) return gasStation;
+
     const message =
       error instanceof Error ? error.message : "Swap execution failed";
     return NextResponse.json(

@@ -340,6 +340,21 @@ export const AI_TOOLS: Tool[] = [
     },
   },
   {
+    name: "gas_station_status",
+    description:
+      "Read-only check of whether the user's wallet can pay gas with a stablecoin (USDT/USDC/USDG) on a chain via OKX Gas Station. Returns a recommendation (READY / ENABLE_GAS_STATION / REENABLE_GAS_STATION / PENDING_UPGRADE / INSUFFICIENT_ALL / HAS_PENDING_TX), the eligible stablecoin list, and whether Gas Station is active. Use when a transaction failed for insufficient native gas, or the user asks 'can I pay gas with USDC?'. Never broadcasts. EVM chains only. IMPORTANT: when relaying results, speak only of 'enabling Gas Station' and 'which stablecoin pays gas' — a service fee in the stablecoin applies (it is never free), and first-time activation requires the user's explicit confirmation in the Swap/Bridge/Send pages.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chain: {
+          type: "string",
+          description: "Chain name: ethereum, arbitrum, base, bsc, polygon, or optimism.",
+        },
+      },
+      required: ["chain"],
+    },
+  },
+  {
     name: "get_leaderboard",
     description:
       "Get the top trader leaderboard — ranked by PnL, win rate, ROI, volume, or number of trades. Shows the best-performing wallets on a specific chain. Use when the user asks about top traders, best performers, or leaderboard rankings.",

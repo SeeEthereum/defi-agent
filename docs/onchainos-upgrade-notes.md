@@ -280,14 +280,24 @@ rather than silently flipping the decision.
   the user reports a routing failure we can verify is bridge-specific.
 
 ### Skill / feature: `wallet gas-station` (pay gas in stablecoins)
-- **Why skip:** Compelling UX feature but requires UI work — token selection
-  for the gas-paying asset, surfacing `--relayer-id` to the user (or hiding
-  it behind a sensible default), and a "first-time activation" flow.
-  Estimated 1-2 days of UI + state work. No code change needed in
-  `walletContractCall` (already accepts the flags via params), but we don't
-  yet expose them from any route.
-- **Revisit if:** A user complains about needing native gas tokens on a
-  chain, or we want a "no native gas required" pitch.
+- **ADOPTED 2026-06-10** — no longer skipped. Integration:
+  - `src/lib/okx/cli.ts`: Confirming dispatch (`parseGasStationConfirming` +
+    `GasStationConfirmingError`, distinguished from x402 notifications),
+    phase-2 params on `walletSend` / `walletContractCall`, management
+    wrappers (`gasStationStatus/Setup/Enable/Disable/UpdateDefaultToken`)
+    with multi-JSON-doc stdout normalization (`parseLastJsonDoc`).
+  - `/api/wallet/gas-station`: GET status (read-only pre-flight) + POST
+    setup / enable / disable / update-default-token.
+  - Execute routes (swap / bridge / send) return
+    `{ requiresGasStation: true, gasStation }` on Confirming;
+    `GasStationModal` (src/components/gas-station-modal.tsx) shows the
+    stablecoin picker, runs setup/update-default-token, and re-runs the
+    original transaction.
+  - AI: `gas_station_status` tool + system-prompt guidance (consent for
+    first activation, never "free", no internal mechanism vocabulary).
+- **Recovery pattern:** pick token → management action → re-run original
+  request unchanged (the documented "plugin pre-flight" flow), which works
+  uniformly for multi-step routes like bridge (approve + execute).
 
 ### Skill / feature: `strategy` (limit-order trading)
 - **Why skip:** We already have `/swap` (DEX aggregator) and `/trade`

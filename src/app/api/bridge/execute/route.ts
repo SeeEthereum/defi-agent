@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeQuote } from "@/lib/bridge/lifi";
 import { walletContractCall } from "@/lib/okx/cli";
+import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { encodeApprove } from "@/lib/fluid/ftokens";
@@ -180,6 +181,12 @@ export async function POST(request: NextRequest) {
             requiredAmount
           );
         } catch (approveError) {
+          // Gas Station can trigger on the approve call too (it's the
+          // first contract-call of the flow) — surface the picker, don't
+          // bury it in the approve-failed message.
+          const gasStation = gasStationResponseFor(approveError);
+          if (gasStation) return gasStation;
+
           const msg =
             approveError instanceof Error
               ? approveError.message
@@ -253,6 +260,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const gasStation = gasStationResponseFor(error);
+    if (gasStation) return gasStation;
+
     const message =
       error instanceof Error ? error.message : "Bridge execution failed";
     return NextResponse.json(

@@ -4,7 +4,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
+import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, gasStationStatus, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { bridgeQuote } from "@/lib/bridge/lifi";
@@ -151,6 +151,12 @@ async function executeToolCall(
     case "get_gas_price": {
       const chain = input.chain as string;
       const result = await gatewayGas(chain);
+      return result.data;
+    }
+    case "gas_station_status": {
+      // CLI accepts chain name or numeric ID; the tool schema passes names.
+      const chain = input.chain as string;
+      const result = await gasStationStatus(chain);
       return result.data;
     }
     case "get_leaderboard": {
