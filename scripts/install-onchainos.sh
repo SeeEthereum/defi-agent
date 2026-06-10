@@ -43,16 +43,25 @@ fi
 # Hardcoded version — avoids GitHub API rate-limit 403 errors on Render CI.
 # Update this string when a new onchainos release is published.
 #
-# v3.3.2 (2026-05-14) — audited diff vs v2.3.0:
+# v3.3.11 (2026-06-09) — audited diff vs v3.3.2 (73 commits):
 #   - Zero breaking changes on subcommands we call (wallet contract-call /
 #     sign-message / send / balance / addresses / history, security/*,
 #     gateway/*, market/*, signal/*, leaderboard/*, token/*).
+#   - Changes land in skills we don't use: cross-chain approve flags
+#     (--readable-amount), strategy validators, payment mpp-session --salt,
+#     Solana jitoCalldata path fix, gas-station EIP-7702 auth-hash signing.
+#   - wallet email-login: --locale now validated as enum (en_US/zh_CN) —
+#     we don't pass --locale, unaffected.
+#   - Friendlier 50114 (Invalid Authority) errors with login guidance.
+#
+# v3.3.2 (2026-05-14) — audited diff vs v2.3.0:
+#   - Zero breaking changes on subcommands we call.
 #   - Additive on contract-call + send: --gas-token-address, --relayer-id,
 #     --enable-gas-station, --biz-type, --strategy (all optional).
 #   - New top-level subcommands available but not yet used: `cross-chain`
 #     (OKX-native bridge alternative to LI.FI), `strategy`, `workflow`,
 #     `competition`, `wallet qrcode`, `wallet gas-station`, `token report`.
-LATEST="v3.3.2"
+LATEST="v3.3.11"
 
 echo "Installing onchainos $LATEST for $TARGET into $PROJECT_BIN_DIR..."
 

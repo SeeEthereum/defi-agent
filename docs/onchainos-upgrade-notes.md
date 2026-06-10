@@ -1,6 +1,6 @@
 # onchainos CLI — upgrade notes & deliberate skip-list
 
-Last reviewed: **2026-05-15** against `onchainos-cli@v3.3.2`.
+Last reviewed: **2026-06-10** against `onchainos-cli@v3.3.11`.
 
 The `onchainos` binary is pinned in `scripts/install-onchainos.sh:LATEST`. This
 doc tracks two things:
@@ -156,6 +156,46 @@ The recommended starting point is **(a) + path-1 cache work**: it's
 zero-risk, takes the financial decision off the critical path, and gives
 us empirical data from the new logs on how often we'd actually hit the
 quota. We can upgrade to (b) or (c) at any later date.
+
+---
+
+## 2026-06-10 — Upgrade v3.3.2 → v3.3.11
+
+### Audit method
+
+Same procedure as the v3.3.2 audit below: downloaded the
+`aarch64-apple-darwin` build of v3.3.11, diffed `--help` output for every
+subcommand we call against the in-place v3.3.2 binary, and scanned the 73
+commits between the tags (2026-05-15 → 2026-06-09) via the GitHub REST API.
+Latest v3.4.x releases are **beta** — we stay on the stable line.
+
+### Result: zero changes on our surface
+
+The only `--help` differences were the binary name in usage strings and a
+shortened docstring on `token report` (which we don't call). All functional
+commits land in skills we don't use:
+
+| Area | Change | Impact on us |
+|---|---|---|
+| `cross-chain` | `--readable-amount` on approve; `--slippage` kept decimal; amount-0 = revoke parity | None — we bridge via LI.FI |
+| `strategy` | tightened write-path validators | None — not used |
+| `payment` | `mpp-session-open` hash-mode now requires `--salt` | None — x402 payment integration deferred |
+| `swap` (CLI) | Solana jitoCalldata path fix; richer output with next steps | None — we use HTTP DEX API for quotes + `wallet contract-call` for execution |
+| `gas-station` | always sign `authHashFor7702` when backend returns it | None — Gas Station flags not used |
+| `wallet email-login` | `--locale` validated as enum (`en_US`/`zh_CN`) | None — we don't pass `--locale` |
+| errors | code 50114 (Invalid Authority) now includes login guidance | Cosmetic improvement, error `message` text changes — we match on `code`, not text |
+
+Read-only smoke test post-swap: `wallet status` returns the expected JSON
+shape; 25/25 unit tests green; `tsc --noEmit` clean.
+
+### REST API changelog since 2026-05-14
+
+Three entries, none breaking, none adopted:
+
+- **2026-06-04** — Trade API: Intent integration + notify endpoint (not used).
+- **2026-05-21** — Trade API: Pharos Chain support (chain we don't expose).
+- **2026-05-15** — Social Analytics API launched (new product; would be a
+  Market-tier paid surface — skip unless a social-sentiment feature lands).
 
 ---
 
