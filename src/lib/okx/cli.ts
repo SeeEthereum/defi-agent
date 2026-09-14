@@ -17,7 +17,12 @@ function resolveBin(): string {
   return path.join(process.env.HOME ?? "~", ".local", "bin", "onchainos");
 }
 
-const ONCHAINOS_BIN = resolveBin();
+/**
+ * Absolute path to the onchainos binary. Exported so login-session.ts can
+ * spawn the long-polling login phase directly, outside runCli's timeout
+ * and keystore mutex.
+ */
+export const ONCHAINOS_BIN = resolveBin();
 
 export class OkxCliError extends Error {
   constructor(
@@ -72,7 +77,7 @@ export function parseGasStationConfirming(
   const statusFromField =
     typeof json.gasStationStatus === "string" ? json.gasStationStatus : undefined;
   const statusFromMessage = message.match(
-    /\b(FIRST_TIME_PROMPT|PENDING_UPGRADE|REENABLE_ONLY|READY_TO_USE|INSUFFICIENT_ALL|HAS_PENDING_TX)\b/
+    /\b(FIRST_TIME_PROMPT|PENDING_UPGRADE|REENABLE_ONLY|READY_TO_USE|INSUFFICIENT_ALL|HAS_PENDING_TX|NOT_SUPPORT_INTENTION)\b/
   )?.[1];
 
   // Token list lives in `next` (stringified JSON) or inline on the response.
@@ -297,16 +302,31 @@ export async function runCli<T = unknown>(
 }
 
 // Auth commands
-export async function walletLogin(email?: string, locale = "en-US") {
-  const args: Record<string, string> = { locale };
-  if (email) {
-    return runCli(["wallet", "login", email], args);
-  }
-  return runCli(["wallet", "login"], args);
+//
+// Since CLI v4, login is a browser-based social login (Google / Apple /
+// Email) run in three phases: `init` mints a login URL, the user completes
+// it in a browser, and `poll` waits for the result and persists the
+// session. The pre-v4 `wallet login <email>` + `wallet verify <otp>` pair
+// no longer exists — `verify` was removed outright.
+//
+// We only call `init` here. `--phase open` is skipped deliberately: it
+// opens a browser on the machine running the CLI, which is useless on a
+// server — we show the URL to the operator instead. `--phase poll`
+// long-polls (measured: still running after 45s), so it must NOT go
+// through runCli: it would blow the 30s execFile timeout and hold the
+// keystore mutex for the whole login. It is spawned detached instead —
+// see src/lib/okx/login-session.ts.
+
+/** Shape of `wallet login --phase init` data, verified against v4.6.0. */
+export interface LoginInitResult {
+  authSessionId: string;
+  loginUrl: string;
+  /** Best-effort browser open attempted by the CLI; false on headless servers. */
+  opened?: boolean;
 }
 
-export async function walletVerify(otp: string) {
-  return runCli(["wallet", "verify", otp]);
+export async function walletLoginInit() {
+  return runCli<LoginInitResult>(["wallet", "login"], { phase: "init" });
 }
 
 export async function walletStatus() {

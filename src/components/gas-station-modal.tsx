@@ -33,7 +33,15 @@ const ACTIVATION_STATES = new Set([
   "REENABLE_ONLY",
 ]);
 
-const TERMINAL_STATES = new Set(["INSUFFICIENT_ALL", "HAS_PENDING_TX"]);
+// States where no token choice can help: the user must top up, wait for a
+// pending transaction, or use native gas. NOT_SUPPORT_INTENTION (added in
+// CLI v4) means this particular transaction type can't route through Gas
+// Station at all.
+const TERMINAL_STATES = new Set([
+  "INSUFFICIENT_ALL",
+  "HAS_PENDING_TX",
+  "NOT_SUPPORT_INTENTION",
+]);
 
 function tokenLabel(t: GasStationToken): string {
   return (

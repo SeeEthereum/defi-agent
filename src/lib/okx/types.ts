@@ -28,7 +28,16 @@ export interface TokenBalance {
   symbol: string;
   balance: string;
   usdValue: string;
-  tokenContractAddress: string;
+  /**
+   * Token contract address. CLI v4 renamed this from `tokenContractAddress`
+   * and dropped the alias, so `tokenAddress` is the field actually emitted
+   * today; the old name is kept optional because consumers still read both
+   * (see use-balances.ts, swap/page.tsx, bridge/page.tsx) and we may parse
+   * cached or replayed v3 payloads.
+   */
+  tokenAddress: string;
+  /** @deprecated Pre-v4 name for `tokenAddress`. */
+  tokenContractAddress?: string;
   tokenPrice: string;
 }
 

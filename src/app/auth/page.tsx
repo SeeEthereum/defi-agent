@@ -12,14 +12,18 @@
  *   │  three pastel cards explaining what you get                │
  *   └────────────────────────────────────────────────────────────┘
  *
- * Form logic (email → OTP → /ai) is unchanged from the previous version;
- * only the visual envelope flipped from light/violet-aurora to dark/
- * iridescent-purple Voxr style.
+ * Sign-in flow (CLI v4): the server mints a one-time OKX sign-in link, the
+ * operator opens it here or on their phone via the QR, and we watch
+ * /api/auth/poll until the session lands, then route to /ai. The old
+ * email → OTP form is gone: `wallet verify` was removed upstream and the
+ * CLI no longer supports a headless OTP login.
  */
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { mutate } from "swr";
+import QRCode from "qrcode";
 
 // Three.js prop is heavy — dynamic + ssr:false keeps it off the critical
 // path. The hero reflows briefly while it mounts (tens of ms); a stable
@@ -29,87 +33,95 @@ const IridescentProp = dynamic(
   { ssr: false, loading: () => null }
 );
 
+// How often to ask the server whether the browser login landed. The route
+// reads in-memory state (no CLI spawn), so this stays cheap.
+const POLL_INTERVAL_MS = 2000;
+
 export default function AuthPage() {
   const router = useRouter();
-  const [step, setStep] = useState<"email" | "otp">("email");
-  const [email, setEmail] = useState("");
-  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [step, setStep] = useState<"idle" | "awaiting">("idle");
+  const [loginUrl, setLoginUrl] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const otpValue = otpDigits.join("");
-
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const startLogin = async () => {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email || undefined }),
-      });
+      const res = await fetch("/api/auth/login", { method: "POST" });
       const data = await res.json();
-      if (!data.success) { setError(data.error || "Login failed"); return; }
-      if (data.requiresOtp) { setStep("otp"); } else { router.push("/ai"); }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otp: otpValue }),
-      });
-      const data = await res.json();
-      if (!data.success) { setError(data.error || "Verification failed"); return; }
-      router.push("/ai");
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOtpInput = (i: number, val: string) => {
-    const digit = val.replace(/\D/g, "").slice(-1);
-    const next = [...otpDigits];
-    next[i] = digit;
-    setOtpDigits(next);
-    if (digit && i < 5) otpRefs.current[i + 1]?.focus();
-  };
-
-  const handleOtpKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace") {
-      if (otpDigits[i]) {
-        const next = [...otpDigits]; next[i] = ""; setOtpDigits(next);
-      } else if (i > 0) {
-        otpRefs.current[i - 1]?.focus();
+      if (!data.success) {
+        setError(data.error || "Could not start sign-in. Please try again.");
+        return;
       }
-    } else if (e.key === "ArrowLeft" && i > 0) {
-      otpRefs.current[i - 1]?.focus();
-    } else if (e.key === "ArrowRight" && i < 5) {
-      otpRefs.current[i + 1]?.focus();
+      const url: string = data.data.loginUrl;
+      setLoginUrl(url);
+      setStep("awaiting");
+      // Best-effort: popup blockers may swallow this, which is why the
+      // link and QR stay on screen regardless.
+      window.open(url, "_blank", "noopener,noreferrer");
+      QRCode.toDataURL(url, { width: 320, margin: 1 })
+        .then(setQrDataUrl)
+        .catch(() => setQrDataUrl(""));
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (text.length) {
-      const next = text.split("").concat(Array(6).fill("")).slice(0, 6);
-      setOtpDigits(next);
-      otpRefs.current[Math.min(text.length, 5)]?.focus();
+  const cancelLogin = useCallback(() => {
+    void fetch("/api/auth/poll", { method: "DELETE" });
+    setStep("idle");
+    setLoginUrl("");
+    setQrDataUrl("");
+    setError("");
+  }, []);
+
+  // Watch the background poll until the session is persisted server-side.
+  useEffect(() => {
+    if (step !== "awaiting") return;
+    let cancelled = false;
+
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch("/api/auth/poll");
+        const data = await res.json();
+        if (cancelled || !data.success) return;
+
+        if (data.data.phase === "done") {
+          clearInterval(id);
+          // useAuthState caches /api/auth/status on a 30s interval and it
+          // still holds the logged-out result. Revalidate before routing so
+          // the app shell doesn't render its "Connect Wallet" state first.
+          await mutate("/api/auth/status");
+          router.push("/ai");
+        } else if (data.data.phase === "error") {
+          clearInterval(id);
+          setError(data.data.error || "Sign-in failed. Please try again.");
+          setStep("idle");
+        }
+      } catch {
+        // Transient network blip — keep polling.
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [step, router]);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(loginUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Could not copy. Select the link and copy it manually.");
     }
-    e.preventDefault();
   };
 
   return (
@@ -143,24 +155,21 @@ export default function AuthPage() {
             {/* ── Form card ── */}
             <div className="mt-10 max-w-md animate-kinetic-in stagger-3">
               <div className="voxr-card relative p-6">
-                {step === "email" ? (
-                  <form onSubmit={handleEmailSubmit} className="space-y-4">
-                    <label className="text-eyebrow block">Email</label>
-                    <input
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="focus-ring-voxr w-full h-11 rounded-xl border border-border bg-secondary px-4 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors"
-                    />
+                {step === "idle" ? (
+                  <div className="space-y-4">
+                    <p className="text-[13px] leading-relaxed text-foreground/70">
+                      Sign in with Google, Apple or email on OKX&apos;s secure
+                      page. We&apos;ll open it in a new tab and finish
+                      automatically once you&apos;re done.
+                    </p>
                     {error && (
                       <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
                         <p className="text-[12px] text-destructive">{error}</p>
                       </div>
                     )}
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={startLogin}
                       disabled={loading}
                       className="btn-pill-primary disabled-ramp w-full"
                     >
@@ -170,62 +179,69 @@ export default function AuthPage() {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                           </svg>
-                          Sending code…
+                          Preparing sign-in…
                         </>
-                      ) : "Continue →"}
+                      ) : "Sign in with OKX →"}
                     </button>
-                  </form>
+                  </div>
                 ) : (
-                  <form onSubmit={handleOtpSubmit} className="space-y-5">
-                    <div>
-                      <label className="text-eyebrow mb-2.5 block">
-                        Code sent to {email}
-                      </label>
-                      <div className="flex gap-2 justify-between" onPaste={handleOtpPaste}>
-                        {otpDigits.map((d, i) => (
-                          <input
-                            key={i}
-                            ref={(el) => { otpRefs.current[i] = el; }}
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={1}
-                            value={d}
-                            onChange={(e) => handleOtpInput(i, e.target.value)}
-                            onKeyDown={(e) => handleOtpKey(i, e)}
-                            autoFocus={i === 0}
-                            className="focus-ring-voxr w-full h-12 rounded-xl border border-border bg-secondary text-center text-lg font-bold tracking-widest text-foreground transition-colors"
-                          />
-                        ))}
-                      </div>
+                  <div className="space-y-5">
+                    <div className="flex items-center gap-2.5">
+                      <svg className="animate-spin-breathe h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <p className="text-[13px] text-foreground/80">
+                        Waiting for you to finish signing in…
+                      </p>
                     </div>
+
+                    <p className="text-[12px] leading-relaxed text-muted-foreground">
+                      A new tab should have opened. If it didn&apos;t, use the
+                      link below — or scan the code to sign in on your phone.
+                    </p>
+
+                    {qrDataUrl && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={qrDataUrl}
+                        alt="QR code to open the sign-in link on another device"
+                        className="mx-auto h-40 w-40 rounded-xl bg-white p-2"
+                      />
+                    )}
+
+                    <div className="flex gap-2">
+                      <a
+                        href={loginUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 h-11 rounded-xl bg-secondary border border-border flex items-center justify-center text-sm font-medium text-foreground hover:bg-secondary/70 transition-colors"
+                      >
+                        Open sign-in page
+                      </a>
+                      <button
+                        type="button"
+                        onClick={copyLink}
+                        className="h-11 px-4 rounded-xl bg-secondary border border-border text-sm font-medium text-foreground hover:bg-secondary/70 transition-colors"
+                      >
+                        {copied ? "Copied" : "Copy link"}
+                      </button>
+                    </div>
+
                     {error && (
                       <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
                         <p className="text-[12px] text-destructive">{error}</p>
                       </div>
                     )}
-                    <button
-                      type="submit"
-                      disabled={loading || otpValue.length < 6}
-                      className="btn-pill-primary disabled-ramp w-full"
-                    >
-                      {loading ? (
-                        <>
-                          <svg className="animate-spin-breathe h-4 w-4" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          Verifying…
-                        </>
-                      ) : "Verify & Sign in"}
-                    </button>
+
                     <button
                       type="button"
-                      onClick={() => { setStep("email"); setOtpDigits(["","","","","",""]); setError(""); }}
+                      onClick={cancelLogin}
                       className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      ← Use a different email
+                      ← Cancel and start over
                     </button>
-                  </form>
+                  </div>
                 )}
               </div>
 

@@ -1,6 +1,6 @@
 # onchainos CLI — upgrade notes & deliberate skip-list
 
-Last reviewed: **2026-06-10** against `onchainos-cli@v3.3.11`.
+Last reviewed: **2026-09-14** against `onchainos-cli@v4.6.0`.
 
 The `onchainos` binary is pinned in `scripts/install-onchainos.sh:LATEST`. This
 doc tracks two things:
@@ -156,6 +156,75 @@ The recommended starting point is **(a) + path-1 cache work**: it's
 zero-risk, takes the financial decision off the critical path, and gives
 us empirical data from the new logs on how often we'd actually hit the
 quota. We can upgrade to (b) or (c) at any later date.
+
+---
+
+## 2026-09-14 — Upgrade v3.3.11 → v4.6.0 (major)
+
+### Audit method
+
+Downloaded the v4.6.0 `aarch64-apple-darwin` build and diffed `--help` for
+**all 39 CLI call sites** (37 wrappers in `src/lib/okx/cli.ts` + the two raw
+`runCli` calls in `api/wallet/accounts/route.ts`) against the v3.3.11
+binary, then scanned the ~500 commits between the tags. Most of that volume
+is the new `agent-commerce` / `agent-task` / subscription line, which we
+don't use.
+
+### Breaking changes and how we handled them
+
+| Change | Handling |
+|---|---|
+| `wallet verify` **removed**; `wallet login` is now browser social login with `--phase init/open/poll` | Rewrote auth — see "Login procedure" below. `/api/auth/verify` deleted, `/api/auth/poll` added. |
+| Wallet balance renamed `tokenContractAddress` → `tokenAddress`, alias dropped, payload trimmed to a 9-field whitelist | `TokenBalance` updated (`types.ts`). Three of four consumers already read both names with a fallback; `lib/hyperliquid/cli.ts:175` read only `tokenAddress` and now works correctly instead of silently falling back to a symbol match. |
+| Gas Station gained `NOT_SUPPORT_INTENTION` | Added to `parseGasStationConfirming` and to `TERMINAL_STATES` in the modal. |
+
+**Unchanged and verified identical:** `market`, `security`, `gateway`,
+`token`, `signal`, `leaderboard`, `swap`, `wallet gas-station`. The runCli
+contract holds — `{ok,data}` envelope, JSON on **stdout**, human text on
+**stderr**, exit codes unchanged. v4 prints compact JSON rather than
+pretty-printed; `parseLastJsonDoc` is brace-depth based so it is unaffected.
+Top level only drops `competition` (unused) and adds `preflight` / `agent`
+(unused).
+
+### Login procedure (v4)
+
+Email + OTP no longer exists. The flow is:
+
+1. `wallet login --phase init` → returns `{ authSessionId, loginUrl }`,
+   instantly (~40ms).
+2. The operator opens `loginUrl` in **any** browser (the `/auth` page shows
+   the link plus a QR for phone sign-in) and completes Google / Apple /
+   Email login on OKX's page.
+3. `wallet login --phase poll --session-id <id>` waits for the result and
+   persists the session.
+
+**`--phase poll` long-polls** — measured still running after 45s, and it
+legitimately lasts as long as the person takes. It therefore must **not**
+go through `runCli`: the 30s `execFile` timeout would kill it and
+`withOnchainosLock` would hold the keystore mutex for the whole login,
+starving every other route. `src/lib/okx/login-session.ts` spawns it
+detached instead, deliberately bypassing the mutex — the only command
+allowed to do so, and safe because it writes the keystore only on success,
+at a moment when the account is logged out and every other wallet command
+is already failing with `Invalid Authority`.
+
+`--phase open` is skipped: it opens a browser on the machine running the
+CLI, which does nothing useful on Render.
+
+**First bootstrap after a clean deploy** must be done by a human — there is
+no headless login path any more. Open `/auth` on the deployment and
+complete the flow.
+
+### Known state at time of upgrade
+
+- The keystore session was **already expired** before the upgrade, so a
+  re-login was required regardless; v4 reads the existing
+  `~/.onchainos/wallets.json` without migrating it (account id preserved).
+  Note `wallet status` now returns `email: ""` rather than the address.
+- The CLI reports `MARKET_API_OLD_USER_POST_GRACE_OVER_QUOTA` on both the
+  basic and premium tiers: the free Market API quota is exhausted and those
+  routes are degraded. **Not addressed in this upgrade** — needs the x402
+  payment path (`payment default set`, USDG on X Layer).
 
 ---
 

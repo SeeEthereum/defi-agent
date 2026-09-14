@@ -158,3 +158,25 @@ describe("parseLastJsonDoc", () => {
     expect(parseLastJsonDoc(raw)).toEqual({ good: true });
   });
 });
+
+describe("parseGasStationConfirming — CLI v4 additions", () => {
+  it("recognizes NOT_SUPPORT_INTENTION (new in v4)", () => {
+    const parsed = parseGasStationConfirming({
+      confirming: true,
+      message: "gasStationStatus: NOT_SUPPORT_INTENTION",
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.status).toBe("NOT_SUPPORT_INTENTION");
+  });
+
+  it("parses a compact (non-pretty) v4 payload — v4 prints single-line JSON", () => {
+    const parsed = parseGasStationConfirming({
+      confirming: true,
+      gasStationStatus: "FIRST_TIME_PROMPT",
+      message: "Gas Station first-time activation required",
+      next: '{"gasStationTokenList":[{"feeTokenAddress":"0xUSDT","relayerId":"r1","sufficient":true}]}',
+    });
+    expect(parsed!.tokenList).toHaveLength(1);
+    expect(parsed!.tokenList[0].relayerId).toBe("r1");
+  });
+});

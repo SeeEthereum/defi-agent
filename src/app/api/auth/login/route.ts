@@ -1,38 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
-import { walletLogin } from "@/lib/okx/cli";
-import { z } from "zod";
+import { NextResponse } from "next/server";
+import { walletLoginInit } from "@/lib/okx/cli";
+import { startLoginPoll } from "@/lib/okx/login-session";
 
-const schema = z.object({
-  email: z.string().email().optional(),
-});
-
-export async function POST(request: NextRequest) {
+/**
+ * Start a browser login (CLI v4 social login).
+ *
+ * Mints the login URL and kicks off the background poll that persists the
+ * session once the operator finishes in their browser. Takes no body: the
+ * pre-v4 email + OTP flow is gone (`wallet verify` was removed upstream),
+ * and the provider is chosen on OKX's page, not here.
+ *
+ * The client shows `loginUrl`, then watches GET /api/auth/poll.
+ */
+export async function POST() {
   try {
-    const body = await request.json();
-    const { email } = schema.parse(body);
+    const result = await walletLoginInit();
+    const { authSessionId, loginUrl } = result.data ?? {};
 
-    const result = await walletLogin(email, "en-US");
-
-    if (email) {
-      return NextResponse.json({
-        success: true,
-        message: `Verification code sent to ${email}. Please check your inbox.`,
-        requiresOtp: true,
-      });
+    if (!authSessionId || !loginUrl) {
+      return NextResponse.json(
+        { success: false, error: "Login service did not return a sign-in link." },
+        { status: 502 }
+      );
     }
 
-    // Silent API key login
-    return NextResponse.json({
-      success: true,
-      data: result.data,
-      requiresOtp: false,
-    });
+    startLoginPoll(authSessionId, loginUrl);
+
+    return NextResponse.json({ success: true, data: { loginUrl, authSessionId } });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Login failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Login failed";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

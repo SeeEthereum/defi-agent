@@ -43,6 +43,21 @@ fi
 # Hardcoded version — avoids GitHub API rate-limit 403 errors on Render CI.
 # Update this string when a new onchainos release is published.
 #
+# v4.6.0 (2026-09-12) — audited diff vs v3.3.11, all 39 call sites checked:
+#   - BREAKING, handled: `wallet verify` removed and `wallet login` is now a
+#     browser social login with --phase init/open/poll. Our /api/auth/* and
+#     the /auth page were rewritten for it (see login-session.ts).
+#   - BREAKING, handled: wallet balance renamed tokenContractAddress →
+#     tokenAddress and dropped the alias.
+#   - Everything else we call is byte-identical in --help: market, security,
+#     gateway, token, signal, leaderboard, swap, wallet gas-station. The
+#     runCli contract holds: {ok,data} envelope, JSON on stdout, human text
+#     on stderr, exit codes unchanged. v4 prints compact JSON instead of
+#     pretty-printed — parseLastJsonDoc is brace-depth based, so unaffected.
+#   - Top-level: `competition` removed (unused), `preflight`/`agent` added
+#     (unused). NOT adopted yet: FreeGas, BTC/BRC-20/SUI, `receive`,
+#     `funding-check`.
+#
 # v3.3.11 (2026-06-09) — audited diff vs v3.3.2 (73 commits):
 #   - Zero breaking changes on subcommands we call (wallet contract-call /
 #     sign-message / send / balance / addresses / history, security/*,
@@ -61,7 +76,7 @@ fi
 #   - New top-level subcommands available but not yet used: `cross-chain`
 #     (OKX-native bridge alternative to LI.FI), `strategy`, `workflow`,
 #     `competition`, `wallet qrcode`, `wallet gas-station`, `token report`.
-LATEST="v3.3.11"
+LATEST="v4.6.0"
 
 echo "Installing onchainos $LATEST for $TARGET into $PROJECT_BIN_DIR..."
 
