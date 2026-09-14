@@ -1,294 +1,224 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+/**
+ * albicocca landing — the public entry to the app.
+ *
+ * Every "Sign in" call to action goes to /auth, which shows the risk
+ * disclaimer and then the OKX sign-in. The (app) layout redirects here when
+ * the disclaimer has not been accepted yet.
+ *
+ * Markup and styles come from the approved vocina-family design canvas; this
+ * component only wires its behaviour. The logic mirrors the canvas script
+ * value for value (reveal threshold, parallax factors, carousel scaling).
+ * One deliberate difference: the canvas was a standalone page and never
+ * removed its document-level listeners, which in a single-page app would keep
+ * intercepting clicks and keys after you leave. Everything is torn down here.
+ */
 
-const slides = [
-  {
-    icon: (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src="/logo.jpg" alt="DeFi Agent" width={64} height={64} className="rounded-2xl object-cover shadow-lg" />
-    ),
-    title: "Welcome to DeFi Agent",
-    subtitle: "Your AI-powered gateway to decentralized finance",
-    description:
-      "Manage your crypto portfolio across multiple blockchains with the help of an intelligent assistant. No complexity, no seed phrases to worry about.",
-  },
-  {
-    icon: (
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
-        <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
-        <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-      </svg>
-    ),
-    title: "Secure Wallet",
-    subtitle: "Enterprise-grade security with OKX TEE technology",
-    description:
-      "Your private keys are protected inside a Trusted Execution Environment (TEE). You control your assets with just your email \u2014 no extensions, no seed phrases, no hardware wallets needed.",
-  },
-  {
-    icon: (
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-        <polyline points="16 7 22 7 22 13" />
-      </svg>
-    ),
-    title: "Earn Yield",
-    subtitle: "Supply assets to Fluid Protocol and earn passively",
-    description:
-      "Deposit stablecoins or ETH into Fluid lending markets on Ethereum, Arbitrum, and Base. Watch your assets grow with competitive APR rates, all managed from one place.",
-  },
-  {
-    icon: (
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-        <path d="m17 2 4 4-4 4" />
-        <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-        <path d="m7 22-4-4 4-4" />
-        <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-      </svg>
-    ),
-    title: "Swap Tokens",
-    subtitle: "Access 500+ DEX sources across 4 chains",
-    description:
-      "Trade any token on Ethereum, Arbitrum, Base, or BNB Chain with the best rates aggregated from hundreds of decentralized exchanges. One click, best price.",
-  },
-  {
-    icon: (
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    ),
-    title: "AI Assistant",
-    subtitle: "Claude helps you navigate DeFi intelligently",
-    description:
-      "Ask questions, get market analysis, or let the AI suggest strategies. Every transaction is proposed first \u2014 you always confirm before anything executes.",
-  },
-];
+import { useEffect } from "react";
+import "./albicocca.css";
+import { LANDING_HTML } from "./landing-markup";
 
 export default function WelcomePage() {
-  const router = useRouter();
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
-  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  useEffect(() => {
+    const timers: number[] = [];
+    const cleanups: Array<() => void> = [];
+    const on = <K extends keyof WindowEventMap>(
+      target: Window | Document | Element,
+      type: K | string,
+      fn: EventListener,
+      opts?: AddEventListenerOptions
+    ) => {
+      target.addEventListener(type, fn, opts);
+      cleanups.push(() => target.removeEventListener(type, fn, opts));
+    };
 
-  const isLastSlide = currentSlide === slides.length - 1;
-  const slide = slides[currentSlide];
+    // In-page anchors (#what, #how, #custody) scroll smoothly on this page
+    // only; the setting is restored when you navigate away.
+    const root = document.documentElement;
+    const prevScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "smooth";
 
-  const handleNext = () => {
-    if (isLastSlide) {
-      setShowDisclaimer(true);
-    } else {
-      setCurrentSlide((s) => s + 1);
+    const qsa = <T extends Element = HTMLElement>(sel: string) =>
+      Array.from(document.querySelectorAll<T & Element>(sel)) as T[];
+
+    // ── Reveal on scroll ─────────────────────────────────────────────────
+    // getBoundingClientRect rather than IntersectionObserver, as in the source.
+    let pending = qsa<HTMLElement>("[data-reveal]");
+    let ticking = false;
+    let onScroll = () => {};
+
+    // Sections with continuous animations pause while off screen.
+    const animScopes = qsa<HTMLElement>("[data-anim]");
+    let io: IntersectionObserver | null = null;
+    if (animScopes.length && "IntersectionObserver" in window) {
+      io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => e.target.classList.toggle("anim-off", !e.isIntersecting));
+        },
+        { rootMargin: "25% 0px" }
+      );
+      animScopes.forEach((el) => io!.observe(el));
     }
-  };
 
-  const handleAccept = () => {
-    localStorage.setItem("defi-agent-disclaimer-accepted", "true");
-    router.push("/auth");
-  };
+    const reveal = (el: HTMLElement) => {
+      el.classList.add("in");
+      const d = parseFloat(getComputedStyle(el).getPropertyValue("--d")) || 0;
+      timers.push(window.setTimeout(() => el.classList.add("done"), 1150 + d * 1000));
+    };
 
-  if (showDisclaimer) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-accent/30 p-4">
-        <div className="w-full max-w-lg">
-          <div className="bg-card rounded-2xl shadow-lg border border-border/60 p-8">
-            <div className="flex items-center justify-center mb-6">
-              <div className="h-12 w-12 rounded-2xl bg-destructive/10 flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
-                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </div>
-            </div>
+    const check = () => {
+      ticking = false;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      const limit = vh * 0.92;
+      const hit: HTMLElement[] = [];
+      pending = pending.filter((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.top < limit && r.bottom > 0) {
+          hit.push(el);
+          return false;
+        }
+        return true;
+      });
+      onScroll();
+      hit.forEach(reveal);
+    };
+    const requestCheck = () => {
+      if (!ticking) {
+        ticking = true;
+        window.requestAnimationFrame(check);
+      }
+    };
+    on(window, "scroll", requestCheck as EventListener, { passive: true });
 
-            <h2 className="text-xl font-semibold text-center mb-2 tracking-tight">
-              Risk Disclaimer
-            </h2>
-            <p className="text-sm text-muted-foreground text-center mb-6">
-              Please read carefully before proceeding
-            </p>
+    // ── Tile carousel (≤900px) ───────────────────────────────────────────
+    const hero = document.querySelector<HTMLElement>("[data-hero]");
+    const spreads = qsa<HTMLElement>("[data-spread]");
+    const tilesEl = document.querySelector<HTMLElement>(".albi .tiles");
+    const dots = [".dot-a", ".dot-b", ".dot-c"].map((s) => document.querySelector<HTMLElement>(s));
+    const isCarousel = () => window.innerWidth <= 900;
 
-            <div className="bg-accent/50 rounded-xl p-4 mb-6 max-h-64 overflow-y-auto text-[13px] leading-relaxed text-foreground/80 space-y-3">
-              <p>
-                <strong>DeFi Agent</strong> provides access to decentralized finance protocols across
-                multiple chains, including swap aggregation, cross-chain bridging, lending, security
-                tooling, and an AI assistant. By using this application, you acknowledge and accept
-                the following risks:
-              </p>
-              <ul className="list-disc pl-4 space-y-1.5">
-                <li>
-                  <strong>Market risk:</strong> Cryptocurrency values are highly volatile and can result in significant financial loss.
-                </li>
-                <li>
-                  <strong>Smart contract risk:</strong> DeFi protocols interact with smart contracts that may contain bugs, exploits, or governance failures &mdash; including those of routing aggregators, bridge protocols, and lending markets used by this app.
-                </li>
-                <li>
-                  <strong>Lending protocol risk:</strong> Supplying assets to lending markets (e.g. Fluid Protocol) exposes you to oracle failures, liquidity shortages, frozen reserves, and protocol-level insolvency. Past APR rates are not guarantees of future returns and can fluctuate or go to zero.
-                </li>
-                <li>
-                  <strong>Cross-chain bridge risk:</strong> Bridge transactions route through third-party protocols (Stargate, Across, Hop, and others via LI.FI) and can stall, take longer than estimated, or require manual recovery via the bridge&rsquo;s own interface. Funds can remain in transit for extended periods.
-                </li>
-                <li>
-                  <strong>AI assistant disclaimer:</strong> Proposals from the in-app AI assistant are generated by a language model and may be inaccurate, outdated, or unsafe. The AI never executes without explicit user confirmation &mdash; <strong>always verify the chain, token address, and amount before approving any action.</strong>
-                </li>
-                <li>
-                  <strong>Informational data only:</strong> Smart money signals, KOL/whale activity feeds, leaderboards, token safety scans, and DApp phishing checks are <em>educational</em>, not financial advice. Security scanners reduce risk but cannot detect every exploit; new attacks can pass screening.
-                </li>
-                <li>
-                  <strong>Token approvals:</strong> Swapping, bridging, and lending require granting ERC-20 spending rights to third-party contracts. Unlimited approvals left active are a long-term risk vector &mdash; use the Security Center to review and revoke approvals you no longer need.
-                </li>
-                <li>
-                  <strong>Slippage &amp; MEV:</strong> Swap and bridge executions may settle at a different price than quoted due to volatility or MEV. MEV protection is best-effort on supported chains and is not a guarantee.
-                </li>
-                <li>
-                  <strong>Regulatory risk:</strong> Cryptocurrency regulations vary by jurisdiction and may change at any time. You are responsible for compliance with the laws applicable to you.
-                </li>
-              </ul>
+    let tileTick = false;
+    const syncTiles = () => {
+      tileTick = false;
+      if (!tilesEl || !isCarousel()) return;
+      const c = tilesEl.getBoundingClientRect();
+      const mid = c.left + c.width / 2;
+      let best = 0;
+      let bestD = Infinity;
+      spreads.forEach((el, n) => {
+        const r = el.getBoundingClientRect();
+        const dist = Math.abs(r.left + r.width / 2 - mid);
+        const d = Math.min(1, dist / Math.max(1, r.width));
+        el.style.transform = `scale(${(1 - d * 0.08).toFixed(3)})`;
+        el.style.opacity = (1 - d * 0.4).toFixed(3);
+        if (dist < bestD) {
+          bestD = dist;
+          best = n;
+        }
+      });
+      dots.forEach((d, n) => {
+        if (d) d.style.background = n === best ? "#1d1d1f" : "rgba(0,0,0,0.2)";
+      });
+    };
+    const requestTiles = () => {
+      if (!tileTick) {
+        tileTick = true;
+        window.requestAnimationFrame(syncTiles);
+      }
+    };
+    const centerTile = (n: number) => {
+      if (!tilesEl || !spreads[n]) return;
+      const r = spreads[n].getBoundingClientRect();
+      const c = tilesEl.getBoundingClientRect();
+      tilesEl.scrollLeft += r.left + r.width / 2 - (c.left + c.width / 2);
+    };
+    if (tilesEl) {
+      on(tilesEl, "scroll", requestTiles as EventListener, { passive: true });
+      if (isCarousel()) {
+        centerTile(1);
+        syncTiles();
+      }
+      timers.push(window.setTimeout(syncTiles, 400));
+    }
 
-              <div className="bg-destructive/5 border border-destructive/15 rounded-lg p-3 mt-2">
-                <p className="font-semibold text-destructive/90 mb-1.5">
-                  Key Custody &mdash; Important
-                </p>
-                <p>
-                  Your wallet is powered by <strong>OKX Agentic Wallet</strong>. Private keys are generated and stored inside a <strong>Trusted Execution Environment (TEE)</strong> &mdash; a hardware-isolated secure enclave. This means:
-                </p>
-                <ul className="list-disc pl-4 space-y-1 mt-1.5">
-                  <li>
-                    <strong>You cannot export, extract, or back up your private keys.</strong> There is no seed phrase, no mnemonic, and no recovery file. This is by design.
-                  </li>
-                  <li>
-                    No one &mdash; not you, not OKX, not this application &mdash; can access the raw private key. All transaction signing happens inside the TEE.
-                  </li>
-                  <li>
-                    <strong>You depend on OKX infrastructure</strong> to access and operate your wallet. If OKX discontinues the Agentic Wallet service, you will not be able to recover your keys independently.
-                  </li>
-                  <li>
-                    Your account is linked to your email. Losing access to your email may result in permanent loss of wallet access.
-                  </li>
-                </ul>
-              </div>
+    // ── Nav: scrolled state, dark section, mobile menu ───────────────────
+    const navEl = document.querySelector<HTMLElement>("[data-nav]");
+    const darkSec = document.querySelector<HTMLElement>("[data-dark]");
+    const menuBtn = document.querySelector<HTMLElement>("[data-menu-btn]");
+    const menuEl = document.querySelector<HTMLElement>("[data-menu]");
+    const setMenu = (open: boolean) => {
+      if (!navEl || !menuBtn) return;
+      navEl.classList.toggle("menu-open", open);
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      menuBtn.setAttribute("aria-label", open ? "Close the menu" : "Open the menu");
+    };
+    if (menuBtn && menuEl && navEl) {
+      on(menuBtn, "click", (() => setMenu(!navEl.classList.contains("menu-open"))) as EventListener);
+      on(menuEl, "click", ((e: Event) => {
+        if ((e.target as Element).closest("a")) setMenu(false);
+      }) as EventListener);
+      on(document, "keydown", ((e: KeyboardEvent) => {
+        if (e.key === "Escape") setMenu(false);
+      }) as EventListener);
+      on(document, "click", ((e: Event) => {
+        if (navEl.classList.contains("menu-open") && !navEl.contains(e.target as Node)) setMenu(false);
+      }) as EventListener);
+    }
 
-              <p>
-                This application does not provide financial advice. You are solely responsible for your investment decisions.
-                Never invest more than you can afford to lose.
-              </p>
-            </div>
+    let lastY = 0;
+    onScroll = () => {
+      const y = Math.max(0, window.scrollY || window.pageYOffset || 0);
+      const carousel = isCarousel();
+      let overDark = false;
+      if (navEl && darkSec) {
+        const dr = darkSec.getBoundingClientRect();
+        overDark = dr.top <= 56 && dr.bottom >= 56;
+      }
+      if (!carousel) {
+        const k = Math.min(1, y / 500);
+        spreads.forEach((el) => {
+          const dir = parseFloat(el.getAttribute("data-spread") || "0") || 0;
+          el.style.transform = `translate(${(dir * k * 90).toFixed(1)}px, ${(Math.abs(dir) * k * -30).toFixed(1)}px) rotate(${(dir * k * 4).toFixed(2)}deg)`;
+        });
+      }
+      if (navEl) {
+        navEl.classList.toggle("nav-scrolled", y > 8);
+        if (darkSec) navEl.classList.toggle("nav-dark", overDark);
+        if (navEl.classList.contains("menu-open") && Math.abs(y - lastY) > 80) setMenu(false);
+      }
+      lastY = y;
+      if (!hero) return;
+      if (carousel) {
+        // On phones the hero slides under the tiles and fades, never overlapping.
+        const pm = Math.min(1, y / 420);
+        hero.style.transform = `translateY(${(y * 0.18).toFixed(1)}px) scale(${(1 - pm * 0.04).toFixed(3)})`;
+        hero.style.opacity = String(1 - pm * 0.9);
+        return;
+      }
+      const p = Math.min(1, y / 640);
+      hero.style.transform = `translateY(${(y * 0.32).toFixed(1)}px) scale(${(1 - p * 0.06).toFixed(3)})`;
+      hero.style.opacity = String(1 - p * 0.85);
+    };
 
-            <label className="flex items-start gap-3 cursor-pointer mb-6 group">
-              <div className="relative mt-0.5">
-                <input
-                  type="checkbox"
-                  checked={disclaimerAccepted}
-                  onChange={(e) => setDisclaimerAccepted(e.target.checked)}
-                  className="peer sr-only"
-                />
-                <div className="h-5 w-5 rounded-md border-2 border-border peer-checked:border-primary peer-checked:bg-primary transition-all duration-200 flex items-center justify-center">
-                  {disclaimerAccepted && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </div>
-              </div>
-              <span className="text-[13px] text-foreground/80 leading-snug">
-                I have read the disclaimer above and understand the risks of swapping, bridging, lending, using AI-assisted actions, and managing a non-custodial wallet whose keys cannot be exported.
-              </span>
-            </label>
+    const onResize = () => {
+      if (isCarousel()) requestTiles();
+      else spreads.forEach((el) => (el.style.opacity = ""));
+      requestCheck();
+    };
+    on(window, "resize", onResize as EventListener);
 
-            <Button
-              onClick={handleAccept}
-              disabled={!disclaimerAccepted}
-              className="w-full h-11 rounded-xl font-medium text-sm shadow-sm"
-            >
-              Accept & Continue
-            </Button>
+    check();
+    timers.push(window.setTimeout(check, 300));
+    timers.push(window.setTimeout(check, 1200));
 
-            <button
-              onClick={() => setShowDisclaimer(false)}
-              className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors text-center"
-            >
-              Go back to slides
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    return () => {
+      cleanups.forEach((fn) => fn());
+      timers.forEach((t) => window.clearTimeout(t));
+      io?.disconnect();
+      root.style.scrollBehavior = prevScrollBehavior;
+    };
+  }, []);
 
-  return (
-    <div className="voxr-halo relative min-h-screen flex flex-col items-center justify-center bg-background p-6">
-      {/* Soft halo behind the active slide, mirrors the auth hero. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 top-1/4 mx-auto h-[420px] max-w-2xl rounded-full opacity-50 blur-[110px]"
-        style={{ background: "radial-gradient(closest-side, oklch(0.55 0.3 295 / 0.45), transparent)" }}
-      />
-
-      <div className="relative w-full max-w-lg">
-        {/* Slide content */}
-        <div
-          key={currentSlide}
-          className="text-center mb-12 animate-kinetic-in"
-        >
-          <div className="inline-flex items-center justify-center h-20 w-20 rounded-3xl border border-border bg-card mb-7 shadow-[0_0_40px_-10px_oklch(0.62_0.27_295/0.5)]">
-            {slide.icon}
-          </div>
-          <p className="text-eyebrow mb-4">{slide.subtitle}</p>
-          <h1 className="text-display-lg tracking-tight text-foreground mb-5">
-            {slide.title}
-          </h1>
-          <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
-            {slide.description}
-          </p>
-        </div>
-
-        {/* Dots */}
-        <div className="flex items-center justify-center gap-2 mb-9">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentSlide(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                i === currentSlide
-                  ? "w-8 bg-primary shadow-[0_0_8px_oklch(0.62_0.27_295/0.7)]"
-                  : "w-1.5 bg-border hover:bg-muted-foreground/40"
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 justify-center">
-          {currentSlide > 0 && (
-            <button
-              onClick={() => setCurrentSlide((s) => s - 1)}
-              className="btn-pill-ghost"
-            >
-              Back
-            </button>
-          )}
-          <button
-            onClick={handleNext}
-            className="btn-pill-primary"
-          >
-            {isLastSlide ? "Get Started →" : "Continue →"}
-          </button>
-        </div>
-
-        {/* Skip */}
-        {!isLastSlide && (
-          <button
-            onClick={() => setShowDisclaimer(true)}
-            className="w-full mt-6 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors text-center"
-          >
-            Skip introduction
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  return <div className="albi" dangerouslySetInnerHTML={{ __html: LANDING_HTML }} />;
 }

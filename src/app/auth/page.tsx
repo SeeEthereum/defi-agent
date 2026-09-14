@@ -1,50 +1,82 @@
 "use client";
 
 /**
- * Voxr-inspired auth hero.
+ * Sign in to albicocca — two steps, in the landing's visual language.
  *
- * Layout intent (mirrors the reel):
- *   ┌────────────────────────────────────────────────────────────┐
- *   │  HEADLINE (massive, kinetic-in)        [iridescent prop]   │
- *   │  sub-copy                                                  │
- *   │  ── form card ───────────                                  │
- *   ├──────────────  light feature grid  ────────────────────────┤
- *   │  three pastel cards explaining what you get                │
- *   └────────────────────────────────────────────────────────────┘
+ *   1. Risk disclaimer. Accepting writes the flag the (app) layout checks,
+ *      so nobody reaches the app without it — and they accept at the moment
+ *      they are about to get a wallet, not on a marketing page.
+ *   2. OKX sign-in (CLI v4). The server mints a one-time sign-in link; you
+ *      open it here or on your phone via the QR, and we watch /api/auth/poll
+ *      until the session lands, then route to /ai. There is no headless
+ *      email + OTP login any more: `wallet verify` was removed upstream.
  *
- * Sign-in flow (CLI v4): the server mints a one-time OKX sign-in link, the
- * operator opens it here or on their phone via the QR, and we watch
- * /api/auth/poll until the session lands, then route to /ai. The old
- * email → OTP form is gone: `wallet verify` was removed upstream and the
- * CLI no longer supports a headless OTP login.
+ * Styles come from the landing's scoped stylesheet (everything under .albi),
+ * so type, buttons and cards match it exactly.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
 import { mutate } from "swr";
 import QRCode from "qrcode";
-
-// Three.js prop is heavy — dynamic + ssr:false keeps it off the critical
-// path. The hero reflows briefly while it mounts (tens of ms); a stable
-// container keeps CLS at zero.
-const IridescentProp = dynamic(
-  () => import("@/components/voxr/iridescent-prop").then((m) => m.IridescentProp),
-  { ssr: false, loading: () => null }
-);
+import "../welcome/albicocca.css";
+import { DISCLAIMER_KEY, RiskDisclaimerText } from "@/components/risk-disclaimer";
 
 // How often to ask the server whether the browser login landed. The route
 // reads in-memory state (no CLI spawn), so this stays cheap.
 const POLL_INTERVAL_MS = 2000;
 
+// Disclaimer flag from localStorage. The server can't read it and React
+// renders the server snapshot during hydration, so "not known yet" is null
+// rather than false — same approach as the (app) layout, which otherwise
+// bounced every hard load (see 92bc9be).
+function subscribeToStorage(cb: () => void) {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+const readAccepted = (): boolean | null => localStorage.getItem(DISCLAIMER_KEY) != null;
+const readAcceptedServer = (): boolean | null => null;
+
+const Spinner = ({ size = 16 }: { size?: number }) => (
+  <svg className="animate-spin-breathe" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
+const Mark = ({ id }: { id: string }) => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, margin: "2px 1px 0" }} aria-hidden="true">
+    <defs>
+      <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#ff7a1a" />
+        <stop offset="1" stopColor="#ff2d75" />
+      </linearGradient>
+    </defs>
+    <circle cx="12" cy="12" r="10" fill={`url(#${id})`} />
+  </svg>
+);
+
 export default function AuthPage() {
   const router = useRouter();
+  const storedAccepted = useSyncExternalStore(subscribeToStorage, readAccepted, readAcceptedServer);
+  // Set from the click handler: localStorage writes don't fire `storage` in
+  // the same tab, so the store alone wouldn't notice the acceptance.
+  const [justAccepted, setJustAccepted] = useState(false);
+  const [ticked, setTicked] = useState(false);
+
   const [step, setStep] = useState<"idle" | "awaiting">("idle");
   const [loginUrl, setLoginUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const accepted = justAccepted || storedAccepted === true;
+
+  const acceptDisclaimer = () => {
+    localStorage.setItem(DISCLAIMER_KEY, "true");
+    setJustAccepted(true);
+  };
 
   const startLogin = async () => {
     setError("");
@@ -59,8 +91,8 @@ export default function AuthPage() {
       const url: string = data.data.loginUrl;
       setLoginUrl(url);
       setStep("awaiting");
-      // Best-effort: popup blockers may swallow this, which is why the
-      // link and QR stay on screen regardless.
+      // Best-effort: popup blockers may swallow this, which is why the link
+      // and QR stay on screen regardless.
       window.open(url, "_blank", "noopener,noreferrer");
       QRCode.toDataURL(url, { width: 320, margin: 1 })
         .then(setQrDataUrl)
@@ -93,9 +125,9 @@ export default function AuthPage() {
 
         if (data.data.phase === "done") {
           clearInterval(id);
-          // useAuthState caches /api/auth/status on a 30s interval and it
-          // still holds the logged-out result. Revalidate before routing so
-          // the app shell doesn't render its "Connect Wallet" state first.
+          // useAuthState caches /api/auth/status on a 30s interval and still
+          // holds the logged-out result. Revalidate before routing so the app
+          // shell doesn't render its "Connect Wallet" state first.
           await mutate("/api/auth/status");
           router.push("/ai");
         } else if (data.data.phase === "error") {
@@ -125,254 +157,130 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+    <div className="albi" style={{ minHeight: "100vh", position: "relative", overflow: "hidden" }}>
+      {/* Hero wash — the landing's blobs, apricot and pink only */}
+      <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        <div className="blob" style={{ position: "absolute", top: -160, left: "6%", width: 520, height: 520, borderRadius: "50%", background: "radial-gradient(circle at 30% 30%, rgba(255,122,26,0.40), rgba(255,122,26,0) 70%)", filter: "blur(40px)", animation: "albi-blob 14s ease-in-out infinite" }} />
+        <div className="blob" style={{ position: "absolute", top: 60, right: "4%", width: 520, height: 520, borderRadius: "50%", background: "radial-gradient(circle at 60% 40%, rgba(255,45,117,0.32), rgba(255,45,117,0) 70%)", filter: "blur(46px)", animation: "albi-blob 18s ease-in-out infinite reverse" }} />
+      </div>
 
-      {/* ── HERO ─────────────────────────────────────────────────────── */}
-      <section className="voxr-halo relative">
-        {/* faint corner halo on the right, mirrors the Voxr "Stop Chasing
-            Leads" frame where a soft purple cloud follows the prop. */}
-        <div
-          className="pointer-events-none absolute -top-20 -right-20 h-[640px] w-[640px] rounded-full opacity-50 blur-[120px]"
-          style={{ background: "radial-gradient(closest-side, oklch(0.55 0.3 295 / 0.45), transparent)" }}
-        />
+      {/* Bar */}
+      <div className="nav" style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 50, background: "rgba(251,251,253,0.72)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+        <div className="wrap" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
+          <a href="/welcome" aria-label="albicocca home" style={{ display: "flex", alignItems: "center", gap: 1, color: "#1d1d1f", fontWeight: 700, fontSize: 24, letterSpacing: "-0.045em", lineHeight: 1 }}>
+            <span>albic</span>
+            <Mark id="markAuth" />
+            <span>cca</span>
+          </a>
+        </div>
+      </div>
 
-        <div className="relative mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 pt-16 pb-20 md:grid-cols-12 md:gap-6 md:pt-28">
-          {/* ── Copy + form ── */}
-          <div className="md:col-span-7 lg:col-span-7">
-            <p className="text-eyebrow mb-5 animate-kinetic-in">DEFI · ON-CHAIN AGENT</p>
+      <main className="wrap" style={{ position: "relative", zIndex: 1, paddingTop: 120, paddingBottom: 80 }}>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+          {!accepted ? (
+            <section className="rise" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "#b8500a", letterSpacing: "0.02em", textTransform: "uppercase" }}>Before you start</p>
+                <h1 className="h-section" style={{ marginTop: 14 }}>Read this first.</h1>
+                <p className="lead" style={{ marginTop: 16 }}>
+                  albicocca moves real money on public chains. Take a minute with the risks before you get a wallet.
+                </p>
+              </div>
 
-            <h1 className="text-display-2xl text-foreground animate-kinetic-in stagger-1">
-              Stop chasing yields.
-              <br />
-              <span className="text-iridescent">Start commanding them.</span>
-            </h1>
+              <div className="card" style={{ borderRadius: 28, background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 30px 70px rgba(0,0,0,0.08)", padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+                <div style={{ maxHeight: 320, overflowY: "auto", fontSize: 14, lineHeight: 1.55, color: "#424245", display: "flex", flexDirection: "column", gap: 12, paddingRight: 6 }} className="risk-body">
+                  <RiskDisclaimerText />
+                </div>
 
-            <p className="mt-7 max-w-md text-[15px] leading-relaxed text-foreground/70 animate-kinetic-in stagger-2">
-              One assistant. Every chain. Every protocol. Trade, swap, bridge and
-              earn from a single pane — your keys never leave OKX TEE.
-            </p>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", paddingTop: 14, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                  <input
+                    type="checkbox"
+                    checked={ticked}
+                    onChange={(e) => setTicked(e.target.checked)}
+                    style={{ width: 20, height: 20, marginTop: 1, accentColor: "#ff7a1a", flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: 14, lineHeight: 1.45, color: "#1d1d1f" }}>
+                    I have read the disclaimer above and understand the risks of swapping, bridging, lending, using AI-assisted actions, and managing a non-custodial wallet whose keys cannot be exported.
+                  </span>
+                </label>
 
-            {/* ── Form card ── */}
-            <div className="mt-10 max-w-md animate-kinetic-in stagger-3">
-              <div className="voxr-card relative p-6">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={acceptDisclaimer}
+                  disabled={!ticked}
+                  style={{ height: 52, borderRadius: 999, border: "none", background: "#ff7a1a", color: "#ffffff", fontSize: 17, fontWeight: 600, fontFamily: "inherit", cursor: ticked ? "pointer" : "not-allowed", opacity: ticked ? 1 : 0.45 }}
+                >
+                  Accept &amp; continue
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="rise" style={{ display: "flex", flexDirection: "column", gap: 20, textAlign: "center" }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "#b8500a", letterSpacing: "0.02em", textTransform: "uppercase" }}>Sign in</p>
+                <h1 className="h-section" style={{ marginTop: 14 }}>
+                  <span style={{ display: "block" }}>Ask your wallet.</span>
+                  <span className="gradient-text" style={{ display: "block" }}>Start here.</span>
+                </h1>
+                <p className="lead" style={{ marginTop: 16, marginLeft: "auto", marginRight: "auto", maxWidth: 460 }}>
+                  Sign in with Google, Apple or email on OKX&apos;s page. A wallet is created for you on the spot — no seed phrase.
+                </p>
+              </div>
+
+              <div className="card" style={{ borderRadius: 28, background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 30px 70px rgba(0,0,0,0.08)", padding: 28, display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
                 {step === "idle" ? (
-                  <div className="space-y-4">
-                    <p className="text-[13px] leading-relaxed text-foreground/70">
-                      Sign in with Google, Apple or email on OKX&apos;s secure
-                      page. We&apos;ll open it in a new tab and finish
-                      automatically once you&apos;re done.
-                    </p>
+                  <>
                     {error && (
-                      <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
-                        <p className="text-[12px] text-destructive">{error}</p>
-                      </div>
+                      <p role="alert" style={{ fontSize: 14, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "10px 14px" }}>{error}</p>
                     )}
                     <button
                       type="button"
+                      className="btn"
                       onClick={startLogin}
                       disabled={loading}
-                      className="btn-pill-primary disabled-ramp w-full"
+                      style={{ height: 52, borderRadius: 999, border: "none", background: "#ff7a1a", color: "#ffffff", fontSize: 17, fontWeight: 600, fontFamily: "inherit", cursor: loading ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}
                     >
-                      {loading ? (
-                        <>
-                          <svg className="animate-spin-breathe h-4 w-4" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          Preparing sign-in…
-                        </>
-                      ) : "Sign in with OKX →"}
+                      {loading ? (<><Spinner /> Preparing sign-in…</>) : "Sign in with OKX"}
                     </button>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    <div className="flex items-center gap-2.5">
-                      <svg className="animate-spin-breathe h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      <p className="text-[13px] text-foreground/80">
-                        Waiting for you to finish signing in…
-                      </p>
-                    </div>
-
-                    <p className="text-[12px] leading-relaxed text-muted-foreground">
-                      A new tab should have opened. If it didn&apos;t, use the
-                      link below — or scan the code to sign in on your phone.
+                    <p style={{ fontSize: 13, color: "#6e6e73", textAlign: "center" }}>
+                      We open OKX in a new tab and finish here automatically once you&apos;re done.
                     </p>
-
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#b8500a" }}>
+                      <Spinner />
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "#1d1d1f" }}>Waiting for you to finish signing in…</span>
+                    </div>
+                    <p style={{ fontSize: 14, lineHeight: 1.5, color: "#6e6e73" }}>
+                      A new tab should have opened. If it didn&apos;t, use the link below — or scan the code to sign in on your phone.
+                    </p>
                     {qrDataUrl && (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={qrDataUrl}
-                        alt="QR code to open the sign-in link on another device"
-                        className="mx-auto h-40 w-40 rounded-xl bg-white p-2"
-                      />
+                      <img src={qrDataUrl} alt="QR code to open the sign-in link on another device" style={{ margin: "4px auto", width: 168, height: 168, borderRadius: 16, background: "#ffffff", padding: 8, border: "1px solid rgba(0,0,0,0.08)" }} />
                     )}
-
-                    <div className="flex gap-2">
-                      <a
-                        href={loginUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 h-11 rounded-xl bg-secondary border border-border flex items-center justify-center text-sm font-medium text-foreground hover:bg-secondary/70 transition-colors"
-                      >
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <a href={loginUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, height: 48, borderRadius: 999, background: "rgba(0,0,0,0.05)", color: "#1d1d1f", fontSize: 15, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         Open sign-in page
                       </a>
-                      <button
-                        type="button"
-                        onClick={copyLink}
-                        className="h-11 px-4 rounded-xl bg-secondary border border-border text-sm font-medium text-foreground hover:bg-secondary/70 transition-colors"
-                      >
+                      <button type="button" onClick={copyLink} style={{ height: 48, padding: "0 20px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "#ffffff", color: "#1d1d1f", fontSize: 15, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>
                         {copied ? "Copied" : "Copy link"}
                       </button>
                     </div>
-
                     {error && (
-                      <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
-                        <p className="text-[12px] text-destructive">{error}</p>
-                      </div>
+                      <p role="alert" style={{ fontSize: 14, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "10px 14px" }}>{error}</p>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={cancelLogin}
-                      className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      ← Cancel and start over
+                    <button type="button" onClick={cancelLogin} style={{ alignSelf: "center", minHeight: 44, padding: "0 12px", border: "none", background: "transparent", color: "#6e6e73", fontSize: 14, fontFamily: "inherit", cursor: "pointer" }}>
+                      Cancel and start over
                     </button>
-                  </div>
+                  </>
                 )}
               </div>
-
-              <p className="mt-4 text-[11px] text-muted-foreground/70">
-                A wallet is created automatically and protected by{" "}
-                <span className="text-foreground/80">OKX TEE</span>.
-              </p>
-            </div>
-          </div>
-
-          {/* ── 3D prop + stat line ── */}
-          <div className="md:col-span-5 lg:col-span-5 relative min-h-[300px] md:min-h-[520px]">
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <IridescentProp className="h-[460px] w-[460px] max-w-full" />
-              {/* Anchor stat — fills the right-column air the prop alone
-                  doesn't, in eyebrow + tabular-nums tone. */}
-              <p className="mt-2 text-[11px] tracking-[0.18em] uppercase text-foreground/55 tabular-nums">
-                <span className="text-foreground/80 font-semibold">1</span> sign-in
-                <span className="mx-2 opacity-40">·</span>
-                <span className="text-foreground/80 font-semibold">6</span> chains
-                <span className="mx-2 opacity-40">·</span>
-                zero seed phrases
-              </p>
-            </div>
-          </div>
+            </section>
+          )}
         </div>
-      </section>
-
-      {/* Bleed — soft fade from dark hero into the light island so the
-          dark→light hand-off feels intentional, not a guillotine cut. */}
-      <div
-        aria-hidden="true"
-        className="h-32 -mb-px"
-        style={{
-          background:
-            "linear-gradient(to bottom, transparent 0%, oklch(0.965 0.005 85 / 0.35) 60%, oklch(0.965 0.005 85) 100%)",
-        }}
-      />
-
-      {/* ── LIGHT FEATURE GRID ─────────────────────────────────────────
-          Mirrors Voxr's "Power Up Your Pipeline" panel — a light island
-          that breaks the dark hero with three pastel-tinted cards. */}
-      <section className="voxr-light-section">
-        <div className="mx-auto max-w-6xl px-6 py-20 md:py-28">
-          <p className="text-eyebrow mb-4">WHAT YOU GET</p>
-          <h2 className="text-display-lg max-w-2xl text-foreground">
-            A trader&apos;s desk. <span className="opacity-60">Without the desk.</span>
-          </h2>
-
-          <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <FeatureCard
-              tint="purple"
-              title="One pane"
-              body="Spot, perps, bridges and lending on Ethereum, Arbitrum, Base, BNB and Hyperliquid — same UI."
-            />
-            <FeatureCard
-              tint="peach"
-              title="AI co-pilot"
-              body="Claude proposes routes, leverage, exits. You always confirm before anything signs."
-            />
-            <FeatureCard
-              tint="mint"
-              title="Keys you keep"
-              body="Private keys live in OKX TEE. No extensions. No seed phrase. Just your email."
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ── FOOTER ─────────────────────────────────────────────────────
-          Tiny bar back on dark. Closes the Voxr "dark→light→dark" rhythm. */}
-      <section className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-[11px] text-muted-foreground">
-          <span>
-            by{" "}
-            <a
-              href="https://x.com/salvodisobey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-foreground/80 hover:text-foreground transition-colors"
-            >
-              0xSalvo
-            </a>
-          </span>
-          <span className="opacity-50">DeFi Agent · {new Date().getFullYear()}</span>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-/* ── Feature card ──
-   Voxr's light-island cards have a soft pastel wash (purple, peach, mint)
-   plus a single accent shape. We reuse the same recipe with three subtle
-   tints; the shape is a CSS gradient blob rather than asset to keep zero
-   binary weight. */
-function FeatureCard({
-  tint,
-  title,
-  body,
-}: {
-  tint: "purple" | "peach" | "mint";
-  title: string;
-  body: string;
-}) {
-  const tints: Record<typeof tint, { bg: string; blob: string }> = {
-    purple: {
-      bg: "linear-gradient(180deg, oklch(0.97 0.04 295) 0%, oklch(0.99 0.005 75) 70%)",
-      blob: "radial-gradient(closest-side, oklch(0.6 0.22 295 / 0.55), transparent)",
-    },
-    peach: {
-      bg: "linear-gradient(180deg, oklch(0.96 0.05 50) 0%, oklch(0.99 0.005 75) 70%)",
-      blob: "radial-gradient(closest-side, oklch(0.78 0.18 50 / 0.55), transparent)",
-    },
-    mint: {
-      bg: "linear-gradient(180deg, oklch(0.96 0.05 165) 0%, oklch(0.99 0.005 75) 70%)",
-      blob: "radial-gradient(closest-side, oklch(0.78 0.16 165 / 0.5), transparent)",
-    },
-  };
-
-  return (
-    <div
-      className="hover-lift relative overflow-hidden rounded-2xl border border-border p-6"
-      style={{ background: tints[tint].bg }}
-    >
-      <div
-        className="pointer-events-none absolute -top-12 -right-12 h-40 w-40 rounded-full blur-2xl"
-        style={{ background: tints[tint].blob }}
-      />
-      <h3 className="text-foreground text-[19px] font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">{body}</p>
+      </main>
     </div>
   );
 }
