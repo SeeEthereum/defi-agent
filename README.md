@@ -1,16 +1,16 @@
-# DeFi Agent
+# albicocca
 
 **AI-powered, non-custodial DeFi command center built on OKX Agentic Wallet.**
 
-Swap any token, bridge across chains, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with a conversational AI agent that can execute every operation by chat. Email login, TEE custody, no seed phrases.
+Swap any token, bridge across chains, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with a conversational AI agent that can execute every operation by chat. Sign in with Google, Apple or email, TEE custody, no seed phrases.
 
 > Created by [0xSalvo](https://x.com/salvodisobey)
 
 ---
 
-## What is DeFi Agent?
+## What is albicocca?
 
-DeFi Agent is a non-custodial DeFi platform that combines:
+albicocca is a non-custodial DeFi platform that combines:
 
 - **DEX Aggregation** — swap any token across 500+ DEX sources at the best price, zero platform fees
 - **Cross-Chain Bridge** — bridge tokens between any supported chain via LI.FI aggregator (20+ bridge protocols), with cross-token support
@@ -22,7 +22,7 @@ DeFi Agent is a non-custodial DeFi platform that combines:
 - **AI Assistant** — a conversational interface powered by GPT-4.1 that can execute any operation the app supports, including bridging
 - **Hardware-grade Security** — private keys live inside OKX's TEE (Trusted Execution Environment), never exposed to the app or the user
 
-No seed phrases. No browser extensions. Just email login and you're in.
+No seed phrases. No browser extensions. Sign in with Google, Apple or email and you're in.
 
 ---
 
@@ -159,7 +159,7 @@ No seed phrases. No browser extensions. Just email login and you're in.
 | Layer | Technology |
 |-------|------------|
 | Frontend | Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/ui |
-| Visual identity | Voxr-inspired dark theme — OKLCH tokens, iridescent 3D prop (Three.js + R3F + drei), procedural Lightformer environment, Apple-style motion (`motion/react`) |
+| Visual identity | Light theme from the vocina design family — Apple system type, apricot `#ff7a1a` accent, scroll reveals, parallax and floating tiles on the landing, `motion/react` in the app |
 | Backend | Next.js API Routes (35+ endpoints) |
 | Wallet | OKX Agentic Wallet (TEE) via `onchainos` CLI |
 | Swap | OKX DEX Aggregator API (HMAC-SHA256 auth) |
@@ -169,7 +169,7 @@ No seed phrases. No browser extensions. Just email login and you're in.
 | Security | OKX Security APIs (token-scan, dapp-scan, tx-scan, approvals) |
 | Market Data | OKX Market APIs (price, kline, index, signals, leaderboard) |
 | Attribution | ERC-8021 Builder Codes (transaction attribution) |
-| Auth | Email + OTP via OKX Wallet |
+| Auth | Browser sign-in via OKX Wallet (Google, Apple or email), polled server-side |
 | Hosting | Render |
 
 ---
@@ -231,8 +231,8 @@ The app is configured for deployment on [Render](https://render.com). Push to `m
 ```
 src/
 ├── app/
-│   ├── auth/                # Login page (email + OTP)
-│   ├── welcome/             # Onboarding / disclaimer
+│   ├── welcome/             # Landing page (albicocca design)
+│   ├── auth/                # Risk disclaimer, then OKX browser sign-in
 │   └── (app)/
 │       ├── page.tsx          # Dashboard
 │       ├── wallet/           # Wallet management
@@ -288,8 +288,9 @@ src/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/login` | Initiate email login |
-| POST | `/api/auth/verify` | Verify OTP code |
+| POST | `/api/auth/login` | Start browser sign-in, returns the OKX login URL |
+| GET | `/api/auth/poll` | Progress of the in-flight sign-in (in-memory, no CLI call) |
+| DELETE | `/api/auth/poll` | Cancel the in-flight sign-in |
 | GET | `/api/auth/status` | Check login status |
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/wallet/balances` | Get wallet balances |

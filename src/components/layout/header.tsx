@@ -57,7 +57,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         ) : (
           <Link href="/auth">
             <Button size="sm" className="rounded-full px-5 h-8 text-xs font-medium shadow-sm">
-              Connect Wallet
+              Sign in
             </Button>
           </Link>
         )}

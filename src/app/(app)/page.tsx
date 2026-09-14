@@ -12,6 +12,7 @@ import { formatUsd } from "@/lib/utils";
 import Link from "next/link";
 import { TokenIcon } from "@/components/token-icon";
 import { NumberDisplay } from "@/components/motion";
+import { BrandMark } from "@/components/brand-mark";
 
 const CHAIN_COLORS: Record<number, string> = {
   1: "#627EEA",     // Ethereum
@@ -75,17 +76,16 @@ export default function DashboardPage() {
   if (!authenticated) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.jpg" alt="DeFi Agent" width={64} height={64} className="rounded-2xl shadow-lg" />
+        <BrandMark size={40} />
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome to DeFi Agent</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome to albicocca</h1>
           <p className="text-sm text-muted-foreground mt-1.5">
             Connect your wallet to start managing your portfolio
           </p>
         </div>
         <Link href="/auth">
           <Button className="rounded-full px-8 h-10 text-sm font-medium shadow-sm">
-            Connect Wallet
+            Sign in
           </Button>
         </Link>
       </div>

@@ -6,9 +6,9 @@ import "./globals.css";
 // --font-system / --font-system-mono in globals.css.
 
 export const metadata: Metadata = {
-  title: "DeFi Agent - AI-Powered DeFi Management",
+  title: "albicocca — ask your wallet",
   description:
-    "Non-custodial DeFi command center. Swap, bridge, earn yield, scan for risks, and track smart money across 6 chains — orchestrated by a conversational AI agent. Email login, OKX TEE custody, no seed phrases.",
+    "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it — sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase.",
 };
 
 export default function RootLayout({

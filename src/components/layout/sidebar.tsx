@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 
 interface SidebarProps {
   onClose?: () => void;
@@ -95,10 +96,8 @@ export function Sidebar({ onClose }: SidebarProps) {
   return (
     <aside className="flex h-screen w-[260px] flex-col border-r border-border/60 bg-sidebar">
       <div className="flex h-16 items-center gap-3 px-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.jpg" alt="DeFi Agent" width={40} height={40} className="rounded-xl object-cover shadow-sm shrink-0" />
         <div className="flex-1 min-w-0">
-          <span className="text-[15px] font-semibold tracking-tight">DeFi Agent</span>
+          <BrandMark size={22} />
           <p className="text-[10px] text-muted-foreground leading-none mt-0.5">by 0xSalvo</p>
         </div>
         {/* Close button — mobile only */}

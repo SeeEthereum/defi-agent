@@ -868,7 +868,7 @@ export default function BridgePage() {
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   <span className="text-[11px] font-medium text-emerald-600">
-                    Zero commission — DeFi Agent does not charge any fees on bridges
+                    Zero commission — albicocca does not charge any fees on bridges
                   </span>
                 </div>
                 {/* Approval notice: ERC-20 bridges need an approve tx before the bridge call */}

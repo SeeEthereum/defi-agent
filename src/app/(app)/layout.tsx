@@ -7,13 +7,12 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { AuthContext, useAuthState } from "@/hooks/use-auth";
+import { DISCLAIMER_KEY } from "@/components/risk-disclaimer";
 
 // Derive the disclaimer state from localStorage via useSyncExternalStore so
 // React owns the subscription lifecycle. This avoids the set-state-in-effect
 // pattern that React 19 rightly flags: we're not "syncing" external state
 // into React state, we're *reading* external state every render.
-const DISCLAIMER_KEY = "defi-agent-disclaimer-accepted";
-
 /** `null` = not known yet (server render + hydration pass). */
 type DisclaimerState = boolean | null;
 
