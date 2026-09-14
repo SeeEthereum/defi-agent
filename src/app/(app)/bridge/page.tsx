@@ -233,7 +233,7 @@ function TokenDropdown({
           <AnimatePresence>
             {showDropdown && !loading && (
               <motion.div
-                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-secondary shadow-lg shadow-black/5 origin-top"
+                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-popover shadow-lg shadow-black/5 origin-top"
                 initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
                 animate={{ opacity: 1, scaleY: 1, y: 0 }}
                 exit={{ opacity: 0, scaleY: 0.95, y: -2 }}

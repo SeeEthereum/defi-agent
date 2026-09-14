@@ -118,7 +118,7 @@ export function GasStationModal({
 
   return (
     <Modal open={open} onClose={submitting ? undefined : onClose}>
-      <div className="rounded-2xl border border-border/60 bg-secondary p-5 space-y-4">
+      <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-foreground">
             {isTerminal ? "Gas Station unavailable" : "Pay gas with a stablecoin?"}

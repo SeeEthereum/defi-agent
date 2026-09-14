@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { LineIcon, type LineIconName } from "@/components/line-icon";
 import ReactMarkdown from "react-markdown";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
@@ -81,24 +82,24 @@ function ActionCard({
 }) {
   const rows: { label: string; value: string }[] = [];
   let title = "";
-  let emoji = "";
+  let icon: LineIconName = "swap";
 
   if (action.action === "swap") {
     const p = action.params;
     const chain = getChainBySwapName(p.chain as string);
     title = "Token Swap";
-    emoji = "🔄";
+    icon = "swap";
     rows.push({ label: "From", value: tokenSymbol(p.fromToken as string) });
     rows.push({ label: "To", value: tokenSymbol(p.toToken as string) });
     rows.push({ label: "Chain", value: chain?.name ?? (p.chain as string) });
     if (p.slippage) rows.push({ label: "Slippage", value: `${p.slippage}%` });
     if (p.gasLevel) rows.push({ label: "Gas", value: String(p.gasLevel) });
-    if (p.mevProtection) rows.push({ label: "MEV Protection", value: "✅ Enabled" });
+    if (p.mevProtection) rows.push({ label: "MEV Protection", value: "Enabled" });
   } else if (action.action === "supply") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
     title = "Fluid Supply";
-    emoji = "📈";
+    icon = "trending-up";
     rows.push({ label: "Asset", value: p.fTokenSymbol as string });
     rows.push({ label: "Amount", value: `${p.amount}` });
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
@@ -106,7 +107,7 @@ function ActionCard({
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
     title = "Token Transfer";
-    emoji = "📤";
+    icon = "send";
     rows.push({
       label: "Token",
       value: p.contractToken
@@ -120,14 +121,14 @@ function ActionCard({
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
     title = "Fluid Withdraw";
-    emoji = "📉";
+    icon = "trending-down";
     rows.push({ label: "Asset", value: p.fTokenSymbol as string });
     rows.push({ label: "Amount", value: p.amount === "all" ? "Withdraw All" : String(p.amount) });
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
   } else if (action.action === "hl_order") {
     const p = action.params;
     title = `Hyperliquid ${p.side === "buy" ? "Long" : "Short"}`;
-    emoji = p.side === "buy" ? "📗" : "📕";
+    icon = p.side === "buy" ? "long" : "short";
     rows.push({ label: "Market", value: `${p.coin}-PERP` });
     rows.push({ label: "Side", value: p.side === "buy" ? "LONG" : "SHORT" });
     rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
@@ -140,7 +141,7 @@ function ActionCard({
   } else if (action.action === "hl_close") {
     const p = action.params;
     title = "Close Hyperliquid Position";
-    emoji = "🔴";
+    icon = "close";
     rows.push({ label: "Market", value: `${p.coin}-PERP` });
     if (p.size) rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
     else rows.push({ label: "Size", value: "Full position" });
@@ -150,7 +151,9 @@ function ActionCard({
   return (
     <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-violet-500/5 p-4 space-y-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <span className="text-lg">{emoji}</span>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <LineIcon name={icon} size={16} />
+        </span>
         <span className="font-semibold text-sm">{title}</span>
         <Badge variant="outline" className="ml-auto text-[10px] border-primary/30 text-primary">
           Awaiting Confirmation
@@ -290,7 +293,7 @@ export default function AiPage() {
         } else {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: `⚠️ ${data.error || "Something went wrong"}` },
+            { role: "assistant", content: `${data.error || "Something went wrong"}` },
           ]);
         }
       } catch {
@@ -331,18 +334,18 @@ export default function AiPage() {
         });
         const approveEarnData = await approveEarnRes.json();
         if (!approveEarnData.success) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `❌ **Approvazione fallita:** ${approveEarnData.error}` }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: `**Approvazione fallita:** ${approveEarnData.error}` }]);
           setExecutingIndex(null);
           return;
         }
         const earnApproveTxHash = approveEarnData.data?.approveTxHash as string | undefined;
         if (earnApproveTxHash) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `✅ Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: `Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
           // Convert chainIndex to swapName for waitForReceipt
           const earnChain = getChainByIndex(action.params.chainIndex as number)?.swapName ?? "arbitrum";
           const confirmed = await waitForReceipt(earnApproveTxHash, earnChain);
           if (!confirmed) {
-            setMessages((prev) => [...prev, { role: "assistant", content: "❌ Transazione di approvazione fallita on-chain." }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: "Transazione di approvazione fallita on-chain." }]);
             setExecutingIndex(null);
             return;
           }
@@ -374,17 +377,17 @@ export default function AiPage() {
           });
           const approveData = await approveRes.json();
           if (!approveData.success) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `❌ **Approval failed:** ${approveData.error}` }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed:** ${approveData.error}` }]);
             setExecutingIndex(null);
             return;
           }
           // Wait for approval tx confirmation
           const approveTxHash = approveData.data?.txHash as string | undefined;
           if (approveTxHash) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `✅ Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
             const confirmed = await waitForReceipt(approveTxHash, action.params.chain as string);
             if (!confirmed) {
-              setMessages((prev) => [...prev, { role: "assistant", content: "❌ Approval transaction reverted on-chain." }]);
+              setMessages((prev) => [...prev, { role: "assistant", content: "Approval transaction reverted on-chain." }]);
               setExecutingIndex(null);
               return;
             }
@@ -470,12 +473,12 @@ export default function AiPage() {
       const data = await res.json();
 
       const resultMsg = data.success
-        ? `✅ **${action.action.charAt(0).toUpperCase() + action.action.slice(1)} completed!**\n${
+        ? `**${action.action.charAt(0).toUpperCase() + action.action.slice(1)} completed!**\n${
             data.data?.txHash
               ? `Transaction hash: \`${data.data.txHash}\``
               : "Transaction submitted successfully."
           }`
-        : `❌ **${action.action} failed:** ${data.error}`;
+        : `**${action.action} failed:** ${data.error}`;
 
       setMessages((prev) => [
         ...prev,
@@ -485,7 +488,7 @@ export default function AiPage() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "❌ Failed to execute action. Please try again." },
+        { role: "assistant", content: "Failed to execute action. Please try again." },
       ]);
     } finally {
       setExecutingIndex(null);

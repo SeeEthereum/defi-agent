@@ -8,6 +8,7 @@ import { CHAINS } from "@/lib/chains";
 import { TokenIcon } from "@/components/token-icon";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
+import { LineIcon } from "@/components/line-icon";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -236,7 +237,7 @@ function TokenSelector({
           <AnimatePresence>
             {showDropdown && (
             <motion.div
-              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-secondary shadow-lg shadow-black/5 origin-top"
+              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-popover shadow-lg shadow-black/5 origin-top"
               initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
               animate={{ opacity: 1, scaleY: 1, y: 0 }}
               exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
@@ -838,7 +839,7 @@ export default function SwapPage() {
                         onClick={() => setGasLevel(level)}
                         className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-primary text-white" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
                       >
-                        {level === "slow" ? "🐢 Slow" : level === "average" ? "⚡ Average" : "🚀 Fast"}
+                        {level === "slow" ? "Slow" : level === "average" ? "Average" : "Fast"}
                       </button>
                     ))}
                   </div>
@@ -860,9 +861,9 @@ export default function SwapPage() {
                     type="button"
                     disabled={!mevAvailable}
                     onClick={() => setMevProtection(!mevProtection)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-emerald-500/30" : "bg-muted"}`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-emerald-500" : "bg-black/15"}`}
                   >
-                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-secondary shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
+                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
                 </div>
               </div>
@@ -1111,8 +1112,9 @@ export default function SwapPage() {
                   </span>
                 )}
                 {swapResult.securityWarning && (
-                  <p className="mt-1 text-[11px] text-amber-700 leading-snug">
-                    ⚠️ {swapResult.securityWarning}
+                  <p className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 leading-snug">
+                    <LineIcon name="alert" size={13} className="mt-px shrink-0" />
+                    <span>{swapResult.securityWarning}</span>
                   </p>
                 )}
                 {swapResult.txHash && (
@@ -1191,7 +1193,7 @@ export default function SwapPage() {
         <div className="mt-6 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm shadow-sm shadow-black/[0.03] overflow-hidden">
           <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-base">🔥</span>
+              <span className="text-primary"><LineIcon name="flame" size={16} /></span>
               <h3 className="text-[13px] font-semibold">Trending Tokens</h3>
             </div>
             <span className="text-[11px] text-muted-foreground/60">24h · {Object.values(CHAINS).find(c => c.swapName === chain)?.name ?? chain}</span>

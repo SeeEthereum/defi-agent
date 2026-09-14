@@ -13,6 +13,7 @@ import Link from "next/link";
 import { TokenIcon } from "@/components/token-icon";
 import { NumberDisplay } from "@/components/motion";
 import { BrandMark } from "@/components/brand-mark";
+import { LineIcon } from "@/components/line-icon";
 
 const CHAIN_COLORS: Record<number, string> = {
   1: "#627EEA",     // Ethereum
@@ -276,8 +277,8 @@ export default function DashboardPage() {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                  <span className="text-xs">📊</span>
+                <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <LineIcon name="bar-chart" size={15} />
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Win Rate</p>
@@ -285,8 +286,8 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-                  <span className="text-xs">🔄</span>
+                <div className="h-7 w-7 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
+                  <LineIcon name="swap" size={15} />
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Total Trades</p>
@@ -294,8 +295,8 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                  <span className="text-xs">💰</span>
+                <div className="h-7 w-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <LineIcon name="coins" size={15} />
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Buy Volume</p>
@@ -303,8 +304,8 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
-                  <span className="text-xs">🪙</span>
+                <div className="h-7 w-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                  <LineIcon name="layers" size={15} />
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Tokens Traded</p>
