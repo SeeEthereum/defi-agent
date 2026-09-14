@@ -14,18 +14,25 @@ import { AuthContext, useAuthState } from "@/hooks/use-auth";
 // into React state, we're *reading* external state every render.
 const DISCLAIMER_KEY = "defi-agent-disclaimer-accepted";
 
+/** `null` = not known yet (server render + hydration pass). */
+type DisclaimerState = boolean | null;
+
 function subscribeToStorage(cb: () => void): () => void {
   window.addEventListener("storage", cb);
   return () => window.removeEventListener("storage", cb);
 }
-function getAcceptedClient(): boolean {
+function getAcceptedClient(): DisclaimerState {
   return localStorage.getItem(DISCLAIMER_KEY) != null;
 }
-function getAcceptedServer(): boolean {
-  // On the server we don't know the disclaimer state; render as "not yet
-  // accepted" so the spinner shows until the client hydrates. The client
-  // snapshot will then correct it on the next commit.
-  return false;
+function getAcceptedServer(): DisclaimerState {
+  // The server can't read localStorage, and React also renders this snapshot
+  // during hydration to match the server HTML — so it is "unknown", NOT
+  // "declined". Returning `false` here used to conflate the two: the redirect
+  // effect below ran against the hydration snapshot and bounced every hard
+  // load to /welcome before the real value was ever read. Keeping `null`
+  // distinct makes that stale pass harmless by construction, without a
+  // mounted flag (which would reintroduce set-state-in-effect).
+  return null;
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -36,10 +43,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!accepted) router.replace("/welcome");
+    // Only redirect on a definitive "declined" — `null` means we haven't
+    // read localStorage yet, and treating it as declined is what broke
+    // deep links and refreshes.
+    if (accepted === false) router.replace("/welcome");
   }, [accepted, router]);
 
-  const ready = accepted;
+  const ready = accepted === true;
 
   if (!ready) {
     return (
