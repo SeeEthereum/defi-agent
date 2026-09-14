@@ -23,22 +23,33 @@ export interface WalletAccount {
   isActive: boolean;
 }
 
+/**
+ * One token entry from `wallet balance`. CLI v4 trimmed this payload to a
+ * 9-field whitelist; the fields below are the whole set, confirmed against
+ * a live v4.6.0 response.
+ */
 export interface TokenBalance {
   chainIndex: string;
   symbol: string;
+  tokenName: string;
+  /** Human-readable amount, already decimal-adjusted. */
   balance: string;
+  /** Same amount in minimal units. */
+  rawBalance: string;
+  decimal: string;
   usdValue: string;
+  tokenPrice: string;
   /**
-   * Token contract address. CLI v4 renamed this from `tokenContractAddress`
-   * and dropped the alias, so `tokenAddress` is the field actually emitted
-   * today; the old name is kept optional because consumers still read both
-   * (see use-balances.ts, swap/page.tsx, bridge/page.tsx) and we may parse
-   * cached or replayed v3 payloads.
+   * Token contract address — **empty string for the chain's native token**
+   * (consumers treat "" as native; see use-balances.ts:82).
+   *
+   * CLI v4 renamed this from `tokenContractAddress` and dropped the alias.
+   * The old name is kept optional because consumers read both and we may
+   * still parse cached v3 payloads.
    */
   tokenAddress: string;
   /** @deprecated Pre-v4 name for `tokenAddress`. */
   tokenContractAddress?: string;
-  tokenPrice: string;
 }
 
 export interface WalletBalanceResponse {

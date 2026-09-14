@@ -176,6 +176,14 @@ don't use.
 |---|---|
 | `wallet verify` **removed**; `wallet login` is now browser social login with `--phase init/open/poll` | Rewrote auth — see "Login procedure" below. `/api/auth/verify` deleted, `/api/auth/poll` added. |
 | Wallet balance renamed `tokenContractAddress` → `tokenAddress`, alias dropped, payload trimmed to a 9-field whitelist | `TokenBalance` updated (`types.ts`). Three of four consumers already read both names with a fallback; `lib/hyperliquid/cli.ts:175` read only `tokenAddress` and now works correctly instead of silently falling back to a symbol match. |
+
+The 9 surviving balance fields, confirmed against a live v4.6.0 response:
+`chainIndex, symbol, tokenName, balance, rawBalance, decimal, usdValue,
+tokenPrice, tokenAddress`. Nothing we consume was dropped — `usdValue`,
+`tokenPrice` and `decimal` all survive; `tokenSymbol` is gone but every
+consumer already falls back to `symbol`. Note `tokenAddress` is an **empty
+string** for the chain's native token (`use-balances.ts:82` treats `""` as
+native, `swap/page.tsx:406` maps it to the `0xeee…` sentinel).
 | Gas Station gained `NOT_SUPPORT_INTENTION` | Added to `parseGasStationConfirming` and to `TERMINAL_STATES` in the modal. |
 
 **Unchanged and verified identical:** `market`, `security`, `gateway`,
