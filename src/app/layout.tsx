@@ -1,17 +1,9 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// No web fonts: the design system uses the Apple system stack, defined as
+// --font-system / --font-system-mono in globals.css.
 
 export const metadata: Metadata = {
   title: "DeFi Agent - AI-Powered DeFi Management",
@@ -27,9 +19,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
-      <body className="min-h-full bg-background text-foreground voxr-grain">
+      <body className="min-h-full bg-background text-foreground">
         {children}
         <Toaster />
       </body>

@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-system);
+  --font-mono: var(--font-system-mono);
+  --font-heading: var(--font-system);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +48,71 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ── Voxr-inspired dark palette ──────────────────────────────────────────
-   Pure-black base, single iridescent purple accent, near-white type.
-   Cards float at +4–6% lightness, popovers at +7–8%.
-   Borders are luminance-on-alpha so they read on any elev. */
+/* ── albicocca palette ───────────────────────────────────────────────────
+   Light, Apple-system surfaces from the vocina design family (values copied
+   from its DESIGN-SYSTEM.md, not reinterpreted), with apricot #ff7a1a as the
+   single dominant accent. Everything else in the family palette stays
+   available for per-section / per-product accents.
+
+   Two tokens have no vocina counterpart because a marketing site never needs
+   them: --destructive and --success. They use the same shades the status
+   colours across the app were remapped to, so a loss in a table and an error
+   in a toast read as the same red. */
 :root {
+  /* Type — system stack only, no web fonts (design system rule). */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-system-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+
   /* Surfaces */
-  --background: oklch(0.07 0.005 285);            /* near-black, faint cool tilt  */
-  --foreground: oklch(0.96 0.005 285);            /* off-white display text       */
-  --card: oklch(0.11 0.008 285);                  /* +4% elev                     */
-  --card-foreground: oklch(0.96 0.005 285);
-  --popover: oklch(0.13 0.012 285);               /* +6% elev                     */
-  --popover-foreground: oklch(0.96 0.005 285);
-  --sidebar: oklch(0.085 0.006 285);              /* between bg and card          */
-  --sidebar-foreground: oklch(0.96 0.005 285);
-  --sidebar-border: oklch(0.96 0.005 285 / 8%);
-  --sidebar-accent: oklch(0.96 0.005 285 / 6%);
-  --sidebar-accent-foreground: oklch(0.96 0.005 285);
-  --sidebar-primary: oklch(0.62 0.27 295);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-ring: oklch(0.62 0.27 295);
+  --background: #fbfbfd;                 /* page                          */
+  --foreground: #1d1d1f;                 /* ink                           */
+  --card: #ffffff;                       /* white section / card          */
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1d1d1f;
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-accent: rgba(0, 0, 0, 0.05);
+  --sidebar-accent-foreground: #1d1d1f;
+  --sidebar-primary: #ff7a1a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-ring: #ff7a1a;
 
-  /* Brand — iridescent purple. Two stops define the gradient axis. */
-  --primary: oklch(0.62 0.27 295);                /* core violet                  */
-  --primary-foreground: oklch(0.99 0 0);
-  --primary-2: oklch(0.55 0.3 285);               /* deeper, gradient endpoint    */
-  --primary-glow: oklch(0.7 0.28 305);            /* highlight, halos             */
+  /* Brand — apricot, with the family gradient running apricot → pink. */
+  --primary: #ff7a1a;
+  --primary-foreground: #ffffff;
+  --primary-2: #ff2d75;                  /* gradient endpoint             */
+  --primary-glow: #ff9a4d;
+  /* #ff7a1a on #fbfbfd is only 2.55:1 — fine for fills and display type,
+     not for reading text. Use this for apricot TEXT (links, labels). */
+  --primary-text: #b8500a;
 
-  /* Neutral surfaces / muted */
-  --secondary: oklch(0.96 0.005 285 / 6%);        /* glass tint over bg           */
-  --secondary-foreground: oklch(0.96 0.005 285);
-  --muted: oklch(0.96 0.005 285 / 5%);
-  --muted-foreground: oklch(0.96 0.005 285 / 55%);
-  --accent: oklch(0.96 0.005 285 / 8%);
-  --accent-foreground: oklch(0.96 0.005 285);
+  /* Neutral fills — vocina tints on black alpha rather than grey swatches. */
+  --secondary: rgba(0, 0, 0, 0.05);
+  --secondary-foreground: #1d1d1f;
+  --muted: rgba(0, 0, 0, 0.04);
+  --muted-foreground: #6e6e73;
+  --accent: rgba(0, 0, 0, 0.05);
+  --accent-foreground: #1d1d1f;
 
   /* Status */
-  --destructive: oklch(0.65 0.24 27);
-  --success: oklch(0.7 0.18 155);
+  --destructive: #dc2626;
+  --success: #12c46f;
 
-  /* Borders / focus */
-  --border: oklch(0.96 0.005 285 / 9%);
-  --input: oklch(0.96 0.005 285 / 12%);
-  --ring: oklch(0.62 0.27 295 / 60%);
+  /* Lines / focus */
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.12);
+  --ring: rgba(255, 122, 26, 0.5);
 
-  /* Chart hues — keep usable but pull toward the violet-cyan axis */
-  --chart-1: oklch(0.62 0.27 295);
-  --chart-2: oklch(0.7 0.18 155);
-  --chart-3: oklch(0.7 0.16 45);
-  --chart-4: oklch(0.7 0.18 220);
-  --chart-5: oklch(0.6 0.22 335);
+  /* Charts — the family palette, one hue per series. */
+  --chart-1: #ff7a1a;
+  --chart-2: #12c46f;
+  --chart-3: #2f6bff;
+  --chart-4: #8a5cff;
+  --chart-5: #ff2d75;
 
-  --radius: 0.75rem;
-}
-
-/* Light "feature grid" islands — opt-in, used inside the auth marketing
-   section to mirror Voxr's dark→light→dark contrast. Only what's inside
-   `.voxr-light-section` flips; the rest of the app stays dark. */
-.voxr-light-section {
-  --background: oklch(0.97 0.005 75);             /* warm off-white              */
-  --foreground: oklch(0.18 0.01 285);
-  --card: oklch(0.99 0.003 75);
-  --card-foreground: oklch(0.18 0.01 285);
-  --muted-foreground: oklch(0.45 0.02 285);
-  --border: oklch(0.18 0.01 285 / 8%);
-  --primary: oklch(0.45 0.25 295);
-  background: var(--background);
-  color: var(--foreground);
+  --radius: 0.75rem;                     /* 12px — vocina field radius    */
 }
 
 @layer base {
@@ -141,8 +139,8 @@
 
 /* Outer glow pulse — vivid violet */
 @keyframes ai-glow {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.55 0.28 290 / 0); }
-  50%       { box-shadow: 0 0 22px 5px oklch(0.55 0.28 290 / 0.3), 0 0 6px 1px oklch(0.65 0.2 200 / 0.15); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0); }
+  50%       { box-shadow: 0 0 22px 5px rgba(255, 122, 26, 0.28), 0 0 6px 1px rgba(255, 45, 117, 0.14); }
 }
 
 /* Gentle float */
@@ -227,8 +225,8 @@
 
 /* Input pulse border */
 @keyframes ai-input-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.55 0.28 290 / 0); }
-  50%       { box-shadow: 0 0 0 3px oklch(0.55 0.28 290 / 0.18), 0 0 12px oklch(0.65 0.2 200 / 0.12); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0); }
+  50%       { box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.15), 0 0 12px rgba(255, 122, 26, 0.12); }
 }
 
 /* ── Auth page particles ─────────────────────────────────────────────────── */
@@ -268,28 +266,23 @@
   /* Input */
   .animate-ai-input      { animation: ai-input-pulse 2.5s ease-in-out infinite; }
 
-  /* Vivid shimmer background — violet → indigo → cyan */
+  /* Shimmer wash — apricot → pink → violet, the family gradient at low alpha */
   .ai-shimmer-bg {
     background: linear-gradient(
       135deg,
-      oklch(0.55 0.28 290 / 0.14),
-      oklch(0.5  0.24 260 / 0.10),
-      oklch(0.65 0.22 200 / 0.10),
-      oklch(0.55 0.28 290 / 0.06),
-      oklch(0.5  0.24 260 / 0.14)
+      rgba(255, 122, 26, 0.14),
+      rgba(255, 45, 117, 0.10),
+      rgba(138, 92, 255, 0.10),
+      rgba(255, 122, 26, 0.06),
+      rgba(255, 45, 117, 0.14)
     );
     background-size: 300% 300%;
     animation: ai-shimmer 4s ease-in-out infinite;
   }
 
-  /* Animated gradient text (violet → cyan) */
+  /* Animated gradient text — same ramp as .gradient-text */
   .ai-gradient-text {
-    background: linear-gradient(90deg,
-      oklch(0.52 0.28 290),
-      oklch(0.55 0.24 260),
-      oklch(0.6  0.22 200),
-      oklch(0.52 0.28 290)
-    );
+    background: linear-gradient(90deg, #ff7a1a, #ff2d75, #8a5cff, #ff7a1a);
     background-size: 250% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -297,35 +290,29 @@
     animation: ai-text-gradient 4s ease-in-out infinite;
   }
 
-  /* Glass card — frosted dark, sits over the background and lets the
-     halo bleed through. Used on header/sidebar surfaces. */
+  /* Glass surface — the vocina nav bar treatment, used on header/sidebar. */
   .glass-card {
-    background: oklch(0.11 0.008 285 / 70%);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid oklch(from var(--foreground) l c h / 6%);
+    background: rgba(251, 251, 253, 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
   }
-  /* Legacy gradient-text — points at the new iridescent ramp so existing
-     callers (sidebar, AI page, wallet) inherit the Voxr accent for free. */
+  /* Gradient text — vocina's animated headline ramp, apricot-led. */
   .gradient-text {
-    background: linear-gradient(
-      100deg,
-      oklch(0.7 0.28 305) 0%,
-      oklch(0.62 0.27 295) 50%,
-      oklch(0.65 0.22 230) 100%
-    );
+    background: linear-gradient(90deg, #ff7a1a, #ff2d75, #8a5cff, #ff7a1a);
+    background-size: 200% 100%;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    animation: albicocca-hue 8s linear infinite;
   }
-  /* Legacy gradient-bg — subtle elev wash for callout strips (was a light
-     pastel, now a near-black tint with a violet cast). */
+  @keyframes albicocca-hue {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  /* Callout wash — the vocina apricot pastel pair. */
   .gradient-bg {
-    background: linear-gradient(
-      135deg,
-      oklch(0.11 0.012 295 / 80%),
-      oklch(0.09 0.006 280 / 80%)
-    );
+    background: linear-gradient(160deg, #fff3e8, #ffe4d1);
   }
   /* Hover lift — Apple-like bounce out on hover, softer settle on leave.
      Uses a custom cubic for overshoot + shadow that trails the translate
@@ -398,91 +385,61 @@
     letter-spacing: -0.035em;
     font-weight: 700;
   }
+  /* Section label — vocina "Etichetta": uppercase, 600, +0.02em, in the
+     accent. Uses the text-safe apricot: the fill shade fails contrast. */
   .text-eyebrow {
-    font-size: 11px;
+    font-size: 15px;
     font-weight: 600;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: oklch(from var(--foreground) l c h / 55%);
+    color: var(--primary-text);
   }
 
-  /* Iridescent text — purple → magenta → cyan, slow shimmer. */
+  /* Accent headline text — identical to .gradient-text; kept as its own
+     class because many callers already use it. */
   .text-iridescent {
-    background: linear-gradient(
-      100deg,
-      oklch(0.7 0.28 305) 0%,
-      oklch(0.62 0.27 295) 30%,
-      oklch(0.65 0.22 230) 60%,
-      oklch(0.7 0.28 305) 100%
-    );
-    background-size: 220% auto;
+    background: linear-gradient(90deg, #ff7a1a, #ff2d75, #8a5cff, #ff7a1a);
+    background-size: 200% 100%;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: voxr-irisdescent-shift 8s ease-in-out infinite;
-  }
-  @keyframes voxr-irisdescent-shift {
-    0%, 100% { background-position: 0% 50%; }
-    50%      { background-position: 100% 50%; }
+    animation: albicocca-hue 8s linear infinite;
   }
 
-  /* Iridescent fill — for cube faces, accents, glow rings. */
+  /* Brand fill — the family gradient, apricot → pink. */
   .bg-iridescent {
-    background: linear-gradient(
-      135deg,
-      oklch(0.62 0.27 295) 0%,
-      oklch(0.55 0.3 285) 50%,
-      oklch(0.7 0.28 305) 100%
-    );
+    background: linear-gradient(135deg, #ff7a1a, #ff2d75);
   }
 
-  /* Pill primary CTA. The two-stop gradient + offset glow shadow gives
-     the "this button has weight" Voxr feel. Hover lifts the glow + shifts
-     the gradient axis 12deg, like the surface caught more light. */
+  /* Pill primary CTA — vocina's primary button: solid accent pill, lift and
+     accent-tinted shadow on hover (only where hover exists), press scale.
+     44px tall rather than vocina's 52px hero size: this is the in-app
+     control, and 44px is the minimum touch target. */
   .btn-pill-primary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    height: 2.75rem;                             /* 44px              */
+    height: 2.75rem;
     padding: 0 1.4rem;
     border-radius: 9999px;
     font-weight: 600;
     font-size: 0.875rem;
     color: var(--primary-foreground);
-    background: linear-gradient(
-      120deg,
-      var(--primary-glow) 0%,
-      var(--primary) 50%,
-      var(--primary-2) 100%
-    );
-    background-size: 180% auto;
-    background-position: 0% 50%;
-    /* Inset top-edge highlight (the white "glass" line on Voxr pills) +
-       outer hairline + offset glow shadow. The inset highlight is what
-       gives the button its glossy, dimensional read against pure black. */
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.22),
-      0 0 0 1px oklch(from var(--primary) l c h / 50%) inset,
-      0 8px 28px -10px oklch(from var(--primary) l c h / 70%),
-      0 2px 8px -2px oklch(from var(--primary) l c h / 50%);
+    background: var(--primary);
     transition:
-      background-position 0.5s cubic-bezier(0.32, 0.72, 0, 1),
-      box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1),
-      transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-    will-change: transform, box-shadow;
+      transform 0.35s cubic-bezier(0.22, 0.7, 0.2, 1),
+      box-shadow 0.35s cubic-bezier(0.22, 0.7, 0.2, 1),
+      background 0.35s cubic-bezier(0.22, 0.7, 0.2, 1);
   }
-  .btn-pill-primary:hover:not([disabled]) {
-    background-position: 100% 50%;
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.28),
-      0 0 0 1px oklch(from var(--primary) l c h / 70%) inset,
-      0 14px 42px -10px oklch(from var(--primary) l c h / 85%),
-      0 4px 14px -2px oklch(from var(--primary) l c h / 65%);
-    transform: translateY(-1px);
+  @media (hover: hover) {
+    .btn-pill-primary:hover:not([disabled]) {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 12px 30px rgba(255, 122, 26, 0.28);
+    }
   }
   .btn-pill-primary:active:not([disabled]) {
-    transform: translateY(0) scale(0.985);
+    transform: scale(0.98);
   }
   .btn-pill-primary[disabled] {
     opacity: 0.5;
@@ -502,18 +459,18 @@
     font-weight: 500;
     font-size: 0.875rem;
     color: var(--foreground);
-    background: oklch(from var(--foreground) l c h / 6%);
-    border: 1px solid oklch(from var(--foreground) l c h / 10%);
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.08);
     transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .btn-pill-ghost:hover:not([disabled]) {
-    background: oklch(from var(--foreground) l c h / 10%);
-    border-color: oklch(from var(--foreground) l c h / 16%);
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.12);
     transform: translateY(-1px);
   }
 
-  /* Radial halo — the soft purple glow Voxr puts behind every hero.
-     Applied to a positioned ::before/::after via this ready-made layer. */
+  /* Hero wash — vocina's soft coloured blobs behind a hero, reduced to one
+     positioned layer. Apricot and pink, never the full palette at once. */
   .voxr-halo {
     position: relative;
     isolation: isolate;
@@ -523,51 +480,38 @@
     position: absolute;
     inset: -20% -10% auto -10%;
     height: 75%;
-    /* Halo is a Voxr signature — at 0.35/0.18 it whispered. Voxr renders
-       it as a confident wash, so we lift the inner stop to 0.55 and the
-       mid stop to 0.32, then double the blur radius for a softer, fuller
-       glow that survives on pure-black backgrounds. */
-    background: radial-gradient(
-      ellipse 60% 80% at 50% 0%,
-      oklch(0.55 0.3 295 / 0.55) 0%,
-      oklch(0.45 0.25 280 / 0.32) 40%,
-      transparent 70%
-    );
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 122, 26, 0.30), rgba(255, 122, 26, 0) 60%),
+      radial-gradient(circle at 70% 20%, rgba(255, 45, 117, 0.22), rgba(255, 45, 117, 0) 60%);
     pointer-events: none;
     z-index: -1;
-    filter: blur(120px);
+    filter: blur(46px);
   }
 
-  /* Subtle dotted noise — tints the void so it doesn't feel flat. Applied
-     to the body via a wrapper, not at theme level (zero perf cost). */
+  /* Grain was a dark-theme device (white dots in screen blend, which read as
+     texture on black and as nothing on light). Kept as a no-op so existing
+     callers don't break. */
   .voxr-grain::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-    opacity: 0.035;
-    mix-blend-mode: screen;
-    background-image: radial-gradient(circle at 1px 1px, white 1px, transparent 0);
-    background-size: 3px 3px;
+    content: none;
   }
 
-  /* Voxr card — flatter than shadcn's, purple hairline on hover. */
+  /* Card — vocina's neutral card: white on the page, hairline border,
+     neutral lift on hover (hover-capable devices only). 24px is vocina's
+     medium card radius (its support cards); the 28-36px values are for the
+     large marketing cards and read as bloated on dense app screens. */
   .voxr-card {
-    background: oklch(from var(--foreground) l c h / 3%);
-    border: 1px solid oklch(from var(--foreground) l c h / 7%);
-    border-radius: 1rem;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 24px;
     transition:
-      background 0.24s cubic-bezier(0.32, 0.72, 0, 1),
-      border-color 0.24s cubic-bezier(0.32, 0.72, 0, 1),
-      transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+      transform 0.6s cubic-bezier(0.22, 0.7, 0.2, 1),
+      box-shadow 0.6s cubic-bezier(0.22, 0.7, 0.2, 1);
   }
-  .voxr-card:hover {
-    background: oklch(from var(--foreground) l c h / 5%);
-    border-color: oklch(from var(--primary) l c h / 35%);
-    box-shadow: 0 0 0 1px oklch(from var(--primary) l c h / 18%),
-      0 18px 40px -16px oklch(from var(--primary) l c h / 30%);
+  @media (hover: hover) {
+    .voxr-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.08);
+    }
   }
 
   /* Kinetic display — entrance-only stretch then settle.
@@ -589,11 +533,10 @@
   .stagger-3  { animation-delay: 0.27s; }
   .stagger-4  { animation-delay: 0.4s;  }
 
-  /* Outline / ring focus — purple, not the default ring color. */
+  /* Focus ring — vocina field focus: accent border plus a soft 4px halo. */
   .focus-ring-voxr:focus-visible {
     outline: none;
-    box-shadow:
-      0 0 0 2px var(--background),
-      0 0 0 4px oklch(from var(--primary) l c h / 70%);
+    border-color: #ff7a1a;
+    box-shadow: 0 0 0 4px rgba(255, 122, 26, 0.15);
   }
 }
