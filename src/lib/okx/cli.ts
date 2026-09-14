@@ -845,7 +845,12 @@ export async function addressTrackerActivities(params: {
   if (params.maxVolume) args["max-volume"] = params.maxVolume;
   if (params.minMarketCap) args["min-market-cap"] = params.minMarketCap;
   if (params.maxMarketCap) args["max-market-cap"] = params.maxMarketCap;
-  return runCli(["market", "address-tracker-activities"], args);
+  // `tracker activities`, NOT `market address-tracker-activities` — the latter
+  // never existed on any CLI version we've shipped (verified against v3.3.11
+  // and v4.6.0: "unrecognized subcommand"), so this route returned an
+  // OkxCliError on every call. The flags below are unchanged: `tracker
+  // activities` accepts exactly this set.
+  return runCli(["tracker", "activities"], args);
 }
 
 // ── Leaderboard commands ─────────────────────────────────────────────────────
