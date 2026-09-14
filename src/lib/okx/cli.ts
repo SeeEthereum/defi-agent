@@ -130,19 +130,47 @@ export function normalizeGasLimit(raw: string): string {
   return raw.startsWith("0x") ? BigInt(raw).toString() : raw;
 }
 
+/**
+ * Turn a flag map into argv.
+ *
+ * The CLI has two kinds of flags and they must be spelled differently:
+ *   - bare switches (`--force`, `--all`, `--enable-gas-station`) take NO value
+ *   - value flags (`--chain 1`, `--risk-filter true`) require one
+ *
+ * So booleans and strings mean different things here, deliberately:
+ *   true      -> `--key`            (bare switch)
+ *   false     -> omitted
+ *   ""        -> omitted            (treat empty as "not provided")
+ *   "value"   -> `--key value`      (including the literal string "true")
+ *
+ * This used to be keyed on the STRING "true" meaning a bare switch, which
+ * made `--risk-filter true` inexpressible: it came out as a valueless
+ * `--risk-filter` and the CLI rejected the whole call. That silently broke
+ * /api/tokens/trending on every version we have shipped.
+ *
+ * Exported so the mapping can be unit-tested without spawning a process.
+ */
+export function buildCliArgs(
+  subcommands: string[],
+  args: Record<string, string | boolean> = {}
+): string[] {
+  const cmdArgs = [...subcommands];
+  for (const [key, value] of Object.entries(args)) {
+    if (value === true) {
+      cmdArgs.push(`--${key}`);
+    } else if (value !== false && value !== "") {
+      cmdArgs.push(`--${key}`, value);
+    }
+  }
+  return cmdArgs;
+}
+
 export async function runCli<T = unknown>(
   subcommands: string[],
-  args: Record<string, string> = {}
+  args: Record<string, string | boolean> = {}
 ): Promise<CliResult<T>> {
   return withOnchainosLock(async () => {
-    const cmdArgs = [...subcommands];
-    for (const [key, value] of Object.entries(args)) {
-      if (value === "true") {
-        cmdArgs.push(`--${key}`);
-      } else if (value !== "" && value !== "false") {
-        cmdArgs.push(`--${key}`, value);
-      }
-    }
+    const cmdArgs = buildCliArgs(subcommands, args);
 
     try {
       const { stdout } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
@@ -338,7 +366,7 @@ export async function walletLogout() {
 }
 
 export async function walletAddresses(chain?: string) {
-  const args: Record<string, string> = {};
+  const args: Record<string, string | boolean> = {};
   if (chain) args.chain = chain;
   return runCli(["wallet", "addresses"], args);
 }
@@ -350,11 +378,11 @@ export async function walletBalance(
   all = false,
   force = false
 ) {
-  const args: Record<string, string> = {};
+  const args: Record<string, string | boolean> = {};
   if (chain) args.chain = chain;
   if (tokenAddress) args["token-address"] = tokenAddress;
-  if (all) args.all = "true";
-  if (force) args.force = "true";
+  if (all) args.all = true;
+  if (force) args.force = true;
   return runCli(["wallet", "balance"], args);
 }
 
@@ -391,7 +419,7 @@ export async function walletSend(params: {
   if (!params.amount && !params.amtMinimal) {
     throw new Error("walletSend requires either `amount` (readable) or `amtMinimal` (wei)");
   }
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     recipient: params.recipient,
     chain: params.chain,
   };
@@ -399,10 +427,10 @@ export async function walletSend(params: {
   else if (params.amount) args["readable-amount"] = params.amount;
   if (params.from) args.from = params.from;
   if (params.contractToken) args["contract-token"] = params.contractToken;
-  if (params.force) args.force = "true";
+  if (params.force) args.force = true;
   if (params.gasTokenAddress) args["gas-token-address"] = params.gasTokenAddress;
   if (params.relayerId) args["relayer-id"] = params.relayerId;
-  if (params.enableGasStation) args["enable-gas-station"] = "true";
+  if (params.enableGasStation) args["enable-gas-station"] = true;
   return runCli(["wallet", "send"], args);
 }
 
@@ -447,7 +475,7 @@ export async function walletContractCall(params: {
   relayerId?: string;
   enableGasStation?: boolean;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     to: params.to,
     chain: params.chain,
   };
@@ -462,15 +490,15 @@ export async function walletContractCall(params: {
     args["gas-limit"] = normalizeGasLimit(params.gasLimit);
   }
   if (params.from) args.from = params.from;
-  if (params.mevProtection) args["mev-protection"] = "true";
+  if (params.mevProtection) args["mev-protection"] = true;
   if (params.jitoUnsignedTx) args["jito-unsigned-tx"] = params.jitoUnsignedTx;
   if (params.aaDexTokenAddr) args["aa-dex-token-addr"] = params.aaDexTokenAddr;
   if (params.aaDexTokenAmount)
     args["aa-dex-token-amount"] = params.aaDexTokenAmount;
-  if (params.force) args.force = "true";
+  if (params.force) args.force = true;
   if (params.gasTokenAddress) args["gas-token-address"] = params.gasTokenAddress;
   if (params.relayerId) args["relayer-id"] = params.relayerId;
-  if (params.enableGasStation) args["enable-gas-station"] = "true";
+  if (params.enableGasStation) args["enable-gas-station"] = true;
   return runCli(["wallet", "contract-call"], args);
 }
 
@@ -529,7 +557,7 @@ export function parseLastJsonDoc(raw: string): unknown {
 /** Run a gas-station subcommand and normalize the multi-doc stdout. */
 async function runGasStationCli(
   subcommands: string[],
-  args: Record<string, string>
+  args: Record<string, string | boolean>
 ) {
   const result = await runCli(subcommands, args);
   if (typeof result.data === "string") {
@@ -546,7 +574,7 @@ async function runGasStationCli(
  * `gasStationActivated`. Never broadcasts; safe to call repeatedly.
  */
 export async function gasStationStatus(chain: string, from?: string) {
-  const args: Record<string, string> = { chain };
+  const args: Record<string, string | boolean> = { chain };
   if (from) args.from = from;
   return runGasStationCli(["wallet", "gas-station", "status"], args);
 }
@@ -563,7 +591,7 @@ export async function gasStationSetup(params: {
   relayerId: string;
   from?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     chain: params.chain,
     "gas-token-address": params.gasTokenAddress,
     "relayer-id": params.relayerId,
@@ -600,7 +628,7 @@ export async function walletHistory(params?: {
   limit?: string;
   pageNum?: string;
 }) {
-  const args: Record<string, string> = {};
+  const args: Record<string, string | boolean> = {};
   if (params?.txHash) args["tx-hash"] = params.txHash;
   if (params?.chain) args.chain = params.chain;
   if (params?.address) args.address = params.address;
@@ -617,7 +645,7 @@ export async function securityTxScan(params: {
   data?: string;
   value?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     from: params.from,
     to: params.to,
     chain: params.chain,
@@ -629,13 +657,9 @@ export async function securityTxScan(params: {
 
 // Token commands
 export async function tokenSearch(query: string, chains?: string) {
-  const args: Record<string, string> = { query };
+  const args: Record<string, string | boolean> = { query };
   if (chains) args.chains = chains;
   return runCli(["token", "search"], args);
-}
-
-export async function tokenTrending(chain: string) {
-  return runCli(["token", "trending"], { chain });
 }
 
 // Market / Portfolio PnL commands
@@ -644,7 +668,7 @@ export async function marketPortfolioOverview(chain: string, address: string) {
 }
 
 export async function marketPortfolioRecentPnl(chain: string, address: string, limit?: string) {
-  const args: Record<string, string> = { chain, address };
+  const args: Record<string, string | boolean> = { chain, address };
   if (limit) args.limit = limit;
   return runCli(["market", "portfolio-recent-pnl"], args);
 }
@@ -657,7 +681,7 @@ export async function marketPortfolioDexHistory(params: {
   limit?: string;
   txType?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     chain: params.chain,
     address: params.address,
     begin: params.begin,
@@ -674,7 +698,7 @@ export async function tokenHotTokens(params?: {
   timeFrame?: string;
   riskFilter?: string;
 }) {
-  const args: Record<string, string> = {};
+  const args: Record<string, string | boolean> = {};
   if (params?.chain) args.chain = params.chain;
   if (params?.rankBy) args["rank-by"] = params.rankBy;
   if (params?.timeFrame) args["time-frame"] = params.timeFrame;
@@ -709,7 +733,7 @@ export async function swapExecute(params: {
   slippage?: string;
   gasLevel?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     from: params.from,
     to: params.to,
     amount: params.amount,
@@ -728,7 +752,7 @@ export async function securityTokenScan(params?: {
   address?: string;
   chain?: string;
 }) {
-  const args: Record<string, string> = {};
+  const args: Record<string, string | boolean> = {};
   if (params?.tokens) args.tokens = params.tokens;
   if (params?.address) args.address = params.address;
   if (params?.chain) args.chain = params.chain;
@@ -741,7 +765,7 @@ export async function securityApprovals(params: {
   limit?: string;
   cursor?: string;
 }) {
-  const args: Record<string, string> = { address: params.address };
+  const args: Record<string, string | boolean> = { address: params.address };
   if (params.chain) args.chain = params.chain;
   if (params.limit) args.limit = params.limit;
   if (params.cursor) args.cursor = params.cursor;
@@ -770,7 +794,7 @@ export async function marketKline(params: {
   bar?: string;
   limit?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     address: params.address,
     chain: params.chain,
   };
@@ -803,7 +827,7 @@ export async function signalList(params: {
   minLiquidityUsd?: string;
   maxLiquidityUsd?: string;
 }) {
-  const args: Record<string, string> = { chain: params.chain };
+  const args: Record<string, string | boolean> = { chain: params.chain };
   if (params.walletType) args["wallet-type"] = params.walletType;
   if (params.minAmountUsd) args["min-amount-usd"] = params.minAmountUsd;
   if (params.maxAmountUsd) args["max-amount-usd"] = params.maxAmountUsd;
@@ -833,7 +857,7 @@ export async function gatewaySimulate(params: {
   chain: string;
   amount?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     from: params.from,
     to: params.to,
     data: params.data,
@@ -855,7 +879,7 @@ export async function addressTrackerActivities(params: {
   minMarketCap?: string;
   maxMarketCap?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     "tracker-type": params.trackerType,
   };
   if (params.walletAddress) args["wallet-address"] = params.walletAddress;
@@ -881,7 +905,7 @@ export async function leaderboardList(params: {
   sortBy: string;
   walletType?: string;
 }) {
-  const args: Record<string, string> = {
+  const args: Record<string, string | boolean> = {
     chain: params.chain,
     "time-frame": params.timeFrame,
     "sort-by": params.sortBy,

@@ -7,7 +7,7 @@
  * undo it.
  */
 import { describe, it, expect } from "vitest";
-import { normalizeGasLimit, parseGasStationConfirming, parseLastJsonDoc } from "./cli";
+import { normalizeGasLimit, parseGasStationConfirming, parseLastJsonDoc, buildCliArgs } from "./cli";
 
 describe("normalizeGasLimit", () => {
   it("converts hex strings (LI.FI shape) to decimal", () => {
@@ -178,5 +178,51 @@ describe("parseGasStationConfirming — CLI v4 additions", () => {
     });
     expect(parsed!.tokenList).toHaveLength(1);
     expect(parsed!.tokenList[0].relayerId).toBe("r1");
+  });
+});
+
+describe("buildCliArgs", () => {
+  it("emits booleans as bare switches", () => {
+    expect(buildCliArgs(["wallet", "balance"], { all: true, force: true }))
+      .toEqual(["wallet", "balance", "--all", "--force"]);
+  });
+
+  it("omits false and empty string", () => {
+    expect(buildCliArgs(["wallet", "balance"], { all: false, chain: "" }))
+      .toEqual(["wallet", "balance"]);
+  });
+
+  it('passes the literal string "true" as a VALUE, not a bare switch', () => {
+    // The regression: `--risk-filter true` is a value flag. Emitting a bare
+    // `--risk-filter` made the CLI reject the whole call, silently breaking
+    // /api/tokens/trending.
+    expect(buildCliArgs(["token", "hot-tokens"], { "risk-filter": "true" }))
+      .toEqual(["token", "hot-tokens", "--risk-filter", "true"]);
+  });
+
+  it('passes the literal string "false" as a value too', () => {
+    expect(buildCliArgs(["token", "hot-tokens"], { "risk-filter": "false" }))
+      .toEqual(["token", "hot-tokens", "--risk-filter", "false"]);
+  });
+
+  it("keeps ordinary value flags intact and preserves order", () => {
+    expect(buildCliArgs(["market", "price"], { chain: "42161", address: "0xabc" }))
+      .toEqual(["market", "price", "--chain", "42161", "--address", "0xabc"]);
+  });
+
+  it("mixes bare switches and value flags in one call", () => {
+    expect(buildCliArgs(["wallet", "contract-call"], {
+      chain: "1",
+      force: true,
+      "mev-protection": true,
+      "gas-limit": "21000",
+    })).toEqual([
+      "wallet", "contract-call",
+      "--chain", "1", "--force", "--mev-protection", "--gas-limit", "21000",
+    ]);
+  });
+
+  it("returns the subcommands unchanged when there are no args", () => {
+    expect(buildCliArgs(["wallet", "status"])).toEqual(["wallet", "status"]);
   });
 });
