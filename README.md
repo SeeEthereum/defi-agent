@@ -207,9 +207,28 @@ OKX_PASSPHRASE=your_passphrase
 OKX_PROJECT_ID=your_project_id
 OPENAI_API_KEY=your_openai_key
 
+# Access gate for the whole deployment. Optional locally, REQUIRED in
+# production — the app returns 503 for every request if it is unset.
+APP_PASSWORD=pick_a_strong_password
+
 # Optional: disable ERC-8021 Builder Code suffix injection
 # OKX_BUILDER_CODE_DISABLED=true
 ```
+
+### Access gate
+
+This app drives **one shared wallet**: anyone who can reach the deployment can
+move its funds. `src/proxy.ts` therefore gates every page and every API route
+behind a single password (`APP_PASSWORD`), and unlocking sets a signed,
+HTTP-only session cookie that is valid for 7 days.
+
+Two distinct layers, in order:
+
+1. **Access gate** (`/gate`) — may you use this deployment at all.
+2. **Wallet login** (`/auth`) — does the server hold an OKX wallet session.
+
+In production a missing `APP_PASSWORD` fails closed rather than serving an
+ungated wallet. Rotating the password invalidates all existing sessions.
 
 ### Install & Run
 
@@ -231,7 +250,8 @@ The app is configured for deployment on [Render](https://render.com). Push to `m
 ```
 src/
 ├── app/
-│   ├── auth/                # Login page (email + OTP)
+│   ├── gate/                # Access gate (deployment password)
+│   ├── auth/                # Wallet login (OKX browser sign-in)
 │   ├── welcome/             # Onboarding / disclaimer
 │   └── (app)/
 │       ├── page.tsx          # Dashboard
