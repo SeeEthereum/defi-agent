@@ -508,14 +508,14 @@ export default function AiPage() {
       {/* ── Aurora background blobs ─────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
         <div className="absolute -top-24 left-1/4 h-[480px] w-[480px] rounded-full bg-violet-500/7 blur-3xl animate-ai-aurora-1" />
-        <div className="absolute bottom-0 right-0 h-[380px] w-[380px] rounded-full bg-indigo-500/7 blur-3xl animate-ai-aurora-2" />
-        <div className="absolute top-1/2 -left-16 h-[300px] w-[300px] rounded-full bg-cyan-400/5 blur-3xl animate-ai-aurora-1 [animation-delay:4.5s]" />
+        <div className="absolute bottom-0 right-0 h-[380px] w-[380px] rounded-full bg-pink-500/7 blur-3xl animate-ai-aurora-2" />
+        <div className="absolute top-1/2 -left-16 h-[300px] w-[300px] rounded-full bg-pink-500/5 blur-3xl animate-ai-aurora-1 [animation-delay:4.5s]" />
       </div>
 
       {/* ── Header — only visible when conversation has started ────────── */}
       <div className={cn("relative shrink-0 px-6 pt-6 pb-4 border-b border-border/60 z-10 transition-all duration-300", !hasContent && "hidden")}>
         <div className="relative flex items-center gap-3">
-          <div className="relative h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 via-indigo-500 to-cyan-500 flex items-center justify-center shadow-[0_4px_14px_oklch(0.55_0.28_290/0.4)]">
+          <div className="relative h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-[0_4px_14px_rgba(138,92,255,0.35)]">
             {/* Glow ring on header icon */}
             <span className="absolute inset-0 rounded-xl animate-ai-ring border border-violet-300/50" />
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-ai-spin-slow relative z-10">
@@ -555,15 +555,15 @@ export default function AiPage() {
               <span className="absolute h-16 w-16 rounded-2xl border border-primary/20 animate-ai-ring-delay" />
 
               {/* Orbit dot 1 — violet */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2.5 w-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_3px_oklch(0.55_0.28_290/0.7)] animate-ai-orbit-lg-1" />
+              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2.5 w-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_3px_rgba(138,92,255,0.7)] animate-ai-orbit-lg-1" />
               {/* Orbit dot 2 — cyan */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_7px_3px_oklch(0.65_0.22_200/0.6)] animate-ai-orbit-lg-2" />
+              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2 w-2 rounded-full bg-pink-500 shadow-[0_0_7px_3px_rgba(255,45,117,0.55)] animate-ai-orbit-lg-2" />
               {/* Orbit dot 3 — indigo */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_2px_oklch(0.5_0.24_260/0.6)] animate-ai-orbit-lg-3" />
+              <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_2px_rgba(255,122,26,0.55)] animate-ai-orbit-lg-3" />
 
               {/* Main icon */}
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 via-indigo-500/15 to-cyan-500/15 border border-violet-400/25 flex items-center justify-center animate-ai-glow">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-400 animate-ai-spin-slow">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 via-pink-500/15 to-pink-500/15 border border-violet-400/25 flex items-center justify-center animate-ai-glow">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600 animate-ai-spin-slow">
                   <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
                 </svg>
               </div>
@@ -665,7 +665,7 @@ export default function AiPage() {
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
       <div className="relative shrink-0 border-t border-violet-200/40 px-3 py-3 md:px-6 md:py-4 bg-background/80 backdrop-blur z-10">
-        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/4 via-transparent to-cyan-500/4 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/4 via-transparent to-pink-500/4 pointer-events-none" />
         <form onSubmit={handleSubmit} className="flex gap-3 items-end">
           <div className="flex-1 relative">
             <textarea
@@ -692,7 +692,7 @@ export default function AiPage() {
           <Button
             type="submit"
             size="icon"
-            className="h-11 w-11 rounded-2xl shrink-0 shadow-[0_4px_12px_oklch(0.55_0.28_290/0.3)] bg-gradient-to-br from-violet-600 to-indigo-600 border-0 hover:from-violet-500 hover:to-indigo-500"
+            className="h-11 w-11 rounded-2xl shrink-0 shadow-[0_4px_12px_rgba(138,92,255,0.3)] bg-gradient-to-br from-violet-600 to-pink-500 border-0 hover:from-violet-500 hover:to-pink-400"
             disabled={loading || !input.trim()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -864,10 +864,10 @@ export default function BridgePage() {
                   </div>
                 )}
                 <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-emerald-100/60">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-500 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-600 shrink-0">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span className="text-[11px] font-medium text-emerald-400">
+                  <span className="text-[11px] font-medium text-emerald-600">
                     Zero commission — DeFi Agent does not charge any fees on bridges
                   </span>
                 </div>
@@ -876,10 +876,10 @@ export default function BridgePage() {
                   fromToken &&
                   fromToken.address.toLowerCase() !== NATIVE_TOKEN_LIFI && (
                     <div className="flex items-start gap-2 pt-2 mt-0.5 border-t border-amber-100/60">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-amber-500 shrink-0 mt-[1px]">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-amber-700 shrink-0 mt-[1px]">
                         <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      <span className="text-[11px] text-amber-300 leading-relaxed">
+                      <span className="text-[11px] text-amber-700 leading-relaxed">
                         Two transactions required: first an ERC-20 <strong>approve</strong> for the bridge router, then the <strong>bridge</strong> itself. Both happen in sequence after you click Bridge.
                       </span>
                     </div>
@@ -891,9 +891,9 @@ export default function BridgePage() {
           {/* Error display */}
           <Fade in={!!error}>
             {error && (
-            <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-900/40">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-500">
+            <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-600">
                   <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
@@ -901,14 +901,14 @@ export default function BridgePage() {
                 <p className="text-[13px] font-semibold text-red-800 mb-0.5">
                   Bridge Error
                 </p>
-                <p className="text-[12px] text-red-400 leading-relaxed">
+                <p className="text-[12px] text-red-600 leading-relaxed">
                   {error}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className="shrink-0 text-red-400 hover:text-red-400 transition-colors p-0.5"
+                className="shrink-0 text-red-600 hover:text-red-600 transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -921,16 +921,16 @@ export default function BridgePage() {
           {/* Bridge result + status tracking */}
           <Fade in={!!bridgeResult}>
             {bridgeResult && (
-            <div className="rounded-xl bg-emerald-950/30 border border-emerald-800/40 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-900/40">
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50">
                 {(!bridgeStatus || bridgeStatus.status === "PENDING" || bridgeStatus.status === "NOT_FOUND") ? (
-                  <Spinner className="text-emerald-400" />
+                  <Spinner className="text-emerald-600" />
                 ) : bridgeStatus.status === "DONE" ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-emerald-600">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-500">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-600">
                     <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 )}
@@ -943,7 +943,7 @@ export default function BridgePage() {
                     ? "Bridge Failed"
                     : "Bridge In Progress"}
                 </p>
-                <p className="text-[12px] text-emerald-400 leading-relaxed">
+                <p className="text-[12px] text-emerald-600 leading-relaxed">
                   {bridgeStatus?.substatusMessage ??
                     (bridgeStatus?.status === "DONE"
                       ? "Tokens have been delivered to the destination chain."
@@ -956,7 +956,7 @@ export default function BridgePage() {
                     href={`${fromChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeResult.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-emerald-300 hover:text-emerald-900 underline underline-offset-2 transition-colors"
+                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-emerald-600 hover:text-emerald-900 underline underline-offset-2 transition-colors"
                   >
                     View on Explorer
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -969,7 +969,7 @@ export default function BridgePage() {
                     href={`${toChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeStatus.receiving.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1 text-[12px] font-medium text-emerald-300 hover:text-emerald-900 underline underline-offset-2 transition-colors"
+                    className="inline-flex items-center gap-1 mt-1 text-[12px] font-medium text-emerald-600 hover:text-emerald-900 underline underline-offset-2 transition-colors"
                   >
                     Receiving tx on {toChainConfig?.name}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -985,7 +985,7 @@ export default function BridgePage() {
                   setBridgeStatus(null);
                   if (pollRef.current) clearInterval(pollRef.current);
                 }}
-                className="shrink-0 text-emerald-400 hover:text-emerald-400 transition-colors p-0.5"
+                className="shrink-0 text-emerald-600 hover:text-emerald-600 transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>

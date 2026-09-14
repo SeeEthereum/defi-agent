@@ -108,7 +108,7 @@ export function MobileNav() {
               <span className={cn(
                 "flex h-10 w-10 items-center justify-center rounded-xl mb-0.5",
                 isActive
-                  ? "bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg"
+                  ? "bg-gradient-to-br from-violet-600 to-pink-500 shadow-lg"
                   : "bg-violet-500/10"
               )}>
                 {item.icon}

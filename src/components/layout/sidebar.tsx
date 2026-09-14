@@ -120,12 +120,12 @@ export function Sidebar({ onClose }: SidebarProps) {
           className={cn(
             "relative flex items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-semibold transition-all duration-200 mb-3 overflow-hidden",
             pathname === primaryItem.href
-              ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-[0_4px_14px_oklch(0.55_0.28_290/0.35)]"
+              ? "bg-gradient-to-r from-violet-600 to-pink-500 text-white shadow-[0_4px_14px_rgba(138,92,255,0.35)]"
               : "ai-shimmer-bg animate-ai-glow text-violet-700 border border-violet-400/30 hover:border-violet-400/50"
           )}
         >
           {pathname !== primaryItem.href && (
-            <span className="pointer-events-none absolute inset-x-0 top-0 h-px animate-ai-scan bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent" />
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-px animate-ai-scan bg-gradient-to-r from-transparent via-pink-400/80 to-transparent" />
           )}
           <span className={cn(
             "relative flex h-7 w-7 items-center justify-center rounded-lg shrink-0 overflow-visible",
@@ -133,8 +133,8 @@ export function Sidebar({ onClose }: SidebarProps) {
           )}>
             {pathname !== primaryItem.href && (
               <>
-                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_5px_2px_oklch(0.55_0.28_290/0.7)] animate-ai-orbit-sm-1" />
-                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-cyan-400 shadow-[0_0_5px_2px_oklch(0.65_0.22_200/0.7)] animate-ai-orbit-sm-2" />
+                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_5px_2px_rgba(138,92,255,0.7)] animate-ai-orbit-sm-1" />
+                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-pink-500 shadow-[0_0_5px_2px_rgba(255,45,117,0.6)] animate-ai-orbit-sm-2" />
               </>
             )}
             <span className={cn(pathname !== primaryItem.href && "animate-ai-pulse-icon")}>

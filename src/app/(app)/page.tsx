@@ -210,7 +210,7 @@ export default function DashboardPage() {
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
                   <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                   <polyline points="16 7 22 7 22 13" />
                 </svg>
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           <CardContent className="pt-4 pb-4 sm:pt-5 sm:pb-5">
             <div className="flex items-center gap-2 mb-4">
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/10 to-violet-500/10 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
                   <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                   <polyline points="16 7 22 7 22 13" />
                 </svg>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Total PnL</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.totalPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.totalPnl)}
                     decimals={2}
@@ -253,7 +253,7 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Realized</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.realizedPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.realizedPnl)}
                     decimals={2}
@@ -263,7 +263,7 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl bg-secondary/80 p-3 text-center">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1">Unrealized</p>
-                <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-500"}`}>
+                <p className={`text-lg font-bold tabular-nums ${pnl.unrealizedPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                   <NumberDisplay
                     value={Math.abs(pnl.unrealizedPnl)}
                     decimals={2}
@@ -276,7 +276,7 @@ export default function DashboardPage() {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-blue-950/30 flex items-center justify-center shrink-0">
+                <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
                   <span className="text-xs">📊</span>
                 </div>
                 <div>
@@ -294,7 +294,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-border/40 px-3 py-2.5">
-                <div className="h-7 w-7 rounded-lg bg-emerald-950/30 flex items-center justify-center shrink-0">
+                <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
                   <span className="text-xs">💰</span>
                 </div>
                 <div>
@@ -410,7 +410,7 @@ export default function DashboardPage() {
                     </div>
                     <Badge
                       variant="secondary"
-                      className="text-xs font-semibold text-emerald-400 bg-emerald-950/30"
+                      className="text-xs font-semibold text-emerald-600 bg-emerald-50"
                     >
                       {m.totalAprPercent.toFixed(2)}% APY
                     </Badge>

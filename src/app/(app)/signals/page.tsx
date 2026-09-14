@@ -187,14 +187,14 @@ function SignalsTab() {
       </Button>
 
       {/* Disclaimer */}
-      <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 px-3 py-2">
-        <p className="text-[11px] text-amber-300 leading-relaxed">
+      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+        <p className="text-[11px] text-amber-700 leading-relaxed">
           Signals are for informational purposes only and are <strong>NOT investment advice</strong>. Past performance does not guarantee future results.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">{error}</div>
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-[13px] text-red-600">{error}</div>
       )}
 
       {fetched && signals.length === 0 && !error && (
@@ -242,7 +242,7 @@ function SignalsTab() {
                     <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
                   </div>
                   {change != null && (
-                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-emerald-400" : "text-red-500"}`}>
+                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                       {Number(change) >= 0 ? "+" : ""}{Number(change).toFixed(2)}%
                     </span>
                   )}
@@ -291,7 +291,7 @@ function SignalsTab() {
                   {soldRatio != null && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Sold Ratio</span>
-                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-red-500" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
+                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-red-600" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
@@ -438,7 +438,7 @@ function LeaderboardTab() {
       </Button>
 
       {error && (
-        <div className="rounded-xl bg-red-950/30 border border-red-800/40 p-4 text-[13px] text-red-300">{error}</div>
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-[13px] text-red-600">{error}</div>
       )}
 
       {fetched && entries.length === 0 && !error && (
@@ -477,7 +477,7 @@ function LeaderboardTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] font-semibold font-mono">{abbreviate(addr)}</span>
                       {wType && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-violet-400">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-violet-600">
                           {WALLET_TYPE_LABELS[wType] ?? wType}
                         </span>
                       )}
@@ -485,7 +485,7 @@ function LeaderboardTab() {
                     {/* Stats row */}
                     <div className="flex gap-3 mt-1 text-[11px]">
                       {pnl != null && (
-                        <span className={Number(pnl) >= 0 ? "text-emerald-400" : "text-red-500"}>
+                        <span className={Number(pnl) >= 0 ? "text-emerald-600" : "text-red-600"}>
                           PnL: {formatUsd(pnl)}
                         </span>
                       )}
@@ -505,7 +505,7 @@ function LeaderboardTab() {
                         </span>
                       )}
                       {roi != null && (
-                        <span className={Number(roi) >= 0 ? "text-emerald-400" : "text-red-500"}>
+                        <span className={Number(roi) >= 0 ? "text-emerald-600" : "text-red-600"}>
                           ROI: {formatPct(roi)}
                         </span>
                       )}

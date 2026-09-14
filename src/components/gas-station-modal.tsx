@@ -196,7 +196,7 @@ export function GasStationModal({
             )}
 
             {error && (
-              <p className="text-[13px] text-red-400" role="alert">
+              <p className="text-[13px] text-red-600" role="alert">
                 {error}
               </p>
             )}

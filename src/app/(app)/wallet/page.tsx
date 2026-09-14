@@ -375,7 +375,7 @@ export default function WalletPage() {
                     const isReceive = tx.direction === "IN";
                     const isSuccess = tx.txStatus === "SUCCESS";
                     const isError = tx.txStatus === "ERROR";
-                    const stateColor = isSuccess ? "text-emerald-400" : isError ? "text-red-500" : "text-amber-500";
+                    const stateColor = isSuccess ? "text-emerald-600" : isError ? "text-red-600" : "text-amber-700";
                     const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
                     const dateStr = tx.txTime
                       ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
@@ -414,8 +414,8 @@ export default function WalletPage() {
                       ? "https://solscan.io"
                       : "https://etherscan.io";
 
-                    const iconBg = iconType === "in" ? "bg-emerald-950/30" : iconType === "approve" ? "bg-amber-950/30" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
-                    const iconColor = iconType === "in" ? "text-emerald-400" : iconType === "approve" ? "text-amber-400" : iconType === "contract" ? "text-violet-400" : "text-primary";
+                    const iconBg = iconType === "in" ? "bg-emerald-50" : iconType === "approve" ? "bg-amber-50" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
+                    const iconColor = iconType === "in" ? "text-emerald-600" : iconType === "approve" ? "text-amber-700" : iconType === "contract" ? "text-violet-600" : "text-primary";
 
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
@@ -452,7 +452,7 @@ export default function WalletPage() {
                             {tx.failReason && (
                               <>
                                 <span className="text-[11px] text-muted-foreground">·</span>
-                                <span className="text-[11px] text-red-400 truncate max-w-[100px]">{tx.failReason}</span>
+                                <span className="text-[11px] text-red-600 truncate max-w-[100px]">{tx.failReason}</span>
                               </>
                             )}
                           </div>

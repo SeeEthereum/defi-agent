@@ -103,7 +103,7 @@ function PnlBadge({ value }: { value: string }) {
   const n = parseFloat(value);
   const pos = n >= 0;
   return (
-    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pos ? "bg-green-500/15 text-green-500" : "bg-red-500/15 text-red-500"}`}>
+    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pos ? "bg-green-500/15 text-green-600" : "bg-red-500/15 text-red-600"}`}>
       {pos ? "+" : ""}{n.toFixed(2)} USDC
     </span>
   );
@@ -699,7 +699,7 @@ function PositionsTab({
   return (
     <div className="space-y-2">
       <Fade in={!!closeError}>
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
           {closeError}
         </div>
       </Fade>
@@ -864,7 +864,7 @@ function TradeTab(props: {
           <span>Notional: {fmtUsd(notional)}</span>
         </div>
         {notional > 0 && notional < 10 && (
-          <div className="text-[11px] text-amber-500 mt-0.5">
+          <div className="text-[11px] text-amber-700 mt-0.5">
             Minimo $10 notional. Aumenta la size.
           </div>
         )}
@@ -974,12 +974,12 @@ function TradeTab(props: {
       )}
 
       <Fade in={!!props.error}>
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
           {props.error}
         </div>
       </Fade>
       <Fade in={!!props.success}>
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500">
+        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-600">
           {props.success}
         </div>
       </Fade>
@@ -1009,7 +1009,7 @@ function OrdersTab({
             <div className="flex items-center gap-2">
               <span className="font-bold">{o.coin}</span>
               <span className="text-[10px] uppercase text-muted-foreground">{o.type ?? "limit"}</span>
-              <span className={`text-[10px] font-bold ${o.side === "buy" ? "text-green-500" : "text-red-500"}`}>
+              <span className={`text-[10px] font-bold ${o.side === "buy" ? "text-green-600" : "text-red-600"}`}>
                 {o.side === "buy" ? "BUY" : "SELL"}
               </span>
             </div>
@@ -1116,7 +1116,7 @@ function FundModal(props: {
         <Swap tokenKey={props.success ? "success" : props.preview ? "preview" : "idle"}>
           {props.success ? (
             <>
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500 mb-3">
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-600 mb-3">
                 {props.success}
               </div>
               <Button variant="outline" className="w-full" onClick={props.onClose}>Chiudi</Button>
@@ -1152,7 +1152,7 @@ function FundModal(props: {
         </Swap>
 
         <Fade in={!!props.error} className="mt-3">
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-500">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
             {props.error}
           </div>
         </Fade>
