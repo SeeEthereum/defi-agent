@@ -44,6 +44,7 @@
 import { recoverTypedDataAddress } from "viem";
 import { OnchainosWallet } from "./signer";
 import { getOnchainosAddress } from "./http";
+import { currentSession } from "@/lib/session/session";
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 const ZERO_BYTES32 = `0x${"00".repeat(32)}` as `0x${string}`;
@@ -84,7 +85,7 @@ interface ProbeResult {
   match: boolean;
 }
 
-let cached: { at: number; result: ProbeResult } | null = null;
+const cachedBySession = new Map<string, { at: number; result: ProbeResult }>();
 
 /**
  * Run the probe. Cached for 24h unless `force=true`.
@@ -96,6 +97,8 @@ let cached: { at: number; result: ProbeResult } | null = null;
  */
 export async function detectHlSigningAddress(force = false): Promise<ProbeResult> {
   const now = Date.now();
+  const { sid } = currentSession();
+  const cached = cachedBySession.get(sid);
   if (!force && cached && now - cached.at < CACHE_TTL_MS) {
     return cached.result;
   }
@@ -121,7 +124,11 @@ export async function detectHlSigningAddress(force = false): Promise<ProbeResult
   ).toLowerCase() as `0x${string}`;
 
   const result: ProbeResult = { aa, eoa, match: aa === eoa };
-  cached = { at: now, result };
+  if (!cachedBySession.has(sid) && cachedBySession.size >= 1000) {
+    const oldest = cachedBySession.keys().next().value;
+    if (oldest !== undefined) cachedBySession.delete(oldest);
+  }
+  cachedBySession.set(sid, { at: now, result });
   return result;
 }
 
@@ -148,5 +155,5 @@ export async function getHlUserAddress(): Promise<`0x${string}`> {
 
 /** Drop the cache. Call from logout / account-switch paths. */
 export function invalidateHlSigningAddressCache(): void {
-  cached = null;
+  cachedBySession.delete(currentSession().sid);
 }

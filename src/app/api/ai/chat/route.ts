@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAiChat } from "@/lib/ai/orchestrator";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const messageSchema = z.object({
@@ -12,7 +13,7 @@ const schema = z.object({
   walletAddress: z.string().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { messages, walletAddress } = schema.parse(body);
@@ -31,4 +32,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

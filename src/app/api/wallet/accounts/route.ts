@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCli } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
 
 // GET /api/wallet/accounts — list all accounts (wallet status gives accountCount)
 // POST /api/wallet/accounts — add a new wallet account
 // PATCH /api/wallet/accounts — switch to a different account
 
-export async function POST() {
+export const POST = withSession(async () => {
   try {
     const result = await runCli(["wallet", "add"]);
     return NextResponse.json({ success: true, data: result.data });
@@ -13,9 +14,9 @@ export async function POST() {
     const message = error instanceof Error ? error.message : "Failed to add wallet";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { accountId } = body;
@@ -31,4 +32,4 @@ export async function PATCH(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Failed to switch account";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});

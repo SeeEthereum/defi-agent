@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { walletAddresses } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
 
-export async function GET() {
+export const GET = withSession(async () => {
   try {
     const result = await walletAddresses();
     return NextResponse.json({ success: true, data: result.data });
@@ -13,4 +14,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+});

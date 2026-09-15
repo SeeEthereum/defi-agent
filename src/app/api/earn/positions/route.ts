@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserPositions } from "@/lib/fluid/resolver";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const schema = z.object({
   address: z.string().regex(/^0x[0-9a-f]{40}$/),
 });
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -31,4 +32,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

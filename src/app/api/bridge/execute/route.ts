@@ -7,6 +7,7 @@ import { getChainByIndex } from "@/lib/chains";
 import { encodeApprove } from "@/lib/fluid/ftokens";
 import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi, maxUint256 } from "viem";
+import { withSession } from "@/lib/session/session";
 
 const schema = z.object({
   fromChain: z.string().min(1),
@@ -72,7 +73,7 @@ async function waitForAllowance(
   );
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fromChain, toChain, fromToken, toToken, fromAmount, fromAddress } =
@@ -270,4 +271,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

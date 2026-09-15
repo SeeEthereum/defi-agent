@@ -4,6 +4,7 @@ import { encodeDeposit, parseAmount } from "@/lib/fluid/ftokens";
 import { getFToken } from "@/lib/fluid/constants";
 import { FLUID_CHAIN_IDS } from "@/lib/chains";
 import { normalizeAddress } from "@/lib/utils";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const schema = z.object({
@@ -17,7 +18,7 @@ const schema = z.object({
   decimals: z.number().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fTokenSymbol, amount, chainIndex, walletAddress, fTokenAddress, underlyingAddress, decimals } =
@@ -70,4 +71,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

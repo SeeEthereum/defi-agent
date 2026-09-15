@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { hlPrices } from "@/lib/hyperliquid/cli";
 import { filterFeaturedPrices, FEATURED_MARKETS } from "@/lib/hyperliquid/markets";
 import { respondBinError } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 
 /**
  * Curated perp markets with live mid prices.
  * Used by the Trade page ticker. Avoids exposing the 500+ raw price feed.
  */
-export async function GET() {
+export const GET = withSession(async () => {
   try {
     const result = await hlPrices();
     if (!result.ok) {
@@ -24,4 +25,4 @@ export async function GET() {
   } catch (error) {
     return respondBinError(error, "Failed to load markets");
   }
-}
+});

@@ -3,6 +3,7 @@ import { walletContractCall } from "@/lib/okx/cli";
 import { encodeApprove, parseAmount } from "@/lib/fluid/ftokens";
 import { getFToken } from "@/lib/fluid/constants";
 import { FLUID_CHAIN_IDS } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const schema = z.object({
@@ -14,7 +15,7 @@ const schema = z.object({
   decimals: z.number().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fTokenSymbol, amount, chainIndex, fTokenAddress, underlyingAddress, decimals } =
@@ -54,4 +55,4 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Approve failed";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});

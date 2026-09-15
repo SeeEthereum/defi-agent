@@ -5,6 +5,7 @@ import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
 
 // Chains that support MEV protection
 const MEV_SUPPORTED_CHAINS = ["ethereum", "bsc", "base"];
@@ -21,7 +22,7 @@ const schema = z.object({
   mevProtection: z.boolean().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const {
@@ -198,4 +199,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -4,6 +4,7 @@ import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { isValidEvmAddress, normalizeAddress } from "@/lib/utils";
 import { SUPPORTED_CHAIN_IDS } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
 
 const schema = z.object({
   amount: z.string().min(1),
@@ -13,7 +14,7 @@ const schema = z.object({
   force: z.boolean().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { amount, recipient, chain, contractToken, force } =
@@ -49,4 +50,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

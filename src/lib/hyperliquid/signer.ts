@@ -5,7 +5,7 @@
  * to the viem-local-account shape expected by @nktkas/hyperliquid's
  * ExchangeClient (AbstractViemLocalAccount).
  *
- * The onchainos keystore is single-threaded and shared process-wide; every
+ * The onchainos keystore is single-threaded and isolated per session; every
  * invocation goes through the unified `withOnchainosLock` mutex in
  * src/lib/okx/lock.ts, which also serializes the okx/cli.ts runCli path —
  * otherwise a signTypedData could race a walletBalance and corrupt keystore
@@ -16,6 +16,7 @@ import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 import { withOnchainosLock } from "@/lib/okx/lock";
+import { onchainosEnv, sessionHomeExists } from "@/lib/session/session";
 
 const execFileAsync = promisify(execFile);
 
@@ -129,6 +130,9 @@ export class OnchainosWallet {
     const chain = chainIdToOnchainosChain(params.domain.chainId);
 
     return withOnchainosLock(async () => {
+      if (!sessionHomeExists()) {
+        throw new OnchainosSignerError("Not logged in. Please sign in first.");
+      }
       let stdout = "";
       let stderr = "";
       try {
@@ -150,7 +154,7 @@ export class OnchainosWallet {
           {
             timeout: 60_000,
             maxBuffer: 4 * 1024 * 1024,
-            env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+            env: onchainosEnv(),
           }
         );
         stdout = result.stdout;

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletBalance } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain") ?? undefined;
@@ -29,4 +30,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

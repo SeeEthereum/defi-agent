@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPrice } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `market price` is Basic ($0.0001/req post-quota). Token prices move
 // fast but a 10s server-side memo cuts polling thunder — the UI's SWR
 // poll interval is typically 30s+, so 10s rarely shows stale data.
 const PRICE_TTL_MS = 10_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -34,4 +35,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

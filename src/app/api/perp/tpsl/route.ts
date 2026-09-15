@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlTpSl } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const schema = z.object({
@@ -12,7 +13,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     if (!params.slPx && !params.tpPx) {
@@ -32,4 +33,4 @@ export async function POST(request: NextRequest) {
     }
     return respondBinError(error, "TP/SL failed");
   }
-}
+});

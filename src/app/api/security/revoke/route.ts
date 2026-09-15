@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
 import { encodeApprove } from "@/lib/fluid/ftokens";
 import { z } from "zod";
+import { withSession } from "@/lib/session/session";
 
 const schema = z.object({
   tokenAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
@@ -9,7 +10,7 @@ const schema = z.object({
   chainIndex: z.number(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { tokenAddress, spenderAddress, chainIndex } = schema.parse(body);
@@ -42,4 +43,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

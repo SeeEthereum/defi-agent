@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlWithdraw } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 // HL withdraw minimum is > $1 — the bridge deducts a flat $1 fee, so anything
@@ -18,7 +19,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     const result = await hlWithdraw(params);
@@ -32,4 +33,4 @@ export async function POST(request: NextRequest) {
     }
     return respondBinError(error, "Withdraw failed");
   }
-}
+});

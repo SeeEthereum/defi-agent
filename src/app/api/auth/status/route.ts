@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { walletStatus } from "@/lib/okx/cli";
 import type { WalletStatus } from "@/lib/okx/types";
+import { withSession } from "@/lib/session/session";
 
-export async function GET() {
+export const GET = withSession(async () => {
   try {
     const result = await walletStatus();
     const data = result.data as WalletStatus;
@@ -25,4 +26,4 @@ export async function GET() {
       accountCount: 0,
     });
   }
-}
+});

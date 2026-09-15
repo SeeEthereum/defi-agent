@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { securityTokenScan } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
 
 // `chainId:address` list, comma-separated (max 10). Case-insensitive on address.
 const TOKENS_FORMAT = /^\d+:0x[0-9a-fA-F]{40}(,\d+:0x[0-9a-fA-F]{40})*$/;
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const tokens = searchParams.get("tokens") ?? undefined;
@@ -58,4 +59,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

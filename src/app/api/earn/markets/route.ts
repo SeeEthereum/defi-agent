@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getFluidMarkets } from "@/lib/fluid/resolver";
+import { withSession } from "@/lib/session/session";
 
-export async function GET() {
+export const GET = withSession(async () => {
   try {
     const markets = await getFluidMarkets();
     return NextResponse.json({ success: true, data: markets });
@@ -13,4 +14,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlDeposit } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError, positiveDecimalString } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 // HL deposit minimum is $5 — enforce here so a bad client doesn't even hit
@@ -10,7 +11,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     const result = await hlDeposit(params);
@@ -24,4 +25,4 @@ export async function POST(request: NextRequest) {
     }
     return respondBinError(error, "Deposit failed");
   }
-}
+});

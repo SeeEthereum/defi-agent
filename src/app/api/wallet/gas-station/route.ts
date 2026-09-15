@@ -8,6 +8,7 @@ import {
 } from "@/lib/okx/cli";
 import { z } from "zod";
 import { SUPPORTED_CHAIN_IDS } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
 
 const chainSchema = z
   .string()
@@ -19,7 +20,7 @@ const chainSchema = z
 
 // GET /api/wallet/gas-station?chain=42161 — read-only pre-flight.
 // Returns recommendation + tokenList + gasStationActivated; never broadcasts.
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const chain = chainSchema.parse(
       request.nextUrl.searchParams.get("chain") ?? ""
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -55,7 +56,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("disable"), chain: chainSchema }),
 ]);
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = actionSchema.parse(await request.json());
 
@@ -92,4 +93,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tokenHotTokens } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `token hot-tokens` is Basic ($0.0001/req post-quota). The trending list
 // rotates slowly (the time frame is at least 5m); 30s is plenty.
 const TRENDING_TTL_MS = 30_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain") || undefined;
@@ -50,4 +51,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

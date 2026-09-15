@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeTokens } from "@/lib/bridge/lifi";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = request.nextUrl;
     const fromChain = searchParams.get("fromChain");
@@ -24,4 +25,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

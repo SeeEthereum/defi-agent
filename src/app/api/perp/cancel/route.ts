@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hlCancel } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError, nonNegativeIntegerString } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 
 const schema = z.object({
@@ -10,7 +11,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     const result = await hlCancel(params);
@@ -24,4 +25,4 @@ export async function POST(request: NextRequest) {
     }
     return respondBinError(error, "Cancel failed");
   }
-}
+});

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { hlOrders } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = request.nextUrl;
     const coin = searchParams.get("coin") ?? undefined;
@@ -11,4 +12,4 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return respondBinError(error, "Failed to fetch orders");
   }
-}
+});

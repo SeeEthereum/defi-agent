@@ -4,6 +4,7 @@ import { walletContractCall } from "@/lib/okx/cli";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
 
 const schema = z.object({
   token: z.string().min(1),
@@ -11,7 +12,7 @@ const schema = z.object({
   chain: z.string().min(1),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     // `amount` is validated by the schema but not forwarded — we always
@@ -111,4 +112,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

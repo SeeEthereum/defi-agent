@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeStatus } from "@/lib/bridge/lifi";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = request.nextUrl;
     const txHash = searchParams.get("txHash");
@@ -28,4 +29,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

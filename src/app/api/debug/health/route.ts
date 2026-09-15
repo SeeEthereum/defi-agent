@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
+import { withSession, onchainosEnv } from "@/lib/session/session";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,7 +14,13 @@ function resolveBin(): string {
   return path.join(process.env.HOME ?? "~", ".local", "bin", "onchainos");
 }
 
-export async function GET() {
+export const GET = withSession(async (request: NextRequest) => {
+  const expected = process.env.DEBUG_HEALTH_TOKEN;
+  const provided = request.headers.get("x-debug-token");
+  if (!expected || provided !== expected) {
+    return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+  }
+
   const home = process.env.HOME ?? "(unset)";
   const cwd = process.cwd();
   const projectBin = path.join(cwd, "bin", "onchainos");
@@ -21,24 +28,9 @@ export async function GET() {
   const resolvedBin = resolveBin();
 
   const info: Record<string, unknown> = {
-    home,
-    cwd,
     paths: {
-      projectBin,
       projectBinExists: fs.existsSync(projectBin),
-      homeBin,
       homeBinExists: fs.existsSync(homeBin),
-      resolved: resolvedBin,
-    },
-    env: {
-      NODE_ENV: process.env.NODE_ENV,
-      ONCHAINOS_PATH: process.env.ONCHAINOS_PATH ?? "(not set)",
-      OKX_API_KEY: process.env.OKX_API_KEY ? "set" : "missing",
-      OKX_SECRET_KEY: process.env.OKX_SECRET_KEY ? "set" : "missing",
-      OKX_PASSPHRASE: process.env.OKX_PASSPHRASE ? "set" : "missing",
-      OKX_PROJECT_ID: process.env.OKX_PROJECT_ID ? "set" : "missing",
-      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ? "set" : "missing",
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "set" : "missing",
     },
   };
 
@@ -46,7 +38,7 @@ export async function GET() {
     try {
       const { stdout } = await execFileAsync(resolvedBin, ["--version"], {
         timeout: 5000,
-        env: { ...process.env },
+        env: onchainosEnv(),
       });
       info.binVersion = stdout.trim();
     } catch (e) {
@@ -57,4 +49,4 @@ export async function GET() {
   }
 
   return NextResponse.json(info);
-}
+});

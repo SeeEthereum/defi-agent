@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletHistory } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
 
 // Normalize a raw orderList entry to a consistent shape the UI can consume
 function normalizeEntry(raw: Record<string, unknown>) {
@@ -26,7 +27,7 @@ function normalizeEntry(raw: Record<string, unknown>) {
   };
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
 
@@ -56,4 +57,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
