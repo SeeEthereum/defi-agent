@@ -18,7 +18,7 @@ const CHAIN_RPC: Record<string, string> = Object.fromEntries(
 /** Poll eth_getTransactionReceipt until confirmed or timeout */
 async function waitForReceipt(txHash: string, chain: string): Promise<boolean> {
   const rpc = CHAIN_RPC[chain];
-  if (!rpc || !txHash) return true;
+  if (!rpc || !txHash) return false;
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
@@ -32,7 +32,46 @@ async function waitForReceipt(txHash: string, chain: string): Promise<boolean> {
       if (json.result?.status === "0x0") return false;
     } catch {}
   }
-  return true;
+  return false;
+}
+
+function hasParam(value: unknown): boolean {
+  return value != null && value !== "";
+}
+
+function readQuoteId(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload == null) return undefined;
+  const source = Array.isArray(payload) ? payload[0] : payload;
+  if (typeof source !== "object" || source == null) return undefined;
+  const id = (source as Record<string, unknown>).quoteId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+function actionParamsReady(action: ProposedAction): boolean {
+  const p = action.params ?? {};
+  switch (action.action) {
+    case "swap":
+      return hasParam(p.fromToken) && hasParam(p.toToken) && hasParam(p.amount) && hasParam(p.chain);
+    case "send":
+      return hasParam(p.recipient) && hasParam(p.amount) && hasParam(p.chainIndex);
+    case "bridge":
+      return (
+        hasParam(p.fromChain) &&
+        hasParam(p.toChain) &&
+        hasParam(p.fromToken) &&
+        hasParam(p.toToken) &&
+        hasParam(p.fromAmount)
+      );
+    case "supply":
+    case "withdraw":
+      return hasParam(p.fTokenSymbol) && hasParam(p.amount) && hasParam(p.chainIndex);
+    case "hl_order":
+      return hasParam(p.coin) && hasParam(p.side) && hasParam(p.size);
+    case "hl_close":
+      return hasParam(p.coin);
+    default:
+      return false;
+  }
 }
 
 // ── Token symbol lookup ──────────────────────────────────────────────────────
@@ -87,11 +126,17 @@ function ActionCard({
   if (action.action === "swap") {
     const p = action.params;
     const chain = getChainBySwapName(p.chain as string);
+    const fromSymbol = tokenSymbol(p.fromToken as string | undefined);
+    const toSymbol = tokenSymbol(p.toToken as string | undefined);
     title = "Token Swap";
     icon = "swap";
-    rows.push({ label: "From", value: tokenSymbol(p.fromToken as string) });
-    rows.push({ label: "To", value: tokenSymbol(p.toToken as string) });
-    rows.push({ label: "Chain", value: chain?.name ?? (p.chain as string) });
+    rows.push({
+      label: "Amount",
+      value: hasParam(p.amount) ? `${p.amount} ${fromSymbol}` : "—",
+    });
+    rows.push({ label: "From", value: fromSymbol });
+    rows.push({ label: "To", value: toSymbol });
+    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chain) ? String(p.chain) : "—") });
     if (p.slippage) rows.push({ label: "Slippage", value: `${p.slippage}%` });
     if (p.gasLevel) rows.push({ label: "Gas", value: String(p.gasLevel) });
     if (p.mevProtection) rows.push({ label: "MEV Protection", value: "Enabled" });
@@ -106,17 +151,36 @@ function ActionCard({
   } else if (action.action === "send") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
+    const token = p.contractToken
+      ? tokenSymbol(p.contractToken as string)
+      : chain?.nativeSymbol ?? "ETH";
     title = "Token Transfer";
     icon = "send";
+    rows.push({ label: "Token", value: token });
+    rows.push({ label: "Amount", value: hasParam(p.amount) ? `${p.amount} ${token}` : "—" });
     rows.push({
-      label: "Token",
-      value: p.contractToken
-        ? tokenSymbol(p.contractToken as string)
-        : chain?.nativeSymbol ?? "ETH",
+      label: "To",
+      value: hasParam(p.recipient) ? shortAddr(String(p.recipient)) : "—",
     });
-    rows.push({ label: "Amount", value: String(p.amount) });
-    rows.push({ label: "To", value: shortAddr(p.recipient as string) });
-    rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
+    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chainIndex) ? String(p.chainIndex) : "—") });
+  } else if (action.action === "bridge") {
+    const p = action.params;
+    const fromChain = getChainByIndex(Number(p.fromChain));
+    const toChain = getChainByIndex(Number(p.toChain));
+    const fromSymbol = (p.fromTokenSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
+    const toSymbol = (p.toTokenSymbol as string) || tokenSymbol(p.toToken as string | undefined);
+    title = "Bridge";
+    icon = "layers";
+    rows.push({ label: "From chain", value: fromChain?.name ?? (hasParam(p.fromChain) ? String(p.fromChain) : "—") });
+    rows.push({ label: "To chain", value: toChain?.name ?? (hasParam(p.toChain) ? String(p.toChain) : "—") });
+    rows.push({
+      label: "Amount",
+      value: hasParam(p.fromAmount) ? `${p.fromAmount} ${fromSymbol}` : "—",
+    });
+    rows.push({ label: "From token", value: fromSymbol });
+    rows.push({ label: "To token", value: toSymbol });
+    if (p.estimatedOutput) rows.push({ label: "Estimated output", value: String(p.estimatedOutput) });
+    if (p.bridge) rows.push({ label: "Provider", value: String(p.bridge) });
   } else if (action.action === "withdraw") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
@@ -127,13 +191,14 @@ function ActionCard({
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
   } else if (action.action === "hl_order") {
     const p = action.params;
-    title = `Hyperliquid ${p.side === "buy" ? "Long" : "Short"}`;
+    const side = p.side === "buy" ? "LONG" : p.side === "sell" ? "SHORT" : "—";
+    title = `Hyperliquid ${side === "—" ? "Order" : side === "LONG" ? "Long" : "Short"}`;
     icon = p.side === "buy" ? "long" : "short";
-    rows.push({ label: "Market", value: `${p.coin}-PERP` });
-    rows.push({ label: "Side", value: p.side === "buy" ? "LONG" : "SHORT" });
-    rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
+    rows.push({ label: "Market", value: hasParam(p.coin) ? `${p.coin}-PERP` : "—" });
+    rows.push({ label: "Side", value: side });
+    rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : "—" });
     if (p.type) rows.push({ label: "Type", value: String(p.type).toUpperCase() });
-    if (p.leverage) rows.push({ label: "Leverage", value: `${p.leverage}×` });
+    rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : "—" });
     if (p.currentPrice) rows.push({ label: "Mark Price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString()}` });
     if (p.slPx) rows.push({ label: "Stop Loss", value: `$${p.slPx}` });
     if (p.tpPx) rows.push({ label: "Take Profit", value: `$${p.tpPx}` });
@@ -174,7 +239,7 @@ function ActionCard({
           size="sm"
           className="flex-1 h-9 rounded-xl text-sm font-medium shadow-sm"
           onClick={onConfirm}
-          disabled={executing}
+          disabled={executing || !actionParamsReady(action)}
         >
           {executing ? (
             <span className="flex items-center gap-2">
@@ -236,7 +301,7 @@ function saveMessages(msgs: Message[]) {
 }
 
 export default function AiPage() {
-  const { authenticated, walletAddress } = useAuth();
+  const { authenticated } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -273,7 +338,7 @@ export default function AiPage() {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: newMessages, walletAddress }),
+          body: JSON.stringify({ messages: newMessages }),
         });
         const data = await res.json();
 
@@ -306,7 +371,7 @@ export default function AiPage() {
         inputRef.current?.focus();
       }
     },
-    [messages, loading, walletAddress]
+    [messages, loading]
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -338,14 +403,17 @@ export default function AiPage() {
           setExecutingIndex(null);
           return;
         }
-        const earnApproveTxHash = approveEarnData.data?.approveTxHash as string | undefined;
-        if (earnApproveTxHash) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
-          // Convert chainIndex to swapName for waitForReceipt
+        const earnApproveTxHash = approveEarnData.data?.txHash as string | undefined;
+        // `alreadyApproved` means the allowance already covers this amount:
+        // there is no transaction to wait for.
+        if (!approveEarnData.data?.alreadyApproved) {
+          if (earnApproveTxHash) {
+            setMessages((prev) => [...prev, { role: "assistant", content: `Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
+          }
           const earnChain = getChainByIndex(action.params.chainIndex as number)?.swapName ?? "arbitrum";
-          const confirmed = await waitForReceipt(earnApproveTxHash, earnChain);
+          const confirmed = await waitForReceipt(earnApproveTxHash ?? "", earnChain);
           if (!confirmed) {
-            setMessages((prev) => [...prev, { role: "assistant", content: "Transazione di approvazione fallita on-chain." }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: "Approval not confirmed, try again" }]);
             setExecutingIndex(null);
             return;
           }
@@ -356,7 +424,6 @@ export default function AiPage() {
           fTokenSymbol: action.params.fTokenSymbol,
           amount: action.params.amount,
           chainIndex: action.params.chainIndex,
-          walletAddress: walletAddress ?? "",
         };
         break;
       }
@@ -381,29 +448,62 @@ export default function AiPage() {
             setExecutingIndex(null);
             return;
           }
-          // Wait for approval tx confirmation
           const approveTxHash = approveData.data?.txHash as string | undefined;
-          if (approveTxHash) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
-            const confirmed = await waitForReceipt(approveTxHash, action.params.chain as string);
+          const alreadyApproved = Boolean(approveData.data?.alreadyApproved);
+          if (!alreadyApproved) {
+            if (approveTxHash) {
+              setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
+            }
+            const confirmed = await waitForReceipt(approveTxHash ?? "", action.params.chain as string);
             if (!confirmed) {
-              setMessages((prev) => [...prev, { role: "assistant", content: "Approval transaction reverted on-chain." }]);
+              setMessages((prev) => [...prev, { role: "assistant", content: "Approval not confirmed, try again" }]);
               setExecutingIndex(null);
               return;
             }
           }
         }
-        // Step 2: Execute swap
+        // Step 2: Quote, then execute with the issued quote id
+        const swapQuoteBody: Record<string, unknown> = {
+          fromToken: action.params.fromToken,
+          toToken: action.params.toToken,
+          amount: action.params.amount,
+          chain: action.params.chain,
+        };
+        if (hasParam(action.params.slippage)) {
+          swapQuoteBody.slippage = action.params.slippage;
+        }
+        let swapQuoteId: string | undefined;
+        try {
+          const quoteRes = await fetch("/api/swap/quote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(swapQuoteBody),
+          });
+          const quoteData = await quoteRes.json();
+          if (quoteData.success) {
+            swapQuoteId = readQuoteId(quoteData.data);
+          }
+        } catch {
+          swapQuoteId = undefined;
+        }
+        if (!swapQuoteId) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "Could not get a quote, try again" },
+          ]);
+          setExecutingIndex(null);
+          return;
+        }
         endpoint = "/api/swap/execute";
         body = {
           fromToken: action.params.fromToken,
           toToken: action.params.toToken,
           amount: action.params.amount,
           chain: action.params.chain,
-          wallet: walletAddress ?? "",
           slippage: action.params.slippage,
           gasLevel: action.params.gasLevel,
           mevProtection: action.params.mevProtection,
+          quoteId: swapQuoteId,
         };
         break;
       }
@@ -418,15 +518,44 @@ export default function AiPage() {
         break;
       case "withdraw":
         endpoint = "/api/earn/withdraw";
-        body = {
-          fTokenSymbol: action.params.fTokenSymbol,
-          amount: action.params.amount,
-          chainIndex: action.params.chainIndex,
-          walletAddress: walletAddress ?? "",
-          withdrawAll: action.params.amount === "all",
-        };
+        body = action.params.amount === "all"
+          ? {
+              fTokenSymbol: action.params.fTokenSymbol,
+              chainIndex: action.params.chainIndex,
+              isAll: true,
+            }
+          : {
+              fTokenSymbol: action.params.fTokenSymbol,
+              amount: action.params.amount,
+              chainIndex: action.params.chainIndex,
+            };
         break;
-      case "bridge":
+      case "bridge": {
+        const qs = new URLSearchParams({
+          fromChain: String(action.params.fromChain),
+          toChain: String(action.params.toChain),
+          fromToken: String(action.params.fromToken),
+          toToken: String(action.params.toToken),
+          fromAmount: String(action.params.fromAmount),
+        });
+        let bridgeQuoteId: string | undefined;
+        try {
+          const quoteRes = await fetch(`/api/bridge/quote?${qs.toString()}`);
+          const quoteData = await quoteRes.json();
+          if (quoteData.success) {
+            bridgeQuoteId = readQuoteId(quoteData.data);
+          }
+        } catch {
+          bridgeQuoteId = undefined;
+        }
+        if (!bridgeQuoteId) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "Could not get a quote, try again" },
+          ]);
+          setExecutingIndex(null);
+          return;
+        }
         endpoint = "/api/bridge/execute";
         body = {
           fromChain: action.params.fromChain,
@@ -434,9 +563,10 @@ export default function AiPage() {
           fromToken: action.params.fromToken,
           toToken: action.params.toToken,
           fromAmount: action.params.fromAmount,
-          fromAddress: walletAddress ?? "",
+          quoteId: bridgeQuoteId,
         };
         break;
+      }
       case "hl_order":
         endpoint = "/api/perp/order";
         body = {
@@ -471,6 +601,15 @@ export default function AiPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
+
+      if (res.status === 409 && (action.action === "swap" || action.action === "bridge")) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Price moved, ask me again for a fresh quote" },
+        ]);
+        setProposedActions((prev) => prev.filter((_, i) => i !== idx));
+        return;
+      }
 
       const resultMsg = data.success
         ? `**${action.action.charAt(0).toUpperCase() + action.action.slice(1)} completed!**\n${
@@ -671,7 +810,11 @@ export default function AiPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-violet-500/4 via-transparent to-pink-500/4 pointer-events-none" />
         <form onSubmit={handleSubmit} className="flex gap-3 items-end">
           <div className="flex-1 relative">
+            <label htmlFor="ai-chat-input" className="sr-only">
+              Chat message
+            </label>
             <textarea
+              id="ai-chat-input"
               ref={inputRef}
               rows={1}
               placeholder="Ask anything about your portfolio, yields, or swaps…"
@@ -695,6 +838,7 @@ export default function AiPage() {
           <Button
             type="submit"
             size="icon"
+            aria-label="Send message"
             className="h-11 w-11 rounded-2xl shrink-0 shadow-[0_4px_12px_rgba(138,92,255,0.3)] bg-gradient-to-br from-violet-600 to-pink-500 border-0 hover:from-violet-500 hover:to-pink-400"
             disabled={loading || !input.trim()}
           >

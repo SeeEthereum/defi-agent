@@ -5,23 +5,35 @@ import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
+import { checkQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
+import {
+  tokenAddress,
+  baseUnitAmount,
+  slippagePercent,
+  badRequest,
+  apiError,
+  sessionEvmAddress,
+} from "@/lib/api/validation";
 
 // Chains that support MEV protection
 const MEV_SUPPORTED_CHAINS = ["ethereum", "bsc", "base"];
 
 const schema = z.object({
-  fromToken: z.string().min(1),
-  toToken: z.string().min(1),
-  amount: z.string().min(1),
+  fromToken: tokenAddress,
+  toToken: tokenAddress,
+  amount: baseUnitAmount,
   chain: z.string().min(1),
-  wallet: z.string().min(1),
-  slippage: z.string().optional(),
+  quoteId: z
+    .string({ error: "Missing quote. Refresh the quote and try again." })
+    .min(1, "Missing quote. Refresh the quote and try again."),
+  slippage: slippagePercent.optional(),
   autoSlippage: z.boolean().optional(),
   gasLevel: z.enum(["slow", "average", "fast"]).optional(),
   mevProtection: z.boolean().optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const {
@@ -29,7 +41,7 @@ export async function POST(request: NextRequest) {
       toToken,
       amount,
       chain,
-      wallet,
+      quoteId,
       slippage,
       autoSlippage,
       gasLevel,
@@ -45,14 +57,29 @@ export async function POST(request: NextRequest) {
     }
 
     const chainIndex = String(chainConfig.chainIndex);
+    const fromTokenNorm = normalizeAddress(fromToken);
+    const toTokenNorm = normalizeAddress(toToken);
+    const bound = checkQuote(
+      quoteId,
+      quoteFingerprint(["swap", chainIndex, fromTokenNorm, toTokenNorm, amount])
+    );
+    if (!bound.ok) {
+      return NextResponse.json(
+        { success: false, error: bound.error, code: "quote_invalid" },
+        { status: 409 }
+      );
+    }
+
+    // The CLI signs with the session wallet, so the recipient must be that wallet.
+    const wallet = await sessionEvmAddress(chainIndex);
 
     // Get swap calldata from OKX DEX Aggregator API
     const swapResult = await dexSwap({
       chainIndex,
-      fromTokenAddress: normalizeAddress(fromToken),
-      toTokenAddress: normalizeAddress(toToken),
+      fromTokenAddress: fromTokenNorm,
+      toTokenAddress: toTokenNorm,
       amount,
-      userWalletAddress: normalizeAddress(wallet),
+      userWalletAddress: wallet,
       autoSlippage: autoSlippage ?? false,
       slippagePercent: slippage ?? "0.5",
       priceImpactProtectionPercent: "0.9",
@@ -70,11 +97,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const actualOut =
+      swapResult.routerResult?.toTokenAmount ??
+      (swapResult as { toTokenAmount?: string }).toTokenAmount;
+    if (outputDegraded(bound.expectedOut, actualOut, 1)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Price moved since the quote. Refresh and try again.",
+          code: "price_moved",
+        },
+        { status: 409 }
+      );
+    }
+
     // ── Security tx-scan (pre-execution check) ──────────────────────────────
     let securityWarning: string | null = null;
     try {
       const scanResult = await securityTxScan({
-        from: normalizeAddress(wallet),
+        from: wallet,
         to: normalizeAddress(tx.to),
         chain,
         data: tx.data,
@@ -107,7 +148,10 @@ export async function POST(request: NextRequest) {
         securityWarning = `Security scan flagged medium risk: ${riskItems.join(", ") || "Proceed with caution."}`;
       }
     } catch {
-      // Security scan is best-effort — don't block if it fails
+      return NextResponse.json(
+        { success: false, error: "Security check unavailable, transaction not sent" },
+        { status: 502 }
+      );
     }
 
     // ── Execute via wallet contract-call ────────────────────────────────────
@@ -188,14 +232,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
     if (gasStation) return gasStation;
 
-    const message =
-      error instanceof Error ? error.message : "Swap execution failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("swap/execute", error, "Swap failed");
   }
-}
+});

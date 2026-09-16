@@ -103,7 +103,9 @@ export function Sidebar({ onClose }: SidebarProps) {
         {/* Close button — mobile only */}
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close menu"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
           >
             {icons["x"]}

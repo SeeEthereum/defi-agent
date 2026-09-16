@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLoginSession, clearLoginSession } from "@/lib/okx/login-session";
+import { withSession } from "@/lib/session/session";
 
 /**
  * Report progress of the in-flight browser login.
@@ -9,7 +10,7 @@ import { getLoginSession, clearLoginSession } from "@/lib/okx/login-session";
  * burning a process per check. Replaces the removed /api/auth/verify
  * (the OTP endpoint), which has no equivalent since CLI v4.
  */
-export async function GET() {
+export const GET = withSession(async () => {
   const session = getLoginSession();
 
   if (!session) {
@@ -24,10 +25,10 @@ export async function GET() {
       error: session.error ?? null,
     },
   });
-}
+});
 
 /** Abandon the current login attempt (user cancelled / navigated away). */
-export async function DELETE() {
+export const DELETE = withSession(async () => {
   clearLoginSession();
   return NextResponse.json({ success: true });
-}
+});

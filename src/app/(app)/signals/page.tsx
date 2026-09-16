@@ -148,8 +148,9 @@ function SignalsTab() {
       {/* Chain + type selectors */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">Chain</p>
+          <label htmlFor="signals-chain" className="block text-[13px] font-medium text-muted-foreground mb-2">Chain</label>
           <select
+            id="signals-chain"
             className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={chain}
             onChange={(e) => setChain(e.target.value)}
@@ -160,8 +161,9 @@ function SignalsTab() {
           </select>
         </div>
         <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">Wallet Type</p>
+          <label htmlFor="signals-wallet-type" className="block text-[13px] font-medium text-muted-foreground mb-2">Wallet Type</label>
           <select
+            id="signals-wallet-type"
             className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={walletType}
             onChange={(e) => setWalletType(e.target.value)}
@@ -233,10 +235,10 @@ function SignalsTab() {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {logo && (
+                    {typeof logo === "string" && logo.startsWith("https://") ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={logo} alt={symbol} width={24} height={24} className="rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    )}
+                      <img src={logo} alt={`${symbol} logo`} width={24} height={24} className="rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    ) : null}
                     <span className="text-[14px] font-semibold">{symbol}</span>
                     {tokenName && <span className="text-[11px] text-muted-foreground/60 truncate max-w-[120px]">{tokenName}</span>}
                     <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
@@ -372,8 +374,9 @@ function LeaderboardTab() {
     <div className="space-y-5">
       {/* Selectors */}
       <div>
-        <p className="text-[13px] font-medium text-muted-foreground mb-2">Chain</p>
+        <label htmlFor="leaderboard-chain" className="block text-[13px] font-medium text-muted-foreground mb-2">Chain</label>
         <select
+          id="leaderboard-chain"
           className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
           value={chain}
           onChange={(e) => setChain(e.target.value)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -66,24 +67,136 @@ function abbreviateAddress(addr: string): string {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
 }
 
-function toWei(amount: string, decimals: number): string {
-  // String-based conversion to avoid floating point precision loss
-  // for tokens with 18 decimals and large amounts (e.g. PEPE)
-  const [intPart, fracPart = ""] = amount.split(".");
-  const padded = fracPart.padEnd(decimals, "0").slice(0, decimals);
-  const raw = intPart + padded;
-  // Remove leading zeros but keep at least "0"
-  return raw.replace(/^0+/, "") || "0";
+function toWei(amount: string, decimals: number): string | null {
+  const normalized = amount.trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+  const dec = Math.max(0, Math.floor(decimals));
+  const [intPart, fracPartRaw = ""] = normalized.split(".");
+  const fracPart = fracPartRaw.slice(0, dec).padEnd(dec, "0");
+  return BigInt(intPart + fracPart).toString();
 }
 
-function fromWei(amount: string, decimals: number): string {
-  // String-based conversion to preserve precision for large token amounts
-  const s = amount.padStart(decimals + 1, "0");
-  const intPart = s.slice(0, s.length - decimals) || "0";
-  const fracPart = s.slice(s.length - decimals);
-  // Trim trailing zeros, keep up to 6 significant decimals
-  const trimmed = fracPart.slice(0, 6).replace(/0+$/, "");
-  return trimmed ? `${intPart}.${trimmed}` : intPart;
+function fromWei(amount: string, decimals: number, maxFracDigits?: number): string {
+  if (!/^\d+$/.test(amount)) return "0";
+  const dec = Math.max(0, Math.floor(decimals));
+  const padded = amount.padStart(dec + 1, "0");
+  const intPart = padded.slice(0, padded.length - dec).replace(/^0+/, "") || "0";
+  let fracPart = padded.slice(padded.length - dec);
+  if (maxFracDigits != null) fracPart = fracPart.slice(0, maxFracDigits);
+  fracPart = fracPart.replace(/0+$/, "");
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+function quoteInputKey(
+  from: TokenInfo | null,
+  to: TokenInfo | null,
+  chainName: string,
+  amt: string
+): string {
+  if (!from || !to) return "";
+  return `${from.address}|${to.address}|${chainName}|${amt}`;
+}
+
+function applySlippage(amountWei: string, slippagePercent: string): string {
+  if (!/^\d+$/.test(amountWei)) return "0";
+  const normalized = slippagePercent.trim().replace(",", ".");
+  const slipStr = /^\d+(\.\d+)?$/.test(normalized) ? normalized : "0.5";
+  const [i, f = ""] = slipStr.split(".");
+  const scale = 10n ** BigInt(f.length);
+  const slip = BigInt(i) * scale + BigInt(f || "0");
+  const hundred = 100n * scale;
+  const amount = BigInt(amountWei);
+  if (slip >= hundred) return "0";
+  return ((amount * (hundred - slip)) / hundred).toString();
+}
+
+function minToAmountWei(
+  q: Record<string, unknown>,
+  toAmountWei: string,
+  slippagePercent: string
+): string {
+  const candidates = [
+    q.toAmountMin,
+    q.minReceiveAmount,
+    q.minimum,
+    q.toTokenMinAmount,
+    q.minAmountOut,
+    q.minReturnAmount,
+    q.receiveAmountMin,
+    q.toAmountMinimum,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && /^\d+$/.test(c)) return c;
+  }
+  return applySlippage(toAmountWei, slippagePercent);
+}
+
+function parsePriceImpact(q: Record<string, unknown>): number | null {
+  const raw = q.priceImpactPercent ?? q.priceImpactPercentage ?? q.priceImpact;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function clampSlippage(raw: string): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "0.5";
+  if (n < 0.1) return "0.1";
+  if (n > 5) return "5";
+  return String(n);
+}
+
+const QUOTE_TTL_MS = 30_000;
+
+function friendlyError(raw: string): { title: string; message: string } {
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("insufficient") || lower.includes("not enough") || lower.includes("balance"))
+    return { title: "Insufficient Balance", message: "You don't have enough funds to complete this swap. Try reducing the amount or adding funds to your wallet." };
+
+  if (lower.includes("slippage") || lower.includes("price movement") || lower.includes("price change"))
+    return { title: "Price Changed", message: "The price moved too much while getting your quote. Try again or use a smaller amount." };
+
+  if (lower.includes("liquidity") || lower.includes("no route") || lower.includes("no path"))
+    return { title: "No Liquidity", message: "There isn't enough liquidity for this trading pair. Try a smaller amount or a different token." };
+
+  if (lower.includes("allowance") || lower.includes("approve") || lower.includes("approval"))
+    return { title: "Approval Required", message: "You need to approve this token before swapping. This is a one-time action per token." };
+
+  if (lower.includes("timeout") || lower.includes("timed out"))
+    return { title: "Request Timeout", message: "The request took too long. Please check your connection and try again." };
+
+  if (lower.includes("rate limit") || lower.includes("too many"))
+    return { title: "Too Many Requests", message: "Please wait a few seconds and try again." };
+
+  if (lower.includes("82112") || lower.includes("value difference") || lower.includes("risk of loss"))
+    return { title: "Extreme Price Impact", message: "This swap would lose more than 90% of your value due to insufficient market liquidity. Try a much smaller amount." };
+
+  if (lower.includes("simulation failed") || lower.includes("execution reverted") || lower.includes("contract call fail"))
+    return { title: "Transaction Failed", message: "The transaction was simulated and would fail on-chain. This usually means you don't have enough tokens to complete the swap. Check your wallet balance and try again." };
+
+  if (lower.includes("region") || lower.includes("50125") || lower.includes("80001"))
+    return { title: "Region Restricted", message: "This service is not available in your region. Try using a VPN or switching to a supported region." };
+
+  if (lower.includes("network") || lower.includes("fetch failed"))
+    return { title: "Network Error", message: "Could not connect to the server. Please check your internet connection." };
+
+  if (lower.includes("command execution failed"))
+    return { title: "Service Error", message: "The swap service returned an unexpected error. This may be caused by an unsupported amount, token pair, or a temporary issue. Please try again with different parameters." };
+
+  console.error(raw);
+  return { title: "Swap failed", message: "Swap failed, please try again" };
+}
+
+type Quote = Record<string, unknown>;
+type StoredQuote = { data: Quote; key: string; arrivedAt: number; quoteId: string };
+
+function readQuoteId(payload: unknown): string {
+  if (typeof payload !== "object" || payload == null) return "";
+  const source = Array.isArray(payload) ? payload[0] : payload;
+  if (typeof source !== "object" || source == null) return "";
+  const id = (source as Record<string, unknown>).quoteId;
+  return typeof id === "string" ? id : "";
 }
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -343,15 +456,20 @@ function TokenSelector({
 }
 
 export default function SwapPage() {
-  const { authenticated, walletAddress } = useAuth();
+  const { authenticated } = useAuth();
   const [chain, setChain] = useState("ethereum");
   const [fromToken, setFromToken] = useState<TokenInfo | null>(
     getNativeToken("ethereum")
   );
   const [toToken, setToToken] = useState<TokenInfo | null>(null);
   const [amount, setAmount] = useState("");
-  const [quote, setQuote] = useState<Record<string, unknown> | null>(null);
+  const [quote, setQuote] = useState<StoredQuote | null>(null);
+  const [quoteStale, setQuoteStale] = useState(false);
+  const [priceImpactAck, setPriceImpactAck] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const quoteAbortRef = useRef<AbortController | null>(null);
+  const skipClearQuoteErrorRef = useRef(false);
+  const mountedRef = useRef(true);
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapStep, setSwapStep] = useState<"idle" | "approving" | "waiting_approve" | "swapping">("idle");
   const [error, setError] = useState<{ type: "quote" | "swap"; title: string; message: string } | null>(null);
@@ -372,6 +490,8 @@ export default function SwapPage() {
     name: string;
     address: string;
     chainIndex: string;
+    decimals?: string | number;
+    decimal?: string | number;
     price: string;
     change24h: string;
     marketCap: string;
@@ -446,7 +566,6 @@ export default function SwapPage() {
     setChain(newChain);
     setFromToken(getNativeToken(newChain));
     setToToken(null);
-    setQuote(null);
     setError(null);
     setSwapResult(null);
     setSwapStep("idle");
@@ -465,7 +584,9 @@ export default function SwapPage() {
     const rpcUrl = RPC_URLS[chain];
     if (!rpcUrl || !txHash) return true;
     for (let i = 0; i < 30; i++) {
+      if (!mountedRef.current) return false;
       await new Promise((r) => setTimeout(r, 2000));
+      if (!mountedRef.current) return false;
       try {
         const res = await fetch(rpcUrl, {
           method: "POST",
@@ -477,8 +598,89 @@ export default function SwapPage() {
         if (json.result?.status === "0x0") return false;
       } catch {}
     }
-    return true; // timeout — proceed anyway
+    return false;
   };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      quoteAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setPriceImpactAck(false);
+  }, [quote?.key, quote?.arrivedAt]);
+
+  const handleQuote = useCallback(async () => {
+    const preserveError = skipClearQuoteErrorRef.current;
+    skipClearQuoteErrorRef.current = false;
+    if (!fromToken || !toToken) return;
+    const amountWei = toWei(amount, fromToken.decimals);
+    if (!amountWei) return;
+    const key = quoteInputKey(fromToken, toToken, chain, amount);
+    quoteAbortRef.current?.abort();
+    const ac = new AbortController();
+    quoteAbortRef.current = ac;
+    setQuoteLoading(true);
+    if (!preserveError) {
+      setError(null);
+    }
+    try {
+      const res = await fetch("/api/swap/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
+        body: JSON.stringify({
+          fromToken: fromToken.address,
+          toToken: toToken.address,
+          amount: amountWei,
+          chain,
+          autoSlippage,
+          slippage: clampSlippage(slippage),
+        }),
+      });
+      const data = await res.json();
+      if (ac.signal.aborted) return;
+      const currentKey = quoteInputKey(fromToken, toToken, chain, amount);
+      if (key !== currentKey) return;
+      if (data.success) {
+        const q = Array.isArray(data.data) ? data.data[0] : data.data;
+        if (q) {
+          setQuote({
+            data: q as Quote,
+            key,
+            arrivedAt: Date.now(),
+            quoteId: readQuoteId(data.data) || readQuoteId(q),
+          });
+          setQuoteStale(false);
+        } else {
+          setQuote(null);
+        }
+      } else {
+        const err = friendlyError(data.error || "Failed to get quote. Please try again.");
+        setError({ type: "quote", ...err });
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError({ type: "quote", title: "Network Error", message: "Could not connect to the server. Please check your internet connection." });
+    } finally {
+      if (quoteAbortRef.current === ac) setQuoteLoading(false);
+    }
+  }, [fromToken, toToken, amount, chain, autoSlippage, slippage]);
+
+  useEffect(() => {
+    if (!quote) return;
+    const currentKey = quoteInputKey(fromToken, toToken, chain, amount);
+    if (quote.key !== currentKey) return;
+    const remaining = quote.arrivedAt + QUOTE_TTL_MS - Date.now();
+    const t = setTimeout(() => {
+      setQuoteStale(true);
+      void handleQuote();
+    }, Math.max(0, remaining));
+    return () => clearTimeout(t);
+  }, [quote, fromToken, toToken, chain, amount, handleQuote]);
 
   if (!authenticated) {
     return (
@@ -491,102 +693,23 @@ export default function SwapPage() {
   }
 
   const amountWei =
-    amount && fromToken
-      ? (() => {
-          try {
-            return toWei(amount, fromToken.decimals);
-          } catch {
-            return "";
-          }
-        })()
-      : "";
-
-  const friendlyError = (raw: string): { title: string; message: string } => {
-    const lower = raw.toLowerCase();
-
-    // Insufficient balance / funds
-    if (lower.includes("insufficient") || lower.includes("not enough") || lower.includes("balance"))
-      return { title: "Insufficient Balance", message: "You don't have enough funds to complete this swap. Try reducing the amount or adding funds to your wallet." };
-
-    // Slippage / price movement
-    if (lower.includes("slippage") || lower.includes("price movement") || lower.includes("price change"))
-      return { title: "Price Changed", message: "The price moved too much while getting your quote. Try again or use a smaller amount." };
-
-    // Liquidity / no route
-    if (lower.includes("liquidity") || lower.includes("no route") || lower.includes("no path"))
-      return { title: "No Liquidity", message: "There isn't enough liquidity for this trading pair. Try a smaller amount or a different token." };
-
-    // Token approval
-    if (lower.includes("allowance") || lower.includes("approve") || lower.includes("approval"))
-      return { title: "Approval Required", message: "You need to approve this token before swapping. This is a one-time action per token." };
-
-    // Timeout
-    if (lower.includes("timeout") || lower.includes("timed out"))
-      return { title: "Request Timeout", message: "The request took too long. Please check your connection and try again." };
-
-    // Rate limit
-    if (lower.includes("rate limit") || lower.includes("too many"))
-      return { title: "Too Many Requests", message: "Please wait a few seconds and try again." };
-
-    // High price impact / value difference > 90%
-    if (lower.includes("82112") || lower.includes("value difference") || lower.includes("risk of loss"))
-      return { title: "Extreme Price Impact", message: "This swap would lose more than 90% of your value due to insufficient market liquidity. Try a much smaller amount." };
-
-    // Transaction simulation failed / execution reverted
-    if (lower.includes("simulation failed") || lower.includes("execution reverted") || lower.includes("contract call fail"))
-      return { title: "Transaction Failed", message: "The transaction was simulated and would fail on-chain. This usually means you don't have enough tokens to complete the swap. Check your wallet balance and try again." };
-
-    // Region restriction
-    if (lower.includes("region") || lower.includes("50125") || lower.includes("80001"))
-      return { title: "Region Restricted", message: "This service is not available in your region. Try using a VPN or switching to a supported region." };
-
-    // Network error (from fetch itself)
-    if (lower.includes("network") || lower.includes("fetch failed"))
-      return { title: "Network Error", message: "Could not connect to the server. Please check your internet connection." };
-
-    // Generic CLI failure — be honest, show the real error
-    if (lower.includes("command execution failed"))
-      return { title: "Service Error", message: "The swap service returned an unexpected error. This may be caused by an unsupported amount, token pair, or a temporary issue. Please try again with different parameters." };
-
-    // Fallback — show the raw error as-is
-    return { title: "Error", message: raw };
-  };
-
-  const handleQuote = async () => {
-    if (!fromToken || !toToken || !amountWei) return;
-    setQuoteLoading(true);
-    setQuote(null);
-    setError(null);
-    try {
-      const res = await fetch("/api/swap/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromToken: fromToken.address,
-          toToken: toToken.address,
-          amount: amountWei,
-          chain,
-          autoSlippage,
-          slippage,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const q = Array.isArray(data.data) ? data.data[0] : data.data;
-        setQuote(q ?? null);
-      } else {
-        const err = friendlyError(data.error || "Failed to get quote. Please try again.");
-        setError({ type: "quote", ...err });
-      }
-    } catch {
-      setError({ type: "quote", title: "Network Error", message: "Could not connect to the server. Please check your internet connection." });
-    } finally {
-      setQuoteLoading(false);
-    }
-  };
+    amount && fromToken ? (toWei(amount, fromToken.decimals) ?? "") : "";
+  const amountInvalid = amount.trim() !== "" && !amountWei;
+  const currentQuoteKey = quoteInputKey(fromToken, toToken, chain, amount);
+  const liveQuote = quote && quote.key === currentQuoteKey ? quote : null;
+  const quoteExpired =
+    liveQuote != null &&
+    (quoteStale || Date.now() - liveQuote.arrivedAt >= QUOTE_TTL_MS);
+  const liveSlippage = clampSlippage(slippage);
 
   const handleSwap = async () => {
-    if (!fromToken || !toToken || !amountWei) return;
+    if (!fromToken || !toToken) return;
+    if (!amountWei) return;
+    if (!liveQuote || liveQuote.key !== currentQuoteKey) return;
+    if (quoteExpired) return;
+    const impact = parsePriceImpact(liveQuote.data);
+    if (impact != null && impact > 10) return;
+    if (impact != null && impact >= 3 && impact <= 10 && !priceImpactAck) return;
     setSwapLoading(true);
     setSwapStep("idle");
     setError(null);
@@ -611,7 +734,15 @@ export default function SwapPage() {
           (typeof approveData.data === "string" ? approveData.data : undefined);
         if (approveTxHash) {
           setSwapStep("waiting_approve");
-          await pollSwapTxReceipt(approveTxHash);
+          const confirmed = await pollSwapTxReceipt(approveTxHash);
+          if (!confirmed) {
+            setError({
+              type: "swap",
+              title: "Approval not confirmed",
+              message: "Approval not confirmed, try again",
+            });
+            return;
+          }
         }
       }
 
@@ -624,14 +755,25 @@ export default function SwapPage() {
           toToken: toToken.address,
           amount: amountWei,
           chain,
-          wallet: walletAddress ?? "",
-          slippage,
+          slippage: liveSlippage,
           autoSlippage,
           gasLevel,
           mevProtection: mevAvailable && mevProtection,
+          quoteId: liveQuote.quoteId,
         }),
       });
       const data = await res.json();
+      if (res.status === 409) {
+        skipClearQuoteErrorRef.current = true;
+        setQuote(null);
+        setError({
+          type: "swap",
+          title: "Quote expired or price moved, refreshing...",
+          message: "Quote expired or price moved, refreshing...",
+        });
+        void handleQuote();
+        return;
+      }
       if (data.success) {
         const result = data.data;
         const txHash = result?.txHash ?? null;
@@ -670,31 +812,50 @@ export default function SwapPage() {
   };
 
   const quoteReceiveRaw =
-    quote &&
+    liveQuote &&
     toToken &&
-    (quote.toTokenAmount || quote.receiveAmount || quote.toAmount);
+    (liveQuote.data.toTokenAmount || liveQuote.data.receiveAmount || liveQuote.data.toAmount);
   const quoteReceiveAmount = quoteReceiveRaw
-    ? fromWei(String(quoteReceiveRaw), toToken!.decimals)
+    ? fromWei(String(quoteReceiveRaw), toToken!.decimals, 6)
     : null;
   const quoteDisplay = quoteReceiveAmount
     ? `${quoteReceiveAmount} ${toToken!.symbol}`
     : null;
+  const minReceivedWei =
+    liveQuote && quoteReceiveRaw
+      ? minToAmountWei(liveQuote.data, String(quoteReceiveRaw), liveSlippage)
+      : null;
+  const minReceivedAmount =
+    minReceivedWei && toToken
+      ? fromWei(minReceivedWei, toToken.decimals, 6)
+      : null;
+  const livePriceImpact = liveQuote ? parsePriceImpact(liveQuote.data) : null;
+  const priceImpactTooHigh = livePriceImpact != null && livePriceImpact > 10;
+  const priceImpactNeedsAck =
+    livePriceImpact != null && livePriceImpact >= 3 && livePriceImpact <= 10;
 
   // Parse quote details for user-friendly display
-  const quoteDetails = quote
+  const quoteDetails = liveQuote
     ? (() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const q = quote as Record<string, any>;
+        const q = liveQuote.data as Record<string, any>;
         const estimatedGas = q.estimateGasFee ?? q.estimatedGas ?? q.gas;
-        const priceImpact = q.priceImpactPercent ?? q.priceImpactPercentage ?? q.priceImpact;
+        const priceImpact = livePriceImpact;
         const tradeFee = q.tradeFee ?? q.fee;
         // From/to token unit prices
         const fromUnitPrice = q.fromToken?.tokenUnitPrice;
         const toUnitPrice = q.toToken?.tokenUnitPrice;
-        // Calculate exchange rate
+        const fromWeiAmt = fromToken && amountWei ? BigInt(amountWei) : null;
+        const toWeiAmt = quoteReceiveRaw && /^\d+$/.test(String(quoteReceiveRaw)) ? BigInt(String(quoteReceiveRaw)) : null;
         const rate =
-          quoteReceiveAmount && amount && parseFloat(amount) > 0
-            ? (parseFloat(quoteReceiveAmount) / parseFloat(amount)).toFixed(6)
+          fromWeiAmt && toWeiAmt && fromWeiAmt > 0n && fromToken && toToken
+            ? (() => {
+                const scale = 10n ** 6n;
+                const fromDec = BigInt(fromToken.decimals);
+                const toDec = BigInt(toToken.decimals);
+                const adj = toWeiAmt * (10n ** fromDec) * scale / (fromWeiAmt * (10n ** toDec));
+                return fromWei(adj.toString(), 6, 6);
+              })()
             : null;
         // DEX router info
         const dexProtocol = q.dexRouterList?.[0]?.dexProtocol;
@@ -796,8 +957,10 @@ export default function SwapPage() {
                     placeholder="Custom"
                     className="w-full h-8 rounded-lg border border-border/60 bg-secondary px-2 text-[12px] font-semibold text-center outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
                     onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v > 0 && v <= 50) { setSlippage(v.toString()); setShowSlippage(false); }
+                      const raw = e.target.value.trim();
+                      if (!raw) return;
+                      setSlippage(clampSlippage(raw));
+                      setShowSlippage(false);
                     }}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   />
@@ -892,7 +1055,6 @@ export default function SwapPage() {
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
-                  setQuote(null);
                   setError(null);
                 }}
                 className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
@@ -910,7 +1072,27 @@ export default function SwapPage() {
                       <button
                         type="button"
                         className="text-[11px] font-semibold text-primary hover:text-primary transition-colors"
-                        onClick={() => setAmount(bal.balance)}
+                        onClick={() => {
+                          const isNative =
+                            fromToken.address.toLowerCase() === NATIVE_TOKEN.toLowerCase();
+                          if (!isNative) {
+                            setAmount(bal.balance);
+                            return;
+                          }
+                          const reserve = chain === "ethereum" ? "0.002" : "0.0005";
+                          const balWei = toWei(bal.balance, fromToken.decimals);
+                          const resWei = toWei(reserve, fromToken.decimals);
+                          if (!balWei || !resWei) {
+                            setAmount("0");
+                            return;
+                          }
+                          const remaining = BigInt(balWei) - BigInt(resWei);
+                          setAmount(
+                            remaining > 0n
+                              ? fromWei(remaining.toString(), fromToken.decimals)
+                              : "0"
+                          );
+                        }}
                       >
                         MAX
                       </button>
@@ -918,6 +1100,11 @@ export default function SwapPage() {
                   </div>
                 );
               })()}
+              {amountInvalid && (
+                <p className="text-[12px] text-red-600 mt-1.5 px-1" role="alert">
+                  Enter a valid amount
+                </p>
+              )}
             </div>
           </div>
 
@@ -980,10 +1167,20 @@ export default function SwapPage() {
 
               {/* Details grid */}
               <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
+                {minReceivedAmount && toToken && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-muted-foreground">Minimum received</span>
+                    <span className="text-[12px] font-medium text-foreground tabular-nums">
+                      {minReceivedAmount} {toToken.symbol}
+                    </span>
+                  </div>
+                )}
                 {/* Slippage */}
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] text-muted-foreground">Slippage</span>
-                  <span className="text-[12px] font-medium text-foreground">{slippage}%</span>
+                  <span className="text-[12px] font-medium text-foreground">
+                    {autoSlippage ? "Auto" : `${liveSlippage}%`}
+                  </span>
                 </div>
                 {/* Exchange rate */}
                 {quoteDetails.rate && fromToken && toToken && (
@@ -1144,12 +1341,27 @@ export default function SwapPage() {
             )}
           </Fade>
 
+          {priceImpactTooHigh && (
+            <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-[13px] font-medium text-red-800" role="alert">
+              Price impact too high
+            </div>
+          )}
+          {priceImpactNeedsAck && !priceImpactAck && !priceImpactTooHigh && (
+            <button
+              type="button"
+              onClick={() => setPriceImpactAck(true)}
+              className="w-full rounded-xl bg-amber-50 border border-amber-200 p-3 text-[13px] font-medium text-amber-800 text-left"
+            >
+              Price impact is {livePriceImpact!.toFixed(2)}%. Click to acknowledge and continue.
+            </button>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">
             <Button
               onClick={handleQuote}
               disabled={
-                quoteLoading || !toToken || !amount || !fromToken || !amountWei
+                quoteLoading || !toToken || !amount || !fromToken || !amountWei || amountInvalid
               }
               variant="outline"
               className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-secondary active:bg-secondary transition-all"
@@ -1163,9 +1375,32 @@ export default function SwapPage() {
                 "Get Quote"
               )}
             </Button>
+            {quoteExpired && liveQuote ? (
+              <Button
+                onClick={handleQuote}
+                disabled={quoteLoading}
+                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
+              >
+                {quoteLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner />
+                    Getting quote...
+                  </span>
+                ) : (
+                  "Quote expired, refresh"
+                )}
+              </Button>
+            ) : (
             <Button
               onClick={handleSwap}
-              disabled={swapLoading || !quote}
+              disabled={
+                swapLoading ||
+                !liveQuote ||
+                amountInvalid ||
+                !amountWei ||
+                priceImpactTooHigh ||
+                (priceImpactNeedsAck && !priceImpactAck)
+              }
               className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
             >
               {swapLoading ? (
@@ -1183,6 +1418,7 @@ export default function SwapPage() {
                   : "Approve & Swap"
               )}
             </Button>
+            )}
           </div>
 
         </div>
@@ -1215,17 +1451,21 @@ export default function SwapPage() {
                     type="button"
                     className="w-full flex items-center gap-3 px-5 py-3 hover:bg-primary/8 active:bg-primary/15 transition-colors text-left"
                     onClick={() => {
-                      const chainConfig = Object.values(CHAINS).find(c => c.swapName === chain);
+                      const raw = t.decimals ?? t.decimal;
+                      const decimals = raw !== undefined && raw !== null && raw !== ""
+                        ? Number(raw)
+                        : NaN;
+                      if (!Number.isFinite(decimals) || decimals < 0) {
+                        toast.error("Token decimals unavailable");
+                        return;
+                      }
                       setToToken({
                         symbol: t.symbol,
                         address: t.address,
-                        decimals: 18,
+                        decimals,
                       });
-                      // If no fromToken selected, set native
                       if (!fromToken) setFromToken(getNativeToken(chain));
-                      // Scroll to top of form
                       window.scrollTo({ top: 0, behavior: "smooth" });
-                      void chainConfig; // suppress unused
                     }}
                   >
                     <span className="text-[11px] font-medium text-muted-foreground/50 w-5 text-right tabular-nums">{i + 1}</span>

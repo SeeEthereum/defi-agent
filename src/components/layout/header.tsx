@@ -20,6 +20,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     <header className="flex h-14 items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-xl px-4 md:px-6">
       {/* Hamburger button — mobile only */}
       <button
+        type="button"
         className="flex md:hidden items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
         onClick={onMenuClick}
         aria-label="Open menu"
