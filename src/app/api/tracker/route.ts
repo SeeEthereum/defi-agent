@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addressTrackerActivities } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `address-tracker-activities` is Premium ($0.0005/req post-quota). More
 // time-sensitive than leaderboard (it's a live trade feed) — 15s keeps
 // the UI feeling fresh while still cutting most call volume.
 const TRACKER_TTL_MS = 15_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const trackerType = searchParams.get("trackerType") ?? "smart_money";
@@ -45,4 +46,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

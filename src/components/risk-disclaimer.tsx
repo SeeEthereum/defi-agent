@@ -42,6 +42,9 @@ export function RiskDisclaimerText() {
           <strong>Token approvals:</strong> Swapping, bridging, and lending require granting ERC-20 spending rights to third-party contracts. Unlimited approvals left active are a long-term risk vector &mdash; use the Security Center to review and revoke approvals you no longer need.
         </li>
         <li>
+          <strong>Leveraged perpetual futures:</strong> Perpetual futures use borrowed margin and can be liquidated. Liquidation can wipe out the entire margin posted to a position. Funding is charged continuously while a position stays open. Higher leverage increases both potential returns and the risk of rapid, total loss of margin &mdash; never use more leverage than you can afford to lose.
+        </li>
+        <li>
           <strong>Slippage &amp; MEV:</strong> Swap and bridge executions may settle at a different price than quoted due to volatility or MEV. MEV protection is best-effort on supported chains and is not a guarantee.
         </li>
         <li>

@@ -6,15 +6,24 @@ import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { encodeApprove } from "@/lib/fluid/ftokens";
 import { getPublicClient } from "@/lib/fluid/client";
-import { erc20Abi, maxUint256 } from "viem";
+import { erc20Abi } from "viem";
+import { withSession } from "@/lib/session/session";
+import {
+  apiError,
+  badRequest,
+  baseUnitAmount,
+  chainId,
+  EVM_ADDRESS_RE,
+  sessionEvmAddress,
+  tokenAddress,
+} from "@/lib/api/validation";
 
 const schema = z.object({
-  fromChain: z.string().min(1),
-  toChain: z.string().min(1),
-  fromToken: z.string().min(1),
-  toToken: z.string().min(1),
-  fromAmount: z.string().min(1),
-  fromAddress: z.string().min(1),
+  fromChain: chainId,
+  toChain: chainId,
+  fromToken: tokenAddress,
+  toToken: tokenAddress,
+  fromAmount: baseUnitAmount,
 });
 
 // LI.FI's native token sentinels — both cases exist; normalize via lowercase
@@ -24,6 +33,19 @@ const NATIVE_EEE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 function isNativeToken(address: string): boolean {
   const a = address.toLowerCase();
   return a === NATIVE_ZERO || a === NATIVE_EEE;
+}
+
+/** Compare a LI.FI chain id (number, decimal string, or 0x hex) to a request chain id. */
+function chainIdEquals(value: unknown, expected: number): boolean {
+  if (typeof value === "number" && Number.isInteger(value)) return value === expected;
+  if (typeof value === "string") {
+    try {
+      return BigInt(value) === BigInt(expected);
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 /**
@@ -72,14 +94,14 @@ async function waitForAllowance(
   );
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fromChain, toChain, fromToken, toToken, fromAmount, fromAddress } =
+    const { fromChain, toChain, fromToken, toToken, fromAmount } =
       schema.parse(body);
 
     // Validate source chain
-    const chainConfig = getChainByIndex(Number(fromChain));
+    const chainConfig = getChainByIndex(fromChain);
     if (!chainConfig) {
       return NextResponse.json(
         { success: false, error: `Unknown source chain: ${fromChain}` },
@@ -87,14 +109,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The CLI signs with the session wallet, so both sender and receiver must be that wallet.
+    const fromAddress = await sessionEvmAddress(String(fromChain));
+
     // Get bridge quote with transaction data from LI.FI
     const quote = await bridgeQuote({
-      fromChain,
-      toChain,
+      fromChain: String(fromChain),
+      toChain: String(toChain),
       fromToken,
       toToken,
       fromAmount,
       fromAddress,
+      toAddress: fromAddress,
     });
 
     const txReq = quote.transactionRequest;
@@ -108,16 +134,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const quoteMatchesRequest =
+      chainIdEquals(quote.action?.fromChainId, fromChain) &&
+      typeof quote.action?.fromAddress === "string" &&
+      quote.action.fromAddress.toLowerCase() === fromAddress.toLowerCase() &&
+      chainIdEquals(txReq.chainId, fromChain) &&
+      typeof txReq.to === "string" &&
+      EVM_ADDRESS_RE.test(txReq.to);
+
+    if (!quoteMatchesRequest) {
+      return NextResponse.json(
+        { success: false, error: "Bridge quote did not match the request" },
+        { status: 502 }
+      );
+    }
+
     // ── STEP 1: ERC-20 approve (if bridging a non-native token) ─────────────
     // LI.FI returns `estimate.approvalAddress` — the router/bridge contract
     // that needs allowance to pull the fromToken from the user.
     // Skip for native tokens (ETH/BNB/MATIC) — they don't require approval.
     let approveTxHash: string | null = null;
     const approvalAddress = quote.estimate.approvalAddress;
-    const chainIndex = Number(fromChain);
+    const chainIndex = fromChain;
     const fromTokenAddr = fromToken.toLowerCase() as `0x${string}`;
     const ownerAddr = fromAddress.toLowerCase() as `0x${string}`;
     const requiredAmount = BigInt(fromAmount);
+    const fromChainStr = String(fromChain);
+
+    if (approvalAddress && approvalAddress.toLowerCase() !== txReq.to.toLowerCase()) {
+      return NextResponse.json(
+        { success: false, error: "Unexpected bridge spender" },
+        { status: 502 }
+      );
+    }
 
     if (!isNativeToken(fromToken) && approvalAddress) {
       const spenderAddr = approvalAddress.toLowerCase() as `0x${string}`;
@@ -135,15 +184,13 @@ export async function POST(request: NextRequest) {
 
       if (needsApprove) {
         try {
-          // Approve MaxUint256 so future bridges on this route don't need
-          // another approve transaction. The bridge contract can only pull
-          // what it's explicitly bridging, so this is safe in practice.
-          const approveCalldata = encodeApprove(spenderAddr, maxUint256);
+          const approveCalldata = encodeApprove(spenderAddr, requiredAmount);
 
           const approveResult = await walletContractCall({
             to: fromTokenAddr,
-            chain: fromChain,
+            chain: fromChainStr,
             inputData: approveCalldata,
+            force: true,
             // Our own calldata — safe to append Builder Code
           });
 
@@ -216,7 +263,7 @@ export async function POST(request: NextRequest) {
     // appending bytes could corrupt validation in the bridge router contract.
     const callResult = await walletContractCall({
       to: txReq.to,
-      chain: fromChain,
+      chain: fromChainStr,
       inputData: txReq.data,
       amt: amtWei,
       gasLimit: txReq.gasLimit,
@@ -260,14 +307,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
     if (gasStation) return gasStation;
 
-    const message =
-      error instanceof Error ? error.message : "Bridge execution failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("bridge/execute", error, "Bridge execution failed");
   }
-}
+});

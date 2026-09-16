@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leaderboardList } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `leaderboard list` is Premium ($0.0005/req post-quota). Time frames are
 // 1d/3d/7d/1m/3m so the rankings move slowly — 60s is conservative.
 const LEADERBOARD_TTL_MS = 60_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain");
@@ -35,4 +36,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

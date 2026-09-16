@@ -1,14 +1,13 @@
-import { NextRequest } from "next/server";
 import { hlQuickstart } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async () => {
   try {
-    const { searchParams } = request.nextUrl;
-    const address = searchParams.get("address") ?? undefined;
-    const result = await hlQuickstart(address);
+    const result = await hlQuickstart();
+    // wallet belongs to the session's own wallet.
     return respond(result);
   } catch (error) {
     return respondBinError(error, "Quickstart failed");
   }
-}
+});

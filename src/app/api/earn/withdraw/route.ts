@@ -1,59 +1,106 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
-import { encodeWithdraw, encodeRedeem, parseAmount } from "@/lib/fluid/ftokens";
-import { getFToken } from "@/lib/fluid/constants";
-import { FLUID_CHAIN_IDS } from "@/lib/chains";
-import { normalizeAddress } from "@/lib/utils";
+import {
+  encodeWithdraw,
+  encodeRedeem,
+  encodeWithdrawNative,
+  parseAmount,
+} from "@/lib/fluid/ftokens";
+import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
+import { getPublicClient } from "@/lib/fluid/client";
+import { erc20Abi } from "@/lib/fluid/abis";
+import { withSession } from "@/lib/session/session";
+import {
+  decimalAmount,
+  chainId as chainIdSchema,
+  badRequest,
+  apiError,
+  sessionEvmAddress,
+} from "@/lib/api/validation";
 import { z } from "zod";
 
 const schema = z.object({
   fTokenSymbol: z.string().min(1),
-  amount: z.string().min(1), // UI units (underlying)
-  chainIndex: z.number().refine((n) => FLUID_CHAIN_IDS.includes(n)),
-  walletAddress: z.string().regex(/^0x[0-9a-f]{40}$/),
-  // Optional: pass fToken address directly for dynamically discovered tokens
-  fTokenAddress: z.string().regex(/^0x[0-9a-f]{40}$/).optional(),
-  decimals: z.number().optional(),
-  // If true, use redeem(shares) instead of withdraw(assets) to avoid rounding issues
+  amount: decimalAmount.optional(),
+  chainIndex: chainIdSchema,
   isAll: z.boolean().optional(),
-  shares: z.string().optional(), // raw shares bigint string, used when isAll=true
+  shares: z.string().regex(/^[0-9]+$/).optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex, walletAddress, fTokenAddress, decimals, isAll, shares } =
+    const { fTokenSymbol, amount, chainIndex: chainId, isAll, shares } =
       schema.parse(body);
 
-    // Try hardcoded lookup first, fall back to provided address
-    const fToken = getFToken(chainIndex, fTokenSymbol);
-    const tokenAddress = fToken?.address ?? fTokenAddress;
-    const tokenDecimals = fToken?.underlyingDecimals ?? decimals;
-
-    if (!tokenAddress || tokenDecimals === undefined) {
+    const fToken = getFToken(chainId, fTokenSymbol);
+    if (!fToken) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `fToken ${fTokenSymbol} not found on chain ${chainIndex}`,
-        },
+        { success: false, error: "Unknown market" },
         { status: 400 }
       );
     }
 
-    const wallet = normalizeAddress(walletAddress) as `0x${string}`;
+    const owner = (await sessionEvmAddress(String(chainId))) as `0x${string}`;
+    const native = isNativeUnderlying(chainId, fTokenSymbol);
 
-    // Use redeem(shares) for "withdraw all" to avoid rounding dust issues
-    // Use withdraw(assets) for partial withdrawals
-    const withdrawCalldata =
-      isAll && shares
-        ? encodeRedeem(BigInt(shares), wallet, wallet)
-        : encodeWithdraw(parseAmount(amount, tokenDecimals), wallet, wallet);
+    let withdrawCalldata: `0x${string}`;
+    if (native && isAll) {
+      // Full native exit needs redeemNative(shares); the helper does not exist.
+      return NextResponse.json(
+        { success: false, error: "Native markets are not supported yet" },
+        { status: 400 }
+      );
+    } else if (native) {
+      if (!amount) {
+        return NextResponse.json(
+          { success: false, error: "amount is required" },
+          { status: 400 }
+        );
+      }
+      withdrawCalldata = encodeWithdrawNative(
+        parseAmount(amount, fToken.underlyingDecimals),
+        owner,
+        owner
+      );
+    } else if (isAll) {
+      // A full exit must redeem shares, never withdraw an asset amount, or
+      // rounding leaves dust behind. When the caller did not pass its share
+      // balance (the AI flow does not know it), read it on-chain.
+      const sharesToRedeem = shares
+        ? BigInt(shares)
+        : ((await getPublicClient(chainId).readContract({
+            address: fToken.address as `0x${string}`,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [owner],
+          })) as bigint);
+      if (sharesToRedeem <= 0n) {
+        return NextResponse.json(
+          { success: false, error: "No position to withdraw" },
+          { status: 400 }
+        );
+      }
+      withdrawCalldata = encodeRedeem(sharesToRedeem, owner, owner);
+    } else {
+      if (!amount) {
+        return NextResponse.json(
+          { success: false, error: "amount is required" },
+          { status: 400 }
+        );
+      }
+      withdrawCalldata = encodeWithdraw(
+        parseAmount(amount, fToken.underlyingDecimals),
+        owner,
+        owner
+      );
+    }
 
     const result = await walletContractCall({
-      to: tokenAddress,
-      chain: String(chainIndex),
+      to: fToken.address,
+      chain: String(chainId),
       inputData: withdrawCalldata,
-      force: true, // Skip simulation — may fail due to timing
+      force: true,
     });
 
     return NextResponse.json({
@@ -63,11 +110,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Withdraw failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("earn/withdraw", error, "Withdraw failed");
   }
-}
+});

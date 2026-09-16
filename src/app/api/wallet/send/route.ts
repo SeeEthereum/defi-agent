@@ -2,39 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { walletSend } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
-import { isValidEvmAddress, normalizeAddress } from "@/lib/utils";
-import { SUPPORTED_CHAIN_IDS } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
+import {
+  apiError,
+  badRequest,
+  chainId,
+  decimalAmount,
+  evmAddress,
+  tokenAddress,
+} from "@/lib/api/validation";
 
 const schema = z.object({
-  amount: z.string().min(1),
-  recipient: z.string().min(1),
-  chain: z.number().refine((n) => SUPPORTED_CHAIN_IDS.includes(n)),
-  contractToken: z.string().optional(),
-  force: z.boolean().optional(),
+  amount: decimalAmount,
+  recipient: evmAddress,
+  chain: chainId,
+  contractToken: tokenAddress.optional(),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { amount, recipient, chain, contractToken, force } =
-      schema.parse(body);
-
-    // Validate EVM address
-    if (!isValidEvmAddress(recipient)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid recipient address" },
-        { status: 400 }
-      );
-    }
+    const { amount, recipient, chain, contractToken } = schema.parse(body);
 
     const result = await walletSend({
       amount,
-      recipient: normalizeAddress(recipient),
+      recipient,
       chain: String(chain),
-      contractToken: contractToken
-        ? normalizeAddress(contractToken)
-        : undefined,
-      force,
+      contractToken,
+      // Server-side constant: the client cannot control `force`.
+      force: true,
     });
 
     return NextResponse.json({ success: true, data: result.data });
@@ -42,11 +38,7 @@ export async function POST(request: NextRequest) {
     const gasStation = gasStationResponseFor(error);
     if (gasStation) return gasStation;
 
-    const message =
-      error instanceof Error ? error.message : "Send failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("wallet/send", error, "Transfer failed");
   }
-}
+});

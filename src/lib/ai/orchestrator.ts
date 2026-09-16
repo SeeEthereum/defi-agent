@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type {
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
+import { z } from "zod";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, gasStationStatus, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
@@ -11,6 +12,110 @@ import { bridgeQuote } from "@/lib/bridge/lifi";
 import { hlPositions, hlPrices, hlOrders } from "@/lib/hyperliquid/cli";
 import { normalizeAddress } from "@/lib/utils";
 import { CHAINS, getChainBySwapName } from "@/lib/chains";
+import {
+  evmAddress,
+  decimalAmount,
+  baseUnitAmount,
+  chainId,
+  sessionEvmAddress,
+} from "@/lib/api/validation";
+
+const MAX_TOOL_ROUNDS = 8;
+const OPENAI_TIMEOUT_MS = 60_000;
+
+const hlCoin = z.string().regex(/^[A-Z0-9@_-]{1,16}$/);
+
+const proposeSendSchema = z.object({
+  recipient: evmAddress,
+  amount: decimalAmount,
+  chainIndex: chainId,
+  contractToken: evmAddress.optional(),
+});
+
+const proposeSwapSchema = z.object({
+  fromToken: evmAddress,
+  toToken: evmAddress,
+  amount: baseUnitAmount,
+  chain: z.string().min(1),
+  slippage: z.string().optional(),
+  gasLevel: z.enum(["slow", "average", "fast"]).optional(),
+  mevProtection: z.boolean().optional(),
+});
+
+const proposeBridgeSchema = z.object({
+  fromChain: chainId,
+  toChain: chainId,
+  fromToken: evmAddress,
+  toToken: evmAddress,
+  fromAmount: baseUnitAmount,
+  fromTokenSymbol: z.string().optional(),
+  toTokenSymbol: z.string().optional(),
+  estimatedOutput: z.string().optional(),
+  bridge: z.string().optional(),
+});
+
+const proposeFluidSchema = z.object({
+  fTokenSymbol: z.string().regex(/^[A-Za-z0-9]{1,12}$/),
+  amount: z.union([decimalAmount, z.literal("all")]),
+  chainIndex: chainId,
+});
+
+const proposeHlOrderSchema = z.object({
+  coin: hlCoin,
+  side: z.enum(["buy", "sell"]),
+  size: decimalAmount,
+  price: decimalAmount.optional(),
+  leverage: z.coerce.number().int().min(1).max(50).optional(),
+  slPx: decimalAmount.optional(),
+  tpPx: decimalAmount.optional(),
+});
+
+const proposeHlCloseSchema = z.object({
+  coin: hlCoin,
+  size: decimalAmount.optional(),
+});
+
+const PROPOSE_SCHEMAS: Record<string, z.ZodType> = {
+  propose_send: proposeSendSchema,
+  propose_swap: proposeSwapSchema,
+  propose_bridge: proposeBridgeSchema,
+  propose_supply: proposeFluidSchema,
+  propose_withdraw: proposeFluidSchema,
+  propose_hl_order: proposeHlOrderSchema,
+  propose_hl_close: proposeHlCloseSchema,
+};
+
+function rejectedParams(error: z.ZodError) {
+  return {
+    error: "parameters rejected",
+    message: "The parameters were rejected and no action card was created.",
+    reasons: error.issues.map((issue) => {
+      const path = issue.path.length ? issue.path.join(".") : "parameters";
+      return `${path}: ${issue.message}`;
+    }),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+function validatePropose(
+  name: string,
+  input: Record<string, unknown>
+): { ok: true; params: Record<string, unknown> } | { ok: false; result: ReturnType<typeof rejectedParams> } {
+  const schema = PROPOSE_SCHEMAS[name];
+  if (!schema) return { ok: true, params: input };
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { ok: false, result: rejectedParams(parsed.error) };
+  const params = asRecord(parsed.data);
+  if (name === "propose_bridge") {
+    // Execute API expects chain ids as strings.
+    params.fromChain = String(params.fromChain);
+    params.toChain = String(params.toChain);
+  }
+  return { ok: true, params };
+}
 
 // ── OpenAI-format tools (converted from Anthropic-style tool definitions) ────
 const openaiTools = AI_TOOLS.map((t) => ({
@@ -33,18 +138,21 @@ async function executeToolCall(
   input: Record<string, unknown>,
   userAddress?: string
 ): Promise<unknown> {
+  const validated = validatePropose(name, input);
+  if (!validated.ok) return validated.result;
+
   switch (name) {
     case "get_balances": {
       const chainName = input.chain as string | undefined;
       // CLI expects chain ID (e.g. "1"), not name (e.g. "ethereum")
-      let chainId: string | undefined;
+      let resolvedChain: string | undefined;
       if (chainName) {
         const cfg = getChainBySwapName(chainName) ?? Object.values(CHAINS).find(
           (c) => c.name.toLowerCase() === chainName.toLowerCase() || c.swapName === chainName
         );
-        chainId = cfg ? String(cfg.chainIndex) : chainName;
+        resolvedChain = cfg ? String(cfg.chainIndex) : chainName;
       }
-      const result = await walletBalance(chainId);
+      const result = await walletBalance(resolvedChain);
       return result.data;
     }
     case "get_fluid_markets": {
@@ -80,25 +188,25 @@ async function executeToolCall(
     case "propose_supply":
       return {
         action: "supply",
-        params: input,
+        params: validated.params,
         message: "Supply proposal ready for your confirmation.",
       };
     case "propose_swap":
       return {
         action: "swap",
-        params: input,
+        params: validated.params,
         message: "Swap proposal ready for your confirmation.",
       };
     case "propose_send":
       return {
         action: "send",
-        params: input,
+        params: validated.params,
         message: "Transfer proposal ready for your confirmation.",
       };
     case "propose_withdraw":
       return {
         action: "withdraw",
-        params: input,
+        params: validated.params,
         message: "Withdraw proposal ready for your confirmation.",
       };
     case "get_wallet_addresses": {
@@ -109,15 +217,15 @@ async function executeToolCall(
       const chainName = input.chain as string | undefined;
       const limit = input.limit as number | undefined;
       // Convert chain name to chainIndex for the CLI
-      let chainId: string | undefined;
+      let resolvedChain: string | undefined;
       if (chainName) {
         const cfg = getChainBySwapName(chainName) ?? Object.values(CHAINS).find(
           (c) => c.name.toLowerCase() === chainName.toLowerCase() || c.swapName === chainName
         );
-        chainId = cfg ? String(cfg.chainIndex) : chainName;
+        resolvedChain = cfg ? String(cfg.chainIndex) : chainName;
       }
       const result = await walletHistory({
-        chain: chainId,
+        chain: resolvedChain,
         limit: String(limit ?? 10),
       });
       return result.data;
@@ -177,7 +285,7 @@ async function executeToolCall(
     case "propose_bridge":
       return {
         action: "bridge",
-        params: input,
+        params: validated.params,
         message: "Bridge proposal ready for your confirmation.",
       };
     case "bridge_tokens": {
@@ -242,13 +350,13 @@ async function executeToolCall(
     case "propose_hl_order":
       return {
         action: "hl_order",
-        params: input,
+        params: validated.params,
         message: "Hyperliquid perpetual order ready for your confirmation.",
       };
     case "propose_hl_close":
       return {
         action: "hl_close",
-        params: input,
+        params: validated.params,
         message: "Position close ready for your confirmation.",
       };
 
@@ -265,26 +373,54 @@ export interface AiResponse {
   }>;
 }
 
+async function completeChat(
+  messages: ChatCompletionMessageParam[],
+  withTools: boolean
+) {
+  return getOpenAI().chat.completions.create(
+    {
+      model: "gpt-4.1",
+      max_tokens: 4096,
+      messages,
+      ...(withTools ? { tools: openaiTools } : {}),
+    },
+    { signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS) }
+  );
+}
+
 export async function runAiChat(
-  messages: Array<{ role: "user" | "assistant"; content: string }>,
-  userAddress?: string
+  messages: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<AiResponse> {
+  let userAddress: string | undefined;
+  try {
+    userAddress = await sessionEvmAddress();
+  } catch {
+    userAddress = undefined;
+  }
+
   const openaiMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
     ...messages,
   ];
 
-  let response = await getOpenAI().chat.completions.create({
-    model: "gpt-4.1",
-    max_tokens: 4096,
-    tools: openaiTools,
-    messages: openaiMessages,
-  });
+  let response = await completeChat(openaiMessages, true);
 
   const proposedActions: AiResponse["proposedActions"] = [];
 
   // Agentic loop: keep going while the model wants to use tools
+  let toolRounds = 0;
   while (response.choices[0]?.finish_reason === "tool_calls") {
+    if (toolRounds >= MAX_TOOL_ROUNDS) {
+      openaiMessages.push({
+        role: "system",
+        content:
+          "Tool budget exhausted. Answer with the information you already have; do not call more tools.",
+      });
+      response = await completeChat(openaiMessages, false);
+      break;
+    }
+    toolRounds += 1;
+
     const choice = response.choices[0];
     const toolCalls = (choice.message.tool_calls ?? []).filter(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -295,12 +431,38 @@ export async function runAiChat(
     openaiMessages.push(choice.message);
 
     for (const toolCall of toolCalls) {
-      const args = JSON.parse(toolCall.function.arguments || "{}");
-      const result = await executeToolCall(
-        toolCall.function.name,
-        args,
-        userAddress
-      );
+      let args: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(toolCall.function.arguments || "{}");
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          openaiMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: "invalid tool arguments" }),
+          });
+          continue;
+        }
+        args = parsed as Record<string, unknown>;
+      } catch {
+        openaiMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify({ error: "invalid tool arguments" }),
+        });
+        continue;
+      }
+
+      let result: unknown;
+      try {
+        result = await executeToolCall(
+          toolCall.function.name,
+          args,
+          userAddress
+        );
+      } catch (error) {
+        console.error("[ai/tool]", toolCall.function.name, error);
+        result = { error: "tool failed" };
+      }
 
       // Collect proposed actions
       if (
@@ -326,12 +488,7 @@ export async function runAiChat(
       });
     }
 
-    response = await getOpenAI().chat.completions.create({
-      model: "gpt-4.1",
-      max_tokens: 4096,
-      tools: openaiTools,
-      messages: openaiMessages,
-    });
+    response = await completeChat(openaiMessages, true);
   }
 
   // Extract text from final response

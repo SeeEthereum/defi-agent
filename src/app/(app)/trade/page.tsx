@@ -64,6 +64,36 @@ interface MarketPrice {
   price: string;
 }
 
+interface MarketMeta {
+  coin: string;
+  label?: string;
+  name?: string;
+  maxLeverage?: number;
+}
+
+interface MarketsPayload {
+  markets?: MarketMeta[];
+  prices?: MarketPrice[];
+  meta?: MarketMeta[];
+}
+
+interface OrderParams {
+  coin: string;
+  side: "buy" | "sell";
+  size: string;
+  type: "market" | "limit";
+  price?: string;
+  leverage: number;
+  slPx?: string;
+  tpPx?: string;
+}
+
+interface BoundOrderPreview {
+  data: Record<string, unknown>;
+  params: OrderParams;
+  estimatedLiq: number | null;
+}
+
 interface QuickstartData {
   status: "active" | "ready" | "needs_deposit" | "low_balance" | "no_funds";
   wallet: string;
@@ -115,13 +145,124 @@ function fmtUsd(v: string | number | undefined, digits = 2): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
-function fmtPrice(v: string | undefined): string {
-  const n = typeof v === "string" ? parseFloat(v) : undefined;
+function fmtPrice(v: string | number | undefined): string {
+  const n = typeof v === "string" ? parseFloat(v) : v;
   if (n === undefined || !Number.isFinite(n)) return "—";
   if (n >= 1000) return n.toFixed(2);
   if (n >= 1) return n.toFixed(3);
   if (n >= 0.01) return n.toFixed(4);
   return n.toFixed(6);
+}
+
+const DECIMAL_RE = /^\d+(\.\d+)?$/;
+const COIN_RE = /^[A-Z0-9@_-]{1,16}$/;
+const GENERIC_ORDER_ERROR = "Order failed, please try again";
+
+const ORDER_ERROR_MESSAGES: Record<string, string> = {
+  INSUFFICIENT_BALANCE:
+    "Saldo USDC su Arbitrum insufficiente. Deposita USDC sul tuo indirizzo Arbitrum prima di riprovare.",
+  INSUFFICIENT_MARGIN:
+    "Margine insufficiente per questa posizione. Riduci la size o aumenta il deposito HL.",
+  SIGNING_FAILED:
+    "La firma del wallet è fallita. Verifica che onchainos sia autenticato (aggiorna se necessario).",
+  NOT_REGISTERED:
+    "Hyperliquid non è stato ancora configurato. Esegui prima la registrazione del wallet.",
+  MIN_NOTIONAL:
+    "L'ordine è sotto il minimo notional di $10 USDC. Aumenta la size.",
+  PRICE_OUT_OF_BAND:
+    "Prezzo limite troppo lontano dal mid. Usa un prezzo più vicino al market.",
+  REDUCE_ONLY_VIOLATION:
+    "L'ordine reduce-only non può aprire o aumentare una posizione esistente.",
+};
+
+/** Normalize a user decimal (comma → dot) and accept only /^\d+(\.\d+)?$/. */
+function normalizeDecimal(raw: string): string | null {
+  const s = raw.trim().replace(",", ".");
+  if (!DECIMAL_RE.test(s)) return null;
+  return s;
+}
+
+function isPositiveDecimal(raw: string): boolean {
+  const s = normalizeDecimal(raw);
+  if (!s) return false;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0;
+}
+
+function marketMaxLeverage(coin: string, byCoin: Record<string, number>): number {
+  const cap = byCoin[coin];
+  if (typeof cap === "number" && Number.isFinite(cap) && cap >= 1) {
+    return Math.max(1, Math.min(50, Math.floor(cap)));
+  }
+  return 50;
+}
+
+function buildLeverageByCoin(data: MarketsPayload): Record<string, number> {
+  const map: Record<string, number> = {};
+  const take = (coin: string | undefined, max: number | undefined) => {
+    if (!coin || typeof max !== "number" || !Number.isFinite(max) || max < 1) return;
+    map[coin] = Math.max(1, Math.min(50, Math.floor(max)));
+  };
+  for (const m of data.markets ?? []) take(m.coin ?? m.name, m.maxLeverage);
+  for (const u of data.meta ?? []) take(u.coin ?? u.name, u.maxLeverage);
+  return map;
+}
+
+/** Isolated-margin liq estimate: long entry*(1-1/lev), short entry*(1+1/lev). */
+function estimatedLiqPrice(entry: number, leverage: number, side: "buy" | "sell"): number | null {
+  if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(leverage) || leverage < 1) return null;
+  return side === "buy" ? entry * (1 - 1 / leverage) : entry * (1 + 1 / leverage);
+}
+
+function entryPrice(type: "market" | "limit", limitPx: string, mark: string | undefined): number | null {
+  const raw = type === "limit" && limitPx.trim() ? limitPx : (mark ?? "");
+  const n = Number(normalizeDecimal(raw) ?? raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function tpslDirectionError(
+  side: "buy" | "sell",
+  mark: string | undefined,
+  slPx: string,
+  tpPx: string,
+): string | null {
+  const hasSl = slPx.trim() !== "";
+  const hasTp = tpPx.trim() !== "";
+  if (!hasSl && !hasTp) return null;
+  const markN = mark ? Number(mark) : NaN;
+  if (!Number.isFinite(markN) || markN <= 0) {
+    return "Mark non disponibile: impossibile validare TP/SL.";
+  }
+  const sl = hasSl ? normalizeDecimal(slPx) : null;
+  const tp = hasTp ? normalizeDecimal(tpPx) : null;
+  // Format errors are handled by the decimal check; skip direction until valid.
+  if (hasSl && !sl) return null;
+  if (hasTp && !tp) return null;
+  if (side === "buy") {
+    if (sl && !(Number(sl) < markN)) {
+      return "Per un LONG lo stop-loss deve essere sotto il mark e il take-profit sopra.";
+    }
+    if (tp && !(Number(tp) > markN)) {
+      return "Per un LONG lo stop-loss deve essere sotto il mark e il take-profit sopra.";
+    }
+  } else {
+    if (sl && !(Number(sl) > markN)) {
+      return "Per un SHORT lo stop-loss deve essere sopra il mark e il take-profit sotto.";
+    }
+    if (tp && !(Number(tp) < markN)) {
+      return "Per un SHORT lo stop-loss deve essere sopra il mark e il take-profit sotto.";
+    }
+  }
+  return null;
+}
+
+function mapOrderError(res: { error: string; errorCode?: string; suggestion?: string }): string {
+  if (res.errorCode && ORDER_ERROR_MESSAGES[res.errorCode]) {
+    const mapped = ORDER_ERROR_MESSAGES[res.errorCode];
+    return res.suggestion ? `${mapped} — ${res.suggestion}` : mapped;
+  }
+  console.error("Order failed", res);
+  return GENERIC_ORDER_ERROR;
 }
 
 async function apiGet<T>(url: string): Promise<ApiResult<T>> {
@@ -158,6 +299,7 @@ export default function TradePage() {
   const [positions, setPositions] = useState<PositionsData | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [prices, setPrices] = useState<MarketPrice[]>([]);
+  const [leverageByCoin, setLeverageByCoin] = useState<Record<string, number>>({});
 
   const [tab, setTab] = useState<"positions" | "trade" | "orders">("positions");
 
@@ -170,7 +312,7 @@ export default function TradePage() {
   const [orderLeverage, setOrderLeverage] = useState(10);
   const [orderSlPx, setOrderSlPx] = useState("");
   const [orderTpPx, setOrderTpPx] = useState("");
-  const [orderPreview, setOrderPreview] = useState<Record<string, unknown> | null>(null);
+  const [orderPreview, setOrderPreview] = useState<BoundOrderPreview | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderConfirming, setOrderConfirming] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -185,7 +327,8 @@ export default function TradePage() {
   const [fundError, setFundError] = useState<string | null>(null);
   const [fundSuccess, setFundSuccess] = useState<string | null>(null);
 
-  // Close position loading state
+  // Close position: confirmation step, then in-flight
+  const [pendingClose, setPendingClose] = useState<Position | null>(null);
   const [closingCoin, setClosingCoin] = useState<string | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
 
@@ -198,7 +341,7 @@ export default function TradePage() {
       apiGet<QuickstartData>("/api/perp/quickstart"),
       apiGet<PositionsData>("/api/perp/positions"),
       apiGet<{ orders: OrderRow[] }>("/api/perp/orders"),
-      apiGet<{ markets: typeof FEATURED_MARKETS; prices: MarketPrice[] }>("/api/perp/markets"),
+      apiGet<MarketsPayload>("/api/perp/markets"),
     ]);
 
     if (reg.success) {
@@ -210,7 +353,10 @@ export default function TradePage() {
     if (qs.success) setQuickstart(qs.data);
     if (pos.success) setPositions(pos.data);
     if (ord.success) setOrders(ord.data.orders ?? []);
-    if (mkts.success) setPrices(mkts.data.prices ?? []);
+    if (mkts.success) {
+      setPrices(mkts.data.prices ?? []);
+      setLeverageByCoin(buildLeverageByCoin(mkts.data));
+    }
   }, [authenticated]);
 
   // Bootstrap on mount / when auth flips. Inline the effect body (instead of
@@ -227,7 +373,7 @@ export default function TradePage() {
         apiGet<QuickstartData>("/api/perp/quickstart"),
         apiGet<PositionsData>("/api/perp/positions"),
         apiGet<{ orders: OrderRow[] }>("/api/perp/orders"),
-        apiGet<{ markets: typeof FEATURED_MARKETS; prices: MarketPrice[] }>("/api/perp/markets"),
+        apiGet<MarketsPayload>("/api/perp/markets"),
       ]);
       if (cancelled) return;
       if (reg.success) {
@@ -239,29 +385,38 @@ export default function TradePage() {
       if (qs.success) setQuickstart(qs.data);
       if (pos.success) setPositions(pos.data);
       if (ord.success) setOrders(ord.data.orders ?? []);
-      if (mkts.success) setPrices(mkts.data.prices ?? []);
+      if (mkts.success) {
+        setPrices(mkts.data.prices ?? []);
+        setLeverageByCoin(buildLeverageByCoin(mkts.data));
+      }
     })();
     return () => { cancelled = true; };
   }, [authenticated]);
 
-  // Live refresh: positions every 5s, prices every 10s
+  // Live refresh: positions / orders / prices every 8s
   const refreshTimer = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!authenticated) return;
+    let cancelled = false;
     const pulse = async () => {
       const [pos, ord, mkts, qs] = await Promise.all([
         apiGet<PositionsData>("/api/perp/positions"),
         apiGet<{ orders: OrderRow[] }>("/api/perp/orders"),
-        apiGet<{ markets: typeof FEATURED_MARKETS; prices: MarketPrice[] }>("/api/perp/markets"),
+        apiGet<MarketsPayload>("/api/perp/markets"),
         apiGet<QuickstartData>("/api/perp/quickstart"),
       ]);
+      if (cancelled) return;
       if (pos.success) setPositions(pos.data);
       if (ord.success) setOrders(ord.data.orders ?? []);
-      if (mkts.success) setPrices(mkts.data.prices ?? []);
+      if (mkts.success) {
+        setPrices(mkts.data.prices ?? []);
+        setLeverageByCoin(buildLeverageByCoin(mkts.data));
+      }
       if (qs.success) setQuickstart(qs.data);
     };
     refreshTimer.current = setInterval(pulse, 8000);
     return () => {
+      cancelled = true;
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
   }, [authenticated]);
@@ -280,58 +435,102 @@ export default function TradePage() {
 
   // Current coin mark price (for notional estimate)
   const currentMark = prices.find((p) => p.coin === orderCoin)?.price;
+  const coinMaxLeverage = marketMaxLeverage(orderCoin, leverageByCoin);
+  const clampedLeverage = Math.min(orderLeverage, coinMaxLeverage);
+  const previewOpen = orderPreview !== null;
+
+  function setCoinAndClamp(coin: string) {
+    setOrderCoin(coin);
+    setOrderLeverage((v) => {
+      const cap = marketMaxLeverage(coin, leverageByCoin);
+      return v > cap ? cap : v;
+    });
+  }
+
+  function markForCoin(coin: string): string | undefined {
+    return prices.find((p) => p.coin === coin)?.price;
+  }
 
   // ── Order flow: preview → confirm ──────────────────────────────────────────
   async function submitOrderPreview() {
     setOrderError(null);
     setOrderSuccess(null);
     setOrderPreview(null);
-    if (!orderSize) {
+
+    if (!COIN_RE.test(orderCoin)) {
+      setOrderError("Coin non valida");
+      return;
+    }
+    const size = normalizeDecimal(orderSize);
+    if (!size || Number(size) <= 0) {
       setOrderError("Inserisci la size");
       return;
     }
-    if (orderType === "limit" && !orderPrice) {
-      setOrderError("I limit order richiedono un prezzo");
+    let price: string | undefined;
+    if (orderType === "limit") {
+      const p = normalizeDecimal(orderPrice);
+      if (!p || Number(p) <= 0) {
+        setOrderError("I limit order richiedono un prezzo");
+        return;
+      }
+      price = p;
+    }
+    const sl = orderSlPx.trim() ? normalizeDecimal(orderSlPx) : null;
+    if (orderSlPx.trim() && (!sl || Number(sl) <= 0)) {
+      setOrderError("Stop-loss non valido");
       return;
     }
-    setOrderLoading(true);
-    const res = await apiPost<Record<string, unknown>>("/api/perp/order", {
+    const tp = orderTpPx.trim() ? normalizeDecimal(orderTpPx) : null;
+    if (orderTpPx.trim() && (!tp || Number(tp) <= 0)) {
+      setOrderError("Take-profit non valido");
+      return;
+    }
+    const dirErr = tpslDirectionError(orderSide, currentMark, orderSlPx, orderTpPx);
+    if (dirErr) {
+      setOrderError(dirErr);
+      return;
+    }
+
+    const leverage = clampedLeverage;
+    const params: OrderParams = {
       coin: orderCoin,
       side: orderSide,
-      size: orderSize,
+      size,
       type: orderType,
-      price: orderType === "limit" ? orderPrice : undefined,
-      leverage: orderLeverage,
-      slPx: orderSlPx || undefined,
-      tpPx: orderTpPx || undefined,
+      ...(price ? { price } : {}),
+      leverage,
+      ...(sl ? { slPx: sl } : {}),
+      ...(tp ? { tpPx: tp } : {}),
+    };
+    const entry = entryPrice(params.type, params.price ?? "", currentMark);
+    const estimatedLiq = entry ? estimatedLiqPrice(entry, params.leverage, params.side) : null;
+
+    setOrderLoading(true);
+    const res = await apiPost<Record<string, unknown>>("/api/perp/order", {
+      ...params,
       confirm: false,
     });
     setOrderLoading(false);
     if (res.success) {
-      setOrderPreview(res.data);
+      setOrderPreview({ data: res.data, params, estimatedLiq });
     } else {
-      setOrderError(res.suggestion ? `${res.error} — ${res.suggestion}` : res.error);
+      setOrderError(mapOrderError(res));
     }
   }
 
   async function submitOrderConfirm() {
+    if (!orderPreview) return;
     setOrderError(null);
     setOrderConfirming(true);
+    const { params } = orderPreview;
     const res = await apiPost<Record<string, unknown>>("/api/perp/order", {
-      coin: orderCoin,
-      side: orderSide,
-      size: orderSize,
-      type: orderType,
-      price: orderType === "limit" ? orderPrice : undefined,
-      leverage: orderLeverage,
-      slPx: orderSlPx || undefined,
-      tpPx: orderTpPx || undefined,
+      ...params,
       confirm: true,
     });
     setOrderConfirming(false);
     if (res.success) {
       setOrderSuccess(
-        `Ordine ${orderSide === "buy" ? "LONG" : "SHORT"} ${orderSize} ${orderCoin} inviato`
+        `Ordine ${params.side === "buy" ? "LONG" : "SHORT"} ${params.size} ${params.coin} inviato`
       );
       setOrderPreview(null);
       setOrderSize("");
@@ -340,11 +539,22 @@ export default function TradePage() {
       setOrderTpPx("");
       bootstrap();
     } else {
-      setOrderError(res.suggestion ? `${res.error} — ${res.suggestion}` : res.error);
+      setOrderError(mapOrderError(res));
     }
   }
 
-  async function closePosition(coin: string) {
+  function requestClose(position: Position) {
+    setCloseError(null);
+    setPendingClose(position);
+  }
+
+  async function confirmClose() {
+    if (!pendingClose) return;
+    const coin = pendingClose.coin;
+    if (!COIN_RE.test(coin)) {
+      setCloseError("Coin non valida");
+      return;
+    }
     setCloseError(null);
     setClosingCoin(coin);
     const res = await apiPost<Record<string, unknown>>("/api/perp/close", {
@@ -353,8 +563,9 @@ export default function TradePage() {
     });
     setClosingCoin(null);
     if (!res.success) {
-      setCloseError(res.suggestion ? `${res.error} — ${res.suggestion}` : res.error);
+      setCloseError(mapOrderError(res));
     } else {
+      setPendingClose(null);
       bootstrap();
     }
   }
@@ -373,15 +584,15 @@ export default function TradePage() {
     setFundError(null);
     setFundPreview(null);
     setFundSuccess(null);
-    const n = Number(fundAmount);
-    if (!n || n <= 0) {
+    const amount = normalizeDecimal(fundAmount);
+    if (!amount || Number(amount) <= 0) {
       setFundError("Importo non valido");
       return;
     }
     setFundLoading(true);
     const res = await apiPost<Record<string, unknown>>(
       `/api/perp/${fundMode}`,
-      { amount: fundAmount, confirm: false }
+      { amount, confirm: false }
     );
     setFundLoading(false);
     if (res.success) {
@@ -393,10 +604,15 @@ export default function TradePage() {
 
   async function submitFundConfirm() {
     setFundError(null);
+    const amount = normalizeDecimal(fundAmount);
+    if (!amount || Number(amount) <= 0) {
+      setFundError("Importo non valido");
+      return;
+    }
     setFundLoading(true);
     const res = await apiPost<Record<string, unknown>>(
       `/api/perp/${fundMode}`,
-      { amount: fundAmount, confirm: true }
+      { amount, confirm: true }
     );
     setFundLoading(false);
     if (res.success) {
@@ -529,7 +745,10 @@ export default function TradePage() {
           {prices.slice(0, 12).map((p) => (
             <button
               key={p.coin}
-              onClick={() => { setOrderCoin(p.coin); setTab("trade"); }}
+              onClick={() => {
+                if (!previewOpen) setCoinAndClamp(p.coin);
+                setTab("trade");
+              }}
               className={`text-left bg-card border rounded-lg px-2 py-1.5 hover:border-[${HL_GREEN}] transition-colors`}
               style={orderCoin === p.coin ? { borderColor: HL_GREEN } : {}}
             >
@@ -577,9 +796,13 @@ export default function TradePage() {
         {tab === "positions" ? (
           <PositionsTab
             positions={positions}
+            pendingClose={pendingClose}
             closingCoin={closingCoin}
             closeError={closeError}
-            onClose={closePosition}
+            markForCoin={markForCoin}
+            onRequestClose={requestClose}
+            onCancelClose={() => { setPendingClose(null); setCloseError(null); }}
+            onConfirmClose={confirmClose}
           />
         ) : tab === "trade" ? (
           <TradeTab
@@ -589,13 +812,14 @@ export default function TradePage() {
             type={orderType}
             setType={setOrderType}
             coin={orderCoin}
-            setCoin={setOrderCoin}
+            setCoin={setCoinAndClamp}
             size={orderSize}
             setSize={setOrderSize}
             price={orderPrice}
             setPrice={setOrderPrice}
-            leverage={orderLeverage}
-            setLeverage={setOrderLeverage}
+            leverage={clampedLeverage}
+            setLeverage={(v) => setOrderLeverage(Math.min(Math.max(1, v), coinMaxLeverage))}
+            maxLeverage={coinMaxLeverage}
             slPx={orderSlPx}
             setSlPx={setOrderSlPx}
             tpPx={orderTpPx}
@@ -608,7 +832,7 @@ export default function TradePage() {
             success={orderSuccess}
             onPreview={submitOrderPreview}
             onConfirm={submitOrderConfirm}
-            onCancelPreview={() => setOrderPreview(null)}
+            onModify={() => setOrderPreview(null)}
           />
         ) : (
           <OrdersTab orders={orders} onCancel={cancelOrder} />
@@ -678,14 +902,22 @@ function Banner({
 
 function PositionsTab({
   positions,
+  pendingClose,
   closingCoin,
   closeError,
-  onClose,
+  markForCoin,
+  onRequestClose,
+  onCancelClose,
+  onConfirmClose,
 }: {
   positions: PositionsData | null;
+  pendingClose: Position | null;
   closingCoin: string | null;
   closeError: string | null;
-  onClose: (coin: string) => void;
+  markForCoin: (coin: string) => string | undefined;
+  onRequestClose: (p: Position) => void;
+  onCancelClose: () => void;
+  onConfirmClose: () => void;
 }) {
   if (!positions) return <div className="flex justify-center py-8"><Spinner /></div>;
   if (positions.positions.length === 0) {
@@ -705,6 +937,13 @@ function PositionsTab({
       </Fade>
       {positions.positions.map((p) => {
         const isLong = p.side === "long";
+        const confirmingThis = pendingClose?.coin === p.coin;
+        const inFlight = closingCoin === p.coin;
+        const mark = p.markPrice ?? markForCoin(p.coin);
+        const sizeN = Math.abs(Number(p.size));
+        const markN = mark ? Number(mark) : NaN;
+        const proceeds =
+          Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : null;
         return (
           <div
             key={p.coin}
@@ -732,15 +971,52 @@ function PositionsTab({
               <Field label="Margin" value={fmtUsd(p.marginUsed)} />
               <Field label="ROE" value={`${parseFloat(p.returnOnEquity).toFixed(2)}%`} />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full h-8 text-xs"
-              disabled={closingCoin === p.coin}
-              onClick={() => onClose(p.coin)}
-            >
-              {closingCoin === p.coin ? <Spinner /> : "Chiudi posizione"}
-            </Button>
+            {confirmingThis ? (
+              <div className="border rounded-lg p-2 space-y-2">
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  Conferma chiusura
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <Field label="Coin" value={p.coin} />
+                  <Field label="Position size" value={`${p.size} ${p.coin}`} />
+                  <Field label="Current mark" value={fmtPrice(mark)} />
+                  <Field
+                    label="Estimated proceeds"
+                    value={proceeds === null ? "—" : fmtUsd(proceeds)}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Estimate only — ignores fees and funding.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onCancelClose}
+                    disabled={inFlight}
+                  >
+                    Annulla
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={onConfirmClose}
+                    disabled={inFlight}
+                  >
+                    {inFlight ? <Spinner /> : "Conferma chiusura"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs"
+                disabled={closingCoin !== null}
+                onClick={() => onRequestClose(p)}
+              >
+                Chiudi posizione
+              </Button>
+            )}
           </div>
         );
       })}
@@ -771,24 +1047,45 @@ function TradeTab(props: {
   setPrice: (v: string) => void;
   leverage: number;
   setLeverage: (v: number) => void;
+  maxLeverage: number;
   slPx: string;
   setSlPx: (v: string) => void;
   tpPx: string;
   setTpPx: (v: string) => void;
   mark: string | undefined;
-  preview: Record<string, unknown> | null;
+  preview: BoundOrderPreview | null;
   loading: boolean;
   confirming: boolean;
   error: string | null;
   success: string | null;
   onPreview: () => void;
   onConfirm: () => void;
-  onCancelPreview: () => void;
+  onModify: () => void;
 }) {
   const disabled = props.stage !== "ready";
-  const notional = props.mark && props.size
-    ? parseFloat(props.size) * parseFloat(props.mark)
-    : 0;
+  const locked = disabled || !!props.preview;
+  const sizeOk = isPositiveDecimal(props.size);
+  const priceOk = props.type !== "limit" || isPositiveDecimal(props.price);
+  const slFormatOk = !props.slPx.trim() || isPositiveDecimal(props.slPx);
+  const tpFormatOk = !props.tpPx.trim() || isPositiveDecimal(props.tpPx);
+  const tpslErr = tpslDirectionError(props.side, props.mark, props.slPx, props.tpPx);
+  const coinOk = COIN_RE.test(props.coin);
+  const canPreview =
+    !locked &&
+    !props.loading &&
+    sizeOk &&
+    priceOk &&
+    slFormatOk &&
+    tpFormatOk &&
+    !tpslErr &&
+    coinOk;
+
+  const sizeN = sizeOk ? Number(normalizeDecimal(props.size)) : NaN;
+  const markN = props.mark ? Number(props.mark) : NaN;
+  const notional =
+    Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : 0;
+  const entry = entryPrice(props.type, props.price, props.mark);
+  const liq = entry ? estimatedLiqPrice(entry, props.leverage, props.side) : null;
 
   return (
     <div className="space-y-3">
@@ -803,7 +1100,7 @@ function TradeTab(props: {
         {(["buy", "sell"] as const).map((side) => (
           <button
             key={side}
-            disabled={disabled}
+            disabled={locked}
             onClick={() => props.setSide(side)}
             className="py-2 rounded-lg text-sm font-semibold border disabled:opacity-50"
             style={
@@ -824,7 +1121,7 @@ function TradeTab(props: {
       {/* Coin + type */}
       <div className="grid grid-cols-2 gap-2">
         <select
-          disabled={disabled}
+          disabled={locked}
           value={props.coin}
           onChange={(e) => props.setCoin(e.target.value)}
           className="h-10 rounded-lg border bg-background px-3 text-sm font-semibold disabled:opacity-50"
@@ -837,7 +1134,7 @@ function TradeTab(props: {
           {(["market", "limit"] as const).map((t) => (
             <button
               key={t}
-              disabled={disabled}
+              disabled={locked}
               onClick={() => props.setType(t)}
               className={`rounded-lg text-xs font-medium border ${props.type === t ? "bg-foreground text-background" : "bg-background"} disabled:opacity-50`}
             >
@@ -853,7 +1150,7 @@ function TradeTab(props: {
         <Input
           type="text"
           inputMode="decimal"
-          disabled={disabled}
+          disabled={locked}
           value={props.size}
           onChange={(e) => props.setSize(e.target.value)}
           placeholder="0.01"
@@ -863,6 +1160,11 @@ function TradeTab(props: {
           <span>Mark: {fmtPrice(props.mark)}</span>
           <span>Notional: {fmtUsd(notional)}</span>
         </div>
+        {props.size.trim() !== "" && !sizeOk && (
+          <div className="text-[11px] text-red-600 mt-0.5">
+            Size deve essere un decimale positivo (es. 0.01).
+          </div>
+        )}
         {notional > 0 && notional < 10 && (
           <div className="text-[11px] text-amber-700 mt-0.5">
             Minimo $10 notional. Aumenta la size.
@@ -877,12 +1179,17 @@ function TradeTab(props: {
           <Input
             type="text"
             inputMode="decimal"
-            disabled={disabled}
+            disabled={locked}
             value={props.price}
             onChange={(e) => props.setPrice(e.target.value)}
             placeholder={fmtPrice(props.mark)}
             className="font-mono"
           />
+          {props.price.trim() !== "" && !priceOk && (
+            <div className="text-[11px] text-red-600 mt-0.5">
+              Prezzo deve essere un decimale positivo.
+            </div>
+          )}
         </div>
       )}
 
@@ -890,21 +1197,34 @@ function TradeTab(props: {
       <div>
         <div className="flex items-center justify-between text-xs">
           <label className="text-muted-foreground">Leva</label>
-          <span className="font-bold" style={{ color: HL_GREEN }}>{props.leverage}×</span>
+          <span className="font-bold" style={{ color: HL_GREEN }}>
+            {props.leverage}× <span className="font-medium text-muted-foreground">/ max {props.maxLeverage}×</span>
+          </span>
         </div>
         <input
           type="range"
           min="1"
-          max="50"
-          disabled={disabled}
-          value={props.leverage}
+          max={props.maxLeverage}
+          disabled={locked}
+          value={Math.min(props.leverage, props.maxLeverage)}
           onChange={(e) => props.setLeverage(Number(e.target.value))}
           className="w-full disabled:opacity-50"
           style={{ accentColor: HL_GREEN }}
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>1×</span><span>10×</span><span>25×</span><span>50×</span>
+          <span>1×</span><span>Max {props.maxLeverage}×</span>
         </div>
+      </div>
+
+      {/* Est. liquidation */}
+      <div className="bg-muted/30 border rounded-lg px-3 py-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Est. liquidation</span>
+          <span className="font-mono font-semibold">{fmtPrice(liq ?? undefined)}</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          Estimate only — ignores fees and funding.
+        </p>
       </div>
 
       {/* SL/TP */}
@@ -914,7 +1234,7 @@ function TradeTab(props: {
           <Input
             type="text"
             inputMode="decimal"
-            disabled={disabled}
+            disabled={locked}
             value={props.slPx}
             onChange={(e) => props.setSlPx(e.target.value)}
             placeholder="—"
@@ -926,7 +1246,7 @@ function TradeTab(props: {
           <Input
             type="text"
             inputMode="decimal"
-            disabled={disabled}
+            disabled={locked}
             value={props.tpPx}
             onChange={(e) => props.setTpPx(e.target.value)}
             placeholder="—"
@@ -934,12 +1254,20 @@ function TradeTab(props: {
           />
         </div>
       </div>
+      {(!slFormatOk || !tpFormatOk) && (
+        <div className="text-[11px] text-red-600">
+          TP/SL devono essere decimali positivi (es. 64000.5).
+        </div>
+      )}
+      {tpslErr && slFormatOk && tpFormatOk && (
+        <div className="text-[11px] text-red-600">{tpslErr}</div>
+      )}
 
       {/* Submit / Preview */}
       {!props.preview ? (
         <Button
           onClick={props.onPreview}
-          disabled={disabled || props.loading}
+          disabled={!canPreview}
           className="w-full h-11"
           style={{
             background: props.side === "buy" ? HL_GREEN : "#ef4444",
@@ -951,20 +1279,40 @@ function TradeTab(props: {
       ) : (
         <div className="bg-card border rounded-lg p-3 space-y-2">
           <div className="text-xs font-semibold uppercase text-muted-foreground">Anteprima ordine</div>
-          <pre className="text-[10px] overflow-x-auto max-h-32 text-muted-foreground">
-            {JSON.stringify(props.preview, null, 2)}
-          </pre>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <Field label="Coin" value={props.preview.params.coin} />
+            <Field label="Side" value={props.preview.params.side === "buy" ? "LONG" : "SHORT"} />
+            <Field label="Size" value={`${props.preview.params.size} ${props.preview.params.coin}`} />
+            <Field label="Order type" value={props.preview.params.type} />
+            {props.preview.params.type === "limit" && props.preview.params.price && (
+              <Field label="Limit price" value={props.preview.params.price} />
+            )}
+            <Field label="Leverage" value={`${props.preview.params.leverage}×`} />
+            <Field
+              label="Est. liquidation"
+              value={
+                props.preview.estimatedLiq === null
+                  ? "—"
+                  : fmtPrice(props.preview.estimatedLiq)
+              }
+            />
+            <Field label="Take-profit" value={props.preview.params.tpPx ?? "—"} />
+            <Field label="Stop-loss" value={props.preview.params.slPx ?? "—"} />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Estimate only — ignores fees and funding.
+          </p>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" onClick={props.onCancelPreview} disabled={props.confirming}>
-              Annulla
+            <Button variant="outline" size="sm" onClick={props.onModify} disabled={props.confirming}>
+              Modify
             </Button>
             <Button
               size="sm"
               onClick={props.onConfirm}
               disabled={props.confirming}
               style={{
-                background: props.side === "buy" ? HL_GREEN : "#ef4444",
-                color: props.side === "buy" ? "#000" : "#fff",
+                background: props.preview.params.side === "buy" ? HL_GREEN : "#ef4444",
+                color: props.preview.params.side === "buy" ? "#000" : "#fff",
               }}
             >
               {props.confirming ? <Spinner /> : "Conferma"}
@@ -1044,6 +1392,7 @@ function FundModal(props: {
 }) {
   const isDeposit = props.mode === "deposit";
   const maxBalance = isDeposit ? props.arbBalance : props.hlWithdrawable;
+  const amountOk = isPositiveDecimal(props.amount);
   return (
     <Modal open={props.open} onClose={props.onClose} contentClassName="max-w-sm">
       <div className="bg-card border rounded-xl w-full p-4">
@@ -1142,7 +1491,7 @@ function FundModal(props: {
               <Button variant="outline" onClick={props.onClose}>Annulla</Button>
               <Button
                 onClick={props.onPreview}
-                disabled={props.loading || !props.amount}
+                disabled={props.loading || !amountOk}
                 style={{ background: HL_GREEN, color: "#000" }}
               >
                 {props.loading ? <Spinner /> : "Anteprima"}

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signalList } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `signal list` is a Premium-tier Market API endpoint ($0.0005/req post-quota
 // from 2026-06-01). Public deterministic data → safe to cache aggressively.
 // 30s matches the smart-money refresh cadence the UI implies.
 const SIGNALS_TTL_MS = 30_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain");
@@ -58,4 +59,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

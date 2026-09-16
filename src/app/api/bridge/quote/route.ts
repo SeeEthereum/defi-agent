@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeQuote } from "@/lib/bridge/lifi";
+import { withSession } from "@/lib/session/session";
+import { z } from "zod";
+import {
+  apiError,
+  badRequest,
+  baseUnitAmount,
+  chainId,
+  sessionEvmAddress,
+  tokenAddress,
+} from "@/lib/api/validation";
 
-export async function GET(request: NextRequest) {
+const schema = z.object({
+  fromChain: chainId,
+  toChain: chainId,
+  fromToken: tokenAddress,
+  toToken: tokenAddress,
+  fromAmount: baseUnitAmount,
+});
+
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = request.nextUrl;
-    const fromChain = searchParams.get("fromChain");
-    const toChain = searchParams.get("toChain");
-    const fromToken = searchParams.get("fromToken");
-    const toToken = searchParams.get("toToken");
-    const fromAmount = searchParams.get("fromAmount");
-    const fromAddress = searchParams.get("fromAddress");
+    const { fromChain, toChain, fromToken, toToken, fromAmount } = schema.parse({
+      fromChain: searchParams.get("fromChain"),
+      toChain: searchParams.get("toChain"),
+      fromToken: searchParams.get("fromToken"),
+      toToken: searchParams.get("toToken"),
+      fromAmount: searchParams.get("fromAmount"),
+    });
 
-    if (!fromChain || !toChain || !fromToken || !toToken || !fromAmount || !fromAddress) {
-      return NextResponse.json(
-        { success: false, error: "Missing required parameters: fromChain, toChain, fromToken, toToken, fromAmount, fromAddress" },
-        { status: 400 }
-      );
-    }
+    // The CLI signs with the session wallet, so both sender and receiver must be that wallet.
+    const fromAddress = await sessionEvmAddress(String(fromChain));
 
     const quote = await bridgeQuote({
-      fromChain,
-      toChain,
+      fromChain: String(fromChain),
+      toChain: String(toChain),
       fromToken,
       toToken,
       fromAmount,
       fromAddress,
+      toAddress: fromAddress,
     });
 
     return NextResponse.json({ success: true, data: quote });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to get bridge quote";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("bridge/quote", error, "Failed to get bridge quote");
   }
-}
+});

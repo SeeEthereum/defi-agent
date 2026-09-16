@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { walletLoginInit } from "@/lib/okx/cli";
 import { startLoginPoll } from "@/lib/okx/login-session";
+import { withSession } from "@/lib/session/session";
 
 /**
  * Start a browser login (CLI v4 social login).
@@ -12,7 +13,7 @@ import { startLoginPoll } from "@/lib/okx/login-session";
  *
  * The client shows `loginUrl`, then watches GET /api/auth/poll.
  */
-export async function POST() {
+export const POST = withSession(async () => {
   try {
     const result = await walletLoginInit();
     const { authSessionId, loginUrl } = result.data ?? {};
@@ -31,4 +32,4 @@ export async function POST() {
     const message = error instanceof Error ? error.message : "Login failed";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});

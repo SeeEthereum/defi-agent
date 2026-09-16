@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tokenSearch } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // `token search` is Basic ($0.0001/req post-quota). Search results for a
 // given query string are stable — the same "USDC" lookup returns the same
 // token list for hours. 60s is conservative; a higher TTL would be safe.
 const TOKEN_SEARCH_TTL_MS = 60_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q");
@@ -34,4 +35,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -15,7 +15,7 @@
  * The onchainos wallet address IS the HL master in this deployment, so the
  * "register" concept is a no-op beyond confirming we know the address.
  */
-import { getInfoClient, getExchangeClient, getOnchainosAddress } from "./http";
+import { getInfoClient, getExchangeClient, getOnchainosAddress, isTestnet } from "./http";
 import {
   detectHlSigningAddress,
   getHlUserAddress,
@@ -94,6 +94,22 @@ async function getMeta(): Promise<MetaCache> {
   return metaCache;
 }
 
+/**
+ * Per-coin venue limits (size precision and max leverage) from the live
+ * meta. The Trade page uses maxLeverage to cap its slider, so a user can no
+ * longer request 50x on a market that allows 10x.
+ */
+export async function getMarketLimits(): Promise<
+  Record<string, { szDecimals: number; maxLeverage: number }>
+> {
+  const cache = await getMeta();
+  const limits: Record<string, { szDecimals: number; maxLeverage: number }> = {};
+  for (const [name, entry] of cache.byName) {
+    limits[name] = { szDecimals: entry.szDecimals, maxLeverage: entry.maxLeverage };
+  }
+  return limits;
+}
+
 async function resolveAsset(coin: string): Promise<{ assetId: number; szDecimals: number; maxLeverage: number }> {
   const cache = await getMeta();
   const entry = cache.byName.get(coin);
@@ -106,9 +122,15 @@ async function resolveAsset(coin: string): Promise<{ assetId: number; szDecimals
 // are pure math; no side effects, no external state. Callers inside cli.ts
 // use them directly; the tests live in cli.test.ts.
 export function roundSize(size: number, szDecimals: number): string {
-  const factor = Math.pow(10, szDecimals);
-  const rounded = Math.floor(size * factor) / factor;
-  return rounded.toFixed(szDecimals);
+  // Float multiply (e.g. 1.14 * 100 → 113.999...) floors too far; format
+  // first, then truncate extra decimal digits as text so we never round up.
+  const formatted = size.toFixed(szDecimals + 2);
+  const dot = formatted.indexOf(".");
+  const truncated =
+    szDecimals <= 0 || dot === -1
+      ? formatted.slice(0, dot === -1 ? formatted.length : dot)
+      : formatted.slice(0, dot + 1 + szDecimals);
+  return Number(truncated).toFixed(szDecimals);
 }
 
 // HL price tick rules: perps allow up to 5 significant figures and at most
@@ -116,13 +138,16 @@ export function roundSize(size: number, szDecimals: number): string {
 export function roundPrice(price: number, szDecimals: number): string {
   if (!Number.isFinite(price) || price <= 0) return price.toString();
   const maxDecimals = Math.max(0, 6 - szDecimals);
-  // Limit to 5 significant figures.
+  // Limit to 5 significant figures. decimalsForSig can be negative, which
+  // means round to a power of ten (108234.5 → 108230) rather than keeping
+  // extra integer digits the venue will reject.
   const sig = 5;
   const magnitude = Math.floor(Math.log10(price));
-  const decimalsForSig = Math.max(0, sig - 1 - magnitude);
-  const decimals = Math.min(maxDecimals, decimalsForSig);
-  const factor = Math.pow(10, decimals);
-  return (Math.round(price * factor) / factor).toFixed(decimals);
+  const decimalsForSig = sig - 1 - magnitude;
+  const factor = Math.pow(10, decimalsForSig);
+  const rounded = Math.round(price * factor) / factor;
+  const decimals = Math.min(maxDecimals, Math.max(0, decimalsForSig));
+  return rounded.toFixed(decimals);
 }
 
 /**
@@ -495,6 +520,10 @@ export async function hlOrder(params: HlOrderParams): Promise<HlResult<unknown>>
     const pxStr = roundPrice(limitPxNum, asset.szDecimals);
     const notional = Number(sizeStr) * Number(pxStr);
 
+    if (params.leverage !== undefined && params.leverage > asset.maxLeverage) {
+      return err(`max leverage for ${params.coin} is ${asset.maxLeverage}x`);
+    }
+
     if (notional < 10) {
       return err(`Order notional $${notional.toFixed(2)} is below HL minimum of $10`, {
         errorCode: "MIN_NOTIONAL",
@@ -635,10 +664,13 @@ export async function hlClose(params: HlCloseParams): Promise<HlResult<unknown>>
     const state = await getInfoClient().clearinghouseState({ user });
     const pos = state.assetPositions.find((ap) => ap.position.coin === params.coin);
     if (!pos) return err(`No open position on ${params.coin}`);
-    const szi = Number(pos.position.szi);
+    const sziRaw = pos.position.szi;
+    const szi = Number(sziRaw);
     if (szi === 0) return err(`Position size is zero on ${params.coin}`);
     const closeSide: "buy" | "sell" = szi > 0 ? "sell" : "buy";
-    const closeSize = params.size ?? Math.abs(szi).toString();
+    // Full close uses the raw szi string (minus sign stripped) so float
+    // conversion + roundSize cannot leave dust.
+    const closeSize = params.size ?? sziRaw.replace(/^-/, "");
     return hlOrder({
       coin: params.coin,
       side: closeSide,
@@ -670,9 +702,37 @@ export async function hlTpSl(params: HlTpSlParams): Promise<HlResult<unknown>> {
     const szi = Number(pos.position.szi);
     const size = params.size ?? Math.abs(szi).toString();
     const oppSide = szi > 0 ? false : true; // close → opposite
+    const isLong = szi > 0;
 
     const asset = await resolveAsset(params.coin);
     const sizeStr = roundSize(Number(size), asset.szDecimals);
+
+    const mids = (await getInfoClient().allMids()) as Record<string, string>;
+    const midPx = Number(mids[params.coin]);
+    if (!Number.isFinite(midPx) || midPx <= 0) return err(`No mid price for ${params.coin}`);
+
+    if (params.slPx) {
+      const sl = Number(params.slPx);
+      if (Number.isFinite(sl)) {
+        if (isLong && sl >= midPx) {
+          return err("stop-loss must be below the current price for a long position");
+        }
+        if (!isLong && sl <= midPx) {
+          return err("stop-loss must be above the current price for a short position");
+        }
+      }
+    }
+    if (params.tpPx) {
+      const tp = Number(params.tpPx);
+      if (Number.isFinite(tp)) {
+        if (isLong && tp <= midPx) {
+          return err("take-profit must be above the current price for a long position");
+        }
+        if (!isLong && tp >= midPx) {
+          return err("take-profit must be below the current price for a short position");
+        }
+      }
+    }
 
     if (!params.confirm) {
       return ok({
@@ -707,7 +767,9 @@ export async function hlTpSl(params: HlTpSlParams): Promise<HlResult<unknown>> {
         t: { trigger: { isMarket: true, triggerPx: trigger, tpsl: "sl" } },
       });
     }
-    const res = await client.order({ orders, grouping: "normalTpsl" });
+    // positionTpsl arms these triggers against the open position.
+    // normalTpsl is for TP/SL attached to a parent entry order.
+    const res = await client.order({ orders, grouping: "positionTpsl" });
     return ok(res);
   } catch (e) {
     return mapSdkError(e);
@@ -723,18 +785,22 @@ export interface HlCancelParams {
 export async function hlCancel(params: HlCancelParams): Promise<HlResult<unknown>> {
   try {
     const asset = await resolveAsset(params.coin);
-    const oid = Number(params.orderId);
-    if (!Number.isFinite(oid)) return err(`Invalid orderId: ${params.orderId}`);
+    // Keep the id as a string in the API. @nktkas/hyperliquid types `o` as
+    // number (UnsignedInteger), so convert only after a safe-integer check.
+    const oidNum = Number(params.orderId);
+    if (!Number.isSafeInteger(oidNum) || oidNum < 0) {
+      return err(`Invalid orderId: ${params.orderId}`);
+    }
     if (!params.confirm) {
       return ok({
         preview: true,
         coin: params.coin,
-        orderId: oid,
-        message: `Preview: cancel order ${oid} on ${params.coin}. Resend with confirm:true.`,
+        orderId: params.orderId,
+        message: `Preview: cancel order ${params.orderId} on ${params.coin}. Resend with confirm:true.`,
       });
     }
     const client = await getExchangeClient();
-    const res = await client.cancel({ cancels: [{ a: asset.assetId, o: oid }] });
+    const res = await client.cancel({ cancels: [{ a: asset.assetId, o: oidNum }] });
     const status = res.response.data.statuses[0];
     if (typeof status === "object" && status !== null && "error" in status) {
       return err((status as { error: string }).error);
@@ -755,6 +821,10 @@ const HL_BRIDGE_ARBITRUM = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7";
 
 export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unknown>> {
   try {
+    if (isTestnet()) {
+      return err("deposits are mainnet only");
+    }
+
     const n = Number(params.amount);
     if (!Number.isFinite(n) || n < 5) {
       return err("Minimum deposit is 5 USDC", { errorCode: "MIN_DEPOSIT" });
@@ -779,8 +849,7 @@ export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unkno
         );
       }
     } catch {
-      // probe failed (e.g. session expired) — fall through and let the
-      // downstream `walletSend` surface the real auth error
+      return err("Could not verify the signing address, deposit cancelled");
     }
 
     const arbBal = await fetchArbUsdcBalance(address);
@@ -797,7 +866,7 @@ export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unkno
         amount: params.amount,
         from: address,
         to: HL_BRIDGE_ARBITRUM,
-        chain: "arbitrum",
+        chain: "42161",
         est_arrival_seconds: 60,
         message: `Preview: deposit ${params.amount} USDC from Arbitrum to Hyperliquid (bridge ${HL_BRIDGE_ARBITRUM}). Resend with confirm:true.`,
       });
@@ -807,7 +876,7 @@ export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unkno
     const send = await walletSend({
       amount: params.amount,
       recipient: HL_BRIDGE_ARBITRUM,
-      chain: "arbitrum",
+      chain: "42161",
       from: address,
       contractToken: USDC_ARB,
       force: true,
@@ -841,16 +910,26 @@ export async function hlWithdraw(params: HlWithdrawParams): Promise<HlResult<unk
     if (!Number.isFinite(n) || n <= 1) {
       return err("Withdraw amount must be > 1 USDC (covers $1 flat fee)");
     }
-    const address = await getOnchainosAddress();
-    const dest = (params.destination ?? address).toLowerCase() as `0x${string}`;
+    // Withdrawals only go to the user's own wallet; ignore any other destination.
+    void params.destination;
+    const dest = (await getHlUserAddress()).toLowerCase() as `0x${string}`;
+    const state = await getInfoClient().clearinghouseState({ user: dest });
+    const withdrawable = Number(state.withdrawable);
+    const totalDebited = n + 1;
+    if (!Number.isFinite(withdrawable) || withdrawable < totalDebited) {
+      return err(
+        `Insufficient withdrawable: have ${withdrawable}, need ${totalDebited} (amount + $1 fee)`
+      );
+    }
     if (!params.confirm) {
       return ok({
         preview: true,
         amount: params.amount,
         destination: dest,
         fee_usdc: 1,
-        net_usdc: (n - 1).toFixed(2),
-        message: `Preview: withdraw ${params.amount} USDC → ${dest} (fee $1). Resend with confirm:true.`,
+        net_usdc: params.amount,
+        total_debited: totalDebited.toFixed(2),
+        message: `Preview: withdraw ${params.amount} USDC received, ${totalDebited.toFixed(2)} debited (fee $1) → ${dest}. Resend with confirm:true.`,
       });
     }
     const client = await getExchangeClient();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPortfolioOverview, marketPortfolioRecentPnl } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { withSession } from "@/lib/session/session";
 
 // PnL supported chains (from onchainos market portfolio-supported-chains)
 const PNL_CHAINS = ["1", "8453", "56"]; // Ethereum, Base, BNB Chain
@@ -13,7 +14,7 @@ const PNL_CHAINS = ["1", "8453", "56"]; // Ethereum, Base, BNB Chain
 // per-user spend to 1 premium call/min/chain (instead of 4/load).
 const PORTFOLIO_TTL_MS = 60_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 async function computePnl(address: string) {
     // Fetch PnL overview for all supported chains in parallel

@@ -13,6 +13,13 @@ services:
         value: production
       - key: PATH
         value: "/home/render/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      # Signs the per-browser session cookie. Rotating it logs everyone out.
+      - key: SESSION_SECRET
+        generateValue: true
+      # One private onchainos keystore per session lives here. Point it at a
+      # persistent disk, otherwise every restart/deploy signs all users out.
+      - key: ONCHAINOS_SESSIONS_DIR
+        value: /opt/render/project/src/.data/sessions
       # ── Set these in the Render dashboard (never commit values) ──
       - key: OKX_API_KEY
         sync: false
