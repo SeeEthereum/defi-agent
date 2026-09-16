@@ -1,4 +1,18 @@
-import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+type JsonSchemaProperty = {
+  type: string;
+  description?: string;
+  enum?: string[];
+};
+
+type Tool = {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, JsonSchemaProperty>;
+    required?: string[];
+  };
+};
 
 export const AI_TOOLS: Tool[] = [
   {

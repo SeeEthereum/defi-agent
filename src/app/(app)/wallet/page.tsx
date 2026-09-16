@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useAllChainBalances } from "@/hooks/use-balances";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,17 +9,50 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { CHAINS } from "@/lib/chains";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CHAINS, getChainByIndex } from "@/lib/chains";
 import { formatUsd } from "@/lib/utils";
 import { GasStationModal } from "@/components/gas-station-modal";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { toast } from "sonner";
+
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
+
+function normalizeAmount(raw: string): string {
+  return raw.trim().replace(",", ".");
+}
+
+function isValidAmount(raw: string): boolean {
+  const normalized = normalizeAmount(raw);
+  return DECIMAL_AMOUNT_RE.test(normalized) && Number(normalized) > 0;
+}
+
+function userFacingError(detail: unknown, fallback: string): string {
+  const message =
+    typeof detail === "string"
+      ? detail
+      : detail instanceof Error
+        ? detail.message
+        : "";
+  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
+    return message;
+  }
+  return fallback;
+}
 
 interface TxEntry {
   txHash: string;
   txTime: string;
   direction?: string;
   txStatus?: string;
+  chainIndex?: string | number;
   chainSymbol?: string;
   symbol?: string;
   amount?: string;
@@ -43,6 +76,8 @@ export default function WalletPage() {
     tokenKey: "native",
   });
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
@@ -142,7 +177,21 @@ export default function WalletPage() {
   // Extracted from the form handler so the Gas Station modal can re-run
   // the same send after the gas token is set up (form state is only reset
   // on success, so a retry reuses the user's input untouched).
+  const selectedChain = Object.values(CHAINS).find(
+    (c) => String(c.chainIndex) === sendForm.chain
+  );
+  const chainTokens = balancesByChain[parseInt(sendForm.chain)]?.tokens ?? [];
+  const selectedTokenSymbol =
+    sendForm.tokenKey === "native"
+      ? chainTokens.find((t) => t.isNative)?.symbol ?? selectedChain?.nativeSymbol ?? "ETH"
+      : chainTokens.find((t) => t.tokenAddress === sendForm.tokenKey)?.symbol ?? sendForm.tokenKey;
+  const normalizedAmount = normalizeAmount(sendForm.amount);
+  const amountValid = isValidAmount(sendForm.amount);
+  const recipientValid = EVM_ADDRESS_RE.test(sendForm.recipient);
+
   const submitSend = async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     const contractToken = sendForm.tokenKey !== "native" ? sendForm.tokenKey : undefined;
     try {
@@ -150,7 +199,7 @@ export default function WalletPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: sendForm.amount,
+          amount: normalizeAmount(sendForm.amount),
           recipient: sendForm.recipient.toLowerCase(),
           chain: parseInt(sendForm.chain),
           contractToken,
@@ -164,18 +213,22 @@ export default function WalletPage() {
         // Insufficient native gas — offer stablecoin gas payment via modal.
         setGasStation(data.gasStation);
       } else {
-        toast.error(data.error || "Send failed");
+        console.error(data.error);
+        toast.error(userFacingError(data.error, "Transfer failed"));
       }
-    } catch {
-      toast.error("Network error");
+    } catch (e) {
+      console.error(e);
+      toast.error(userFacingError(e, "Transfer failed"));
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
 
-  const handleSend = async (e: React.FormEvent) => {
+  const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    await submitSend();
+    if (!recipientValid || !amountValid) return;
+    setConfirmOpen(true);
   };
 
   const evmAddress = walletAddress;
@@ -192,6 +245,53 @@ export default function WalletPage() {
           void submitSend();
         }}
       />
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="rounded-2xl sm:rounded-2xl border-border/60 shadow-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm transfer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-[13px]">
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-muted-foreground">Chain</span>
+              <span className="font-medium text-right">{selectedChain?.name ?? sendForm.chain}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-muted-foreground">Token</span>
+              <span className="font-medium text-right">{selectedTokenSymbol}</span>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-muted-foreground">Amount</span>
+              <span className="font-medium text-right tabular-nums">{normalizedAmount}</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-muted-foreground">Recipient</span>
+              <p className="font-mono text-[12px] break-all leading-relaxed">{sendForm.recipient}</p>
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-xl"
+              onClick={() => setConfirmOpen(false)}
+              disabled={sending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-10 rounded-xl"
+              disabled={sending}
+              onClick={() => {
+                setConfirmOpen(false);
+                void submitSend();
+              }}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div>
         <p className="text-eyebrow">MULTI-CHAIN</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">Wallet</h1>
@@ -406,13 +506,7 @@ export default function WalletPage() {
                       ? `Gas ${tx.gasFeeEth} ETH`
                       : "—";
 
-                    const explorerBase = tx.chainSymbol === "MATIC"
-                      ? "https://polygonscan.com"
-                      : tx.chainSymbol === "BSC"
-                      ? "https://bscscan.com"
-                      : tx.chainSymbol === "SOL"
-                      ? "https://solscan.io"
-                      : "https://etherscan.io";
+                    const explorerBase = getChainByIndex(Number(tx.chainIndex))?.explorer;
 
                     const iconBg = iconType === "in" ? "bg-emerald-50" : iconType === "approve" ? "bg-amber-50" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
                     const iconColor = iconType === "in" ? "text-emerald-600" : iconType === "approve" ? "text-amber-700" : iconType === "contract" ? "text-violet-600" : "text-primary";
@@ -461,7 +555,7 @@ export default function WalletPage() {
                         {/* Amount + link */}
                         <div className="text-right shrink-0">
                           <p className="text-[12px] font-medium tabular-nums text-foreground/80">{amountDisplay}</p>
-                          {tx.txHash && (
+                          {tx.txHash && explorerBase && (
                             <a
                               href={`${explorerBase}/tx/${tx.txHash}`}
                               target="_blank"
@@ -638,6 +732,7 @@ export default function WalletPage() {
                     />
                     <button
                       type="button"
+                      aria-label="Use maximum balance"
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary hover:text-primary transition-colors"
                       onClick={() => {
                         const chainBal = balancesByChain[parseInt(sendForm.chain)];
@@ -651,6 +746,9 @@ export default function WalletPage() {
                       MAX
                     </button>
                   </div>
+                  {sendForm.amount.length > 0 && !amountValid && (
+                    <p className="text-[12px] text-red-600">Enter a valid amount</p>
+                  )}
                 </div>
 
                 {/* Recipient */}
@@ -668,11 +766,14 @@ export default function WalletPage() {
                     }
                     required
                   />
+                  {sendForm.recipient.length > 0 && !recipientValid && (
+                    <p className="text-[12px] text-red-600">Invalid address</p>
+                  )}
                 </div>
 
                 <Button
                   type="submit"
-                  disabled={sending}
+                  disabled={sending || !amountValid || !recipientValid}
                   className="h-11 rounded-xl px-8 text-[14px] font-medium"
                 >
                   {sending ? (

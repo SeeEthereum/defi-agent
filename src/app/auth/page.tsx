@@ -15,7 +15,7 @@
  * so type, buttons and cards match it exactly.
  */
 
-import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import QRCode from "qrcode";
@@ -70,6 +70,7 @@ export default function AuthPage() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accepted = justAccepted || storedAccepted === true;
 
@@ -146,11 +147,21 @@ export default function AuthPage() {
     };
   }, [step, router]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(loginUrl);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch {
       setError("Could not copy. Select the link and copy it manually.");
     }
@@ -192,8 +203,9 @@ export default function AuthPage() {
                   <RiskDisclaimerText />
                 </div>
 
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", paddingTop: 14, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                <label htmlFor="auth-disclaimer-accept" style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", paddingTop: 14, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                   <input
+                    id="auth-disclaimer-accept"
                     type="checkbox"
                     checked={ticked}
                     onChange={(e) => setTicked(e.target.checked)}

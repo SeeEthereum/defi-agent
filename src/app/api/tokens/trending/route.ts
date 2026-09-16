@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tokenHotTokens } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // `token hot-tokens` is Basic ($0.0001/req post-quota). The trending list
 // rotates slowly (the time frame is at least 5m); 30s is plenty.
 const TRENDING_TTL_MS = 30_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("trending:" + currentSession().sid, 30, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain") || undefined;
@@ -38,16 +48,19 @@ export async function GET(request: NextRequest) {
         liquidity: t.liquidity ?? "0",
         holders: t.holders ?? "0",
         logo: t.tokenLogoUrl ?? t.logo ?? "",
+        // The swap page needs the real decimals to convert amounts; it
+        // refuses a token without them rather than assuming 18.
+        decimals:
+          t.decimals != null && t.decimals !== ""
+            ? Number(t.decimals)
+            : t.tokenDecimals != null && t.tokenDecimals !== ""
+              ? Number(t.tokenDecimals)
+              : null,
       }));
     });
 
     return NextResponse.json({ success: true, data: cleaned });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch trending tokens";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("tokens/trending", error, "Failed to fetch trending tokens");
   }
-}
+});

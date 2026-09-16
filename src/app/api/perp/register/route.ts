@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 import { hlRegisterCached, invalidateRegisterCache } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
+import { withSession } from "@/lib/session/session";
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const force = request.nextUrl.searchParams.get("force") === "true";
     if (force) invalidateRegisterCache();
     const result = await hlRegisterCached(force);
+    // hl_signing_address belongs to the session's own wallet.
     return respond(result);
   } catch (error) {
     return respondBinError(error, "Register check failed");
   }
-}
+});

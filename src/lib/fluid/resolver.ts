@@ -1,6 +1,6 @@
 import { getPublicClient } from "./client";
 import { lendingResolverAbi } from "./abis";
-import { LENDING_RESOLVER, getFTokensForChain } from "./constants";
+import { LENDING_RESOLVER, getFToken, getFTokensForChain } from "./constants";
 import { FLUID_CHAIN_IDS } from "@/lib/chains";
 import { bpsToPercent, toUiUnits } from "@/lib/utils";
 
@@ -29,12 +29,27 @@ export interface FluidUserPosition {
   underlyingAssetsUi: string;
 }
 
+function underlyingDecimalsFor(
+  chainIndex: number,
+  symbol: string,
+  tokenAddress: string,
+  fallback: number
+): number {
+  const bySymbol = getFToken(chainIndex, symbol);
+  if (bySymbol) return bySymbol.underlyingDecimals;
+  const byAddr = getFTokensForChain(chainIndex).find(
+    (ft) => ft.address === tokenAddress.toLowerCase()
+  );
+  return byAddr?.underlyingDecimals ?? fallback;
+}
+
 export async function getFluidMarkets(): Promise<FluidMarket[]> {
   const markets: FluidMarket[] = [];
   const chainNames: Record<number, string> = {
     1: "Ethereum",
     42161: "Arbitrum",
     8453: "Base",
+    137: "Polygon",
   };
 
   for (const chainIndex of FLUID_CHAIN_IDS) {
@@ -61,8 +76,15 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
 
       for (const entry of dataArray) {
         const symbol = entry.symbol as string;
-
-        const decimals = Number(entry.decimals);
+        const tokenAddress = (entry.tokenAddress as string).toLowerCase();
+        // fToken.decimals is the vault share decimals; asset amounts use the
+        // underlying token's decimals from the FTOKENS table.
+        const underlyingDecimals = underlyingDecimalsFor(
+          chainIndex,
+          symbol,
+          tokenAddress,
+          Number(entry.decimals)
+        );
         // Derive underlying symbol from fToken symbol (fUSDC -> USDC)
         const underlyingSymbol = symbol.startsWith("f") ? symbol.slice(1) : symbol;
 
@@ -74,15 +96,15 @@ export async function getFluidMarkets(): Promise<FluidMarket[]> {
         markets.push({
           chainIndex,
           chainName: chainNames[chainIndex] ?? `Chain ${chainIndex}`,
-          fTokenAddress: (entry.tokenAddress as string).toLowerCase(),
+          fTokenAddress: tokenAddress,
           symbol,
           underlyingSymbol,
-          underlyingDecimals: decimals,
+          underlyingDecimals,
           underlyingAddress: (entry.asset as string ?? "").toLowerCase(),
           supplyRatePercent,
           rewardsRatePercent,
           totalAprPercent: supplyRatePercent + rewardsRatePercent,
-          totalAssetsUi: toUiUnits(entry.totalAssets, decimals),
+          totalAssetsUi: toUiUnits(entry.totalAssets, underlyingDecimals),
         });
       }
     } catch (error: unknown) {
@@ -140,18 +162,24 @@ export async function getUserPositions(
 
           if (fTokenShares > 0n) {
             const symbol = entry.symbol as string;
-            const decimals = Number(entry.decimals);
+            const tokenAddress = fTokenAddr.toLowerCase();
+            const underlyingDecimals = underlyingDecimalsFor(
+              chainIndex,
+              symbol,
+              tokenAddress,
+              Number(entry.decimals)
+            );
             const underlyingSymbol = symbol.startsWith("f") ? symbol.slice(1) : symbol;
 
             positions.push({
               chainIndex,
-              fTokenAddress: fTokenAddr.toLowerCase(),
+              fTokenAddress: tokenAddress,
               symbol,
               underlyingSymbol,
-              underlyingDecimals: decimals,
+              underlyingDecimals,
               shares: fTokenShares.toString(),
               underlyingAssets: underlyingAssets.toString(),
-              underlyingAssetsUi: toUiUnits(underlyingAssets, decimals),
+              underlyingAssetsUi: toUiUnits(underlyingAssets, underlyingDecimals),
             });
           }
         } catch {

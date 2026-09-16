@@ -6,6 +6,7 @@
  */
 
 const BASE_URL = "https://li.quest/v1";
+const FETCH_TIMEOUT_MS = 10_000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,54 @@ export interface BridgeStatus {
   substatusMessage?: string;
 }
 
+// ── Fetch helpers ────────────────────────────────────────────────────────────
+
+function unexpected(label: string, body: unknown): never {
+  console.error(`[lifi/${label}]`, body);
+  throw new Error("Bridge service returned an unexpected response");
+}
+
+async function readJson(res: Response, label: string): Promise<unknown> {
+  const text = await res.text();
+  if (!res.ok) {
+    console.error(`[lifi/${label}]`, res.status, text);
+    throw new Error("Bridge service request failed");
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    unexpected(label, text);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isQuote(data: unknown): data is BridgeQuote {
+  if (!isRecord(data)) return false;
+  if (!isRecord(data.action) || !isRecord(data.estimate)) return false;
+  if (!isRecord(data.transactionRequest)) return false;
+  return (
+    typeof data.transactionRequest.to === "string" &&
+    typeof data.transactionRequest.data === "string"
+  );
+}
+
+function isStatus(data: unknown): data is BridgeStatus {
+  if (!isRecord(data)) return false;
+  return typeof data.status === "string" && isRecord(data.sending);
+}
+
+function isTokenMap(data: unknown): data is Record<string, BridgeToken[]> {
+  return isRecord(data);
+}
+
+const fetchInit: RequestInit = {
+  method: "GET",
+  headers: { Accept: "application/json" },
+};
+
 // ── API functions ────────────────────────────────────────────────────────────
 
 /**
@@ -126,6 +175,7 @@ export async function bridgeQuote(params: {
   toToken: string;
   fromAmount: string;
   fromAddress: string;
+  toAddress?: string;
 }): Promise<BridgeQuote> {
   const qs = new URLSearchParams({
     fromChain: params.fromChain,
@@ -135,25 +185,16 @@ export async function bridgeQuote(params: {
     fromAmount: params.fromAmount,
     fromAddress: params.fromAddress,
   });
+  if (params.toAddress) qs.set("toAddress", params.toAddress);
 
   const res = await fetch(`${BASE_URL}/quote?${qs.toString()}`, {
-    method: "GET",
-    headers: { Accept: "application/json" },
+    ...fetchInit,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    let message = `LI.FI quote error (${res.status})`;
-    try {
-      const json = JSON.parse(text);
-      message = json.message || json.error || message;
-    } catch {
-      // use default message
-    }
-    throw new Error(message);
-  }
-
-  return res.json();
+  const data = await readJson(res, "quote");
+  if (!isQuote(data)) unexpected("quote", data);
+  return data;
 }
 
 /**
@@ -167,17 +208,16 @@ export async function bridgeTokens(
   const res = await fetch(
     `${BASE_URL}/tokens?chains=${fromChain},${toChain}`,
     {
-      method: "GET",
-      headers: { Accept: "application/json" },
+      ...fetchInit,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     }
   );
 
-  if (!res.ok) {
-    throw new Error(`LI.FI tokens error (${res.status})`);
-  }
-
-  const data = await res.json();
-  return data.tokens ?? data;
+  const data = await readJson(res, "tokens");
+  if (!isRecord(data)) unexpected("tokens", data);
+  const tokens = data.tokens ?? data;
+  if (!isTokenMap(tokens)) unexpected("tokens", data);
+  return tokens;
 }
 
 /**
@@ -202,13 +242,11 @@ export async function bridgeStatus(
   if (bridge) qs.set("bridge", bridge);
 
   const res = await fetch(`${BASE_URL}/status?${qs.toString()}`, {
-    method: "GET",
-    headers: { Accept: "application/json" },
+    ...fetchInit,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!res.ok) {
-    throw new Error(`LI.FI status error (${res.status})`);
-  }
-
-  return res.json();
+  const data = await readJson(res, "status");
+  if (!isStatus(data)) unexpected("status", data);
+  return data;
 }

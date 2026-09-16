@@ -73,6 +73,19 @@ export function encodeWithdrawNative(
   });
 }
 
+/** Encode fWETH redeemNative calldata — burns shares, returns native coin */
+export function encodeRedeemNative(
+  shares: bigint,
+  receiver: `0x${string}`,
+  owner: `0x${string}`
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: fWethNativeAbi,
+    functionName: "redeemNative",
+    args: [shares, receiver, owner],
+  });
+}
+
 /** Parse UI amount string to raw wei/units based on token decimals */
 export function parseAmount(uiAmount: string, decimals: number): bigint {
   return parseUnits(uiAmount, decimals);
