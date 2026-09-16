@@ -1,4 +1,5 @@
 import { execFile, type ChildProcess } from "child_process";
+import { currentSession, onchainosEnv } from "@/lib/session/session";
 import { ONCHAINOS_BIN } from "./cli";
 
 /**
@@ -22,9 +23,9 @@ import { ONCHAINOS_BIN } from "./cli";
  * failing with "Invalid Authority" anyway, so there is nothing to race
  * with. It is the only command allowed to skip the lock.
  *
- * State is per-process and deliberately not persisted: a server restart
- * mid-login just means the operator starts over. Only one login may be in
- * flight — starting a new one kills the previous child.
+ * State is per session and deliberately not persisted: a server restart
+ * mid-login just means the operator starts over. One login may be in
+ * flight per session — starting a new one kills that session's previous child.
  */
 
 export type LoginPhase = "pending" | "done" | "error";
@@ -42,13 +43,20 @@ export interface LoginSession {
 // but don't leak a child process forever if they walk away.
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
-let current: LoginSession | null = null;
-let child: ChildProcess | null = null;
+const logins = new Map<string, { session: LoginSession; child: ChildProcess | null }>();
 
 /** Abort any in-flight login poll (called before starting a new one). */
 export function cancelLoginPoll(): void {
-  if (child && !child.killed) child.kill();
-  child = null;
+  const entry = logins.get(currentSession().sid);
+  if (!entry) return;
+  const c = entry.child;
+  if (c && c.exitCode === null && c.signalCode === null) {
+    c.kill("SIGTERM");
+    setTimeout(() => {
+      if (c.exitCode === null && c.signalCode === null) c.kill("SIGKILL");
+    }, 3000).unref();
+  }
+  entry.child = null;
 }
 
 /**
@@ -57,21 +65,33 @@ export function cancelLoginPoll(): void {
  * via getLoginSession().
  */
 export function startLoginPoll(authSessionId: string, loginUrl: string): LoginSession {
+  const user = currentSession();
   cancelLoginPoll();
 
-  current = { authSessionId, loginUrl, phase: "pending", startedAt: Date.now() };
-  const session = current;
+  const session: LoginSession = {
+    authSessionId,
+    loginUrl,
+    phase: "pending",
+    startedAt: Date.now(),
+  };
+  const entry: { session: LoginSession; child: ChildProcess | null } = {
+    session,
+    child: null,
+  };
+  logins.set(user.sid, entry);
 
-  child = execFile(
+  entry.child = execFile(
     ONCHAINOS_BIN,
     ["wallet", "login", "--phase", "poll", "--session-id", authSessionId],
     {
       timeout: POLL_TIMEOUT_MS,
-      env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+      env: onchainosEnv(user),
     },
     (error, stdout) => {
       // A newer login superseded this one — drop the stale result.
-      if (current !== session) return;
+      if (logins.get(user.sid)?.session !== session) return;
+      const current = logins.get(user.sid);
+      if (current) current.child = null;
 
       if (error) {
         session.phase = "error";
@@ -103,10 +123,11 @@ export function startLoginPoll(authSessionId: string, loginUrl: string): LoginSe
 }
 
 export function getLoginSession(): LoginSession | null {
-  return current;
+  return logins.get(currentSession().sid)?.session ?? null;
 }
 
 export function clearLoginSession(): void {
+  const sid = currentSession().sid;
   cancelLoginPoll();
-  current = null;
+  logins.delete(sid);
 }

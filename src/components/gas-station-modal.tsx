@@ -21,7 +21,7 @@
  * internal mechanism terms (7702 / delegation / relayer) out of the copy.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Modal } from "@/components/motion/modal";
 import type { GasStationConfirming, GasStationToken } from "@/lib/okx/types";
 
@@ -72,6 +72,11 @@ export function GasStationModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setSelected(null);
+    setError(null);
+  }, [open, chain, payload]);
+
   if (!payload) return null;
 
   const status = payload.status ?? "";
@@ -79,8 +84,12 @@ export function GasStationModal({
   const needsActivation = ACTIVATION_STATES.has(status);
   const pickable = payload.tokenList.filter((t) => t.sufficient !== false);
 
+  const selectedIsPickable =
+    selected != null &&
+    pickable.some((t) => t.feeTokenAddress === selected.feeTokenAddress);
+
   const confirm = async () => {
-    if (!selected) return;
+    if (!selectedIsPickable || !selected) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -211,7 +220,7 @@ export function GasStationModal({
               </button>
               <button
                 onClick={confirm}
-                disabled={!selected || submitting || pickable.length === 0}
+                disabled={!selectedIsPickable || submitting}
                 className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {submitting

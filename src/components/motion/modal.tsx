@@ -13,7 +13,7 @@
  */
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 interface ModalProps {
   open: boolean;
@@ -35,6 +35,13 @@ const CONTENT_SPRING = {
   mass: 0.7,
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusablesIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+}
+
 export function Modal({
   open,
   onClose,
@@ -43,13 +50,51 @@ export function Modal({
   contentClassName = "max-w-md",
   children,
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!open || !closeOnEscape || !onClose) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const nodes = focusablesIn(panel);
+    (nodes[0] ?? panel).focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (closeOnEscape && onClose) {
+          e.preventDefault();
+          onClose();
+        }
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const tabbable = focusablesIn(panel);
+      if (tabbable.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = tabbable[0];
+      const last = tabbable[tabbable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first || !panel.contains(document.activeElement)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last || !panel.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocusRef.current?.focus();
+    };
   }, [open, closeOnEscape, onClose]);
 
   return (
@@ -73,6 +118,10 @@ export function Modal({
           />
           {/* Content */}
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
             className={`relative w-full ${contentClassName}`}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

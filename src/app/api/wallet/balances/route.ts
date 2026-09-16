@@ -1,32 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletBalance } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
+import { z } from "zod";
+import {
+  apiError,
+  badRequest,
+  chainId,
+  tokenAddress,
+} from "@/lib/api/validation";
 
-export async function GET(request: NextRequest) {
+const querySchema = z.object({
+  chain: chainId.optional(),
+  tokenAddress: tokenAddress.optional(),
+});
+
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
-    const chain = searchParams.get("chain") ?? undefined;
-    const tokenAddress = searchParams.get("tokenAddress") ?? undefined;
+    const parsed = querySchema.parse({
+      chain: searchParams.get("chain") ?? undefined,
+      tokenAddress: searchParams.get("tokenAddress") ?? undefined,
+    });
 
-    // CLI --chain only accepts numeric chain IDs (e.g. "1", "56", "42161")
-    if (chain && !/^\d+$/.test(chain)) {
-      return NextResponse.json(
-        { success: false, error: "chain must be a numeric chain ID (e.g. 1, 56, 42161)" },
-        { status: 400 }
-      );
-    }
-
-    const force = searchParams.get("force") === "true";
     const all = searchParams.get("all") === "true";
+    const force = searchParams.get("force") === "true";
 
-    const result = await walletBalance(chain, tokenAddress, all, force);
+    const result = await walletBalance(
+      parsed.chain !== undefined ? String(parsed.chain) : undefined,
+      parsed.tokenAddress,
+      all,
+      force
+    );
 
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch balances";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("wallet/balances", error, "Request failed");
   }
-}
+});

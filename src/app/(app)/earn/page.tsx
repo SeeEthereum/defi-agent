@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useFluidMarkets, useFluidPositions } from "@/hooks/use-fluid-markets";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,31 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle2, TrendingUp, Layers } from "lucide-react";
 import { TokenIcon } from "@/components/token-icon";
 import type { FluidMarket, FluidUserPosition } from "@/lib/fluid/resolver";
+
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
+
+function normalizeAmount(raw: string): string {
+  return raw.trim().replace(",", ".");
+}
+
+function isValidAmount(raw: string): boolean {
+  const normalized = normalizeAmount(raw);
+  return DECIMAL_AMOUNT_RE.test(normalized) && Number(normalized) > 0;
+}
+
+function userFacingError(detail: unknown, fallback: string): string {
+  const message =
+    typeof detail === "string"
+      ? detail
+      : detail instanceof Error
+        ? detail.message
+        : "";
+  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
+    return message;
+  }
+  return fallback;
+}
 
 const CHAIN_TABS = [
   { id: "all", label: "All" },
@@ -40,7 +65,7 @@ const RPC_URLS: Record<number, string> = {
 /** Poll eth_getTransactionReceipt until confirmed or timeout (60s) */
 async function waitForReceipt(txHash: string, chainIndex: number): Promise<boolean> {
   const rpcUrl = RPC_URLS[chainIndex];
-  if (!rpcUrl || !txHash) return true;
+  if (!rpcUrl || !txHash) return false;
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
@@ -59,7 +84,7 @@ async function waitForReceipt(txHash: string, chainIndex: number): Promise<boole
       if (json.result?.status === "0x0") return false; // reverted
     } catch {}
   }
-  return true; // timeout — proceed anyway
+  return false;
 }
 
 // ─── Supply Dialog ──────────────────────────────────────────────────────────
@@ -77,9 +102,18 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
   const [approveTxHash, setApproveTxHash] = useState("");
   const [depositTxHash, setDepositTxHash] = useState("");
   const [open, setOpen] = useState(false);
+  const [approveFailed, setApproveFailed] = useState(false);
+  const approveRef = useRef(false);
+  const supplyRef = useRef(false);
+  const amountValid = isValidAmount(amount);
+  const walletReady = EVM_ADDRESS_RE.test(walletAddress);
+  const supplyAmountId = `supply-amount-${market.chainIndex}-${market.fTokenAddress}`;
 
   const handleApprove = async () => {
-    if (!amount) return;
+    if (approveRef.current) return;
+    if (!amountValid || !walletReady) return;
+    approveRef.current = true;
+    setApproveFailed(false);
     setStep("approving");
     try {
       const res = await fetch("/api/earn/approve", {
@@ -87,7 +121,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fTokenSymbol: market.symbol,
-          amount,
+          amount: normalizeAmount(amount),
           chainIndex: market.chainIndex,
           walletAddress,
           // Pass live addresses from the resolver to override stale constants
@@ -98,22 +132,38 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Approve failed");
-      const txHash = data.data?.approveTxHash ?? "";
+      // The route answers `alreadyApproved` (with no hash) when the existing
+      // allowance already covers this amount — nothing to wait for.
+      if (data.data?.alreadyApproved) {
+        setStep("approved");
+        toast.success("Already approved! Now click Supply.");
+        return;
+      }
+      const txHash = data.data?.txHash ?? "";
       setApproveTxHash(txHash);
       setStep("waiting_approve");
       toast.info("Waiting for approval to confirm on-chain...");
       // Wait for the approve tx to be mined before enabling Supply
       const confirmed = await waitForReceipt(txHash, market.chainIndex);
-      if (!confirmed) throw new Error("Approval transaction reverted on-chain");
+      if (!confirmed) {
+        setApproveFailed(true);
+        return;
+      }
       setStep("approved");
       toast.success("Approval confirmed! Now click Supply.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Approve failed");
+      console.error(e);
+      toast.error(userFacingError(e, "Supply failed"));
       setStep("idle");
+    } finally {
+      approveRef.current = false;
     }
   };
 
   const handleSupply = async () => {
+    if (supplyRef.current) return;
+    if (!amountValid || !walletReady) return;
+    supplyRef.current = true;
     setStep("supplying");
     try {
       const res = await fetch("/api/earn/supply", {
@@ -121,7 +171,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fTokenSymbol: market.symbol,
-          amount,
+          amount: normalizeAmount(amount),
           chainIndex: market.chainIndex,
           walletAddress,
           // Pass live addresses from the resolver to override stale constants
@@ -136,8 +186,11 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
       setStep("done");
       toast.success(`Deposited! Tx: ${data.data?.depositTxHash ?? "pending"}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Supply failed");
+      console.error(e);
+      toast.error(userFacingError(e, "Supply failed"));
       setStep("approved"); // allow retry
+    } finally {
+      supplyRef.current = false;
     }
   };
 
@@ -146,6 +199,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
     setStep("idle");
     setApproveTxHash("");
     setDepositTxHash("");
+    setApproveFailed(false);
   };
 
   const isWaiting = step === "waiting_approve";
@@ -178,10 +232,11 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
 
           {/* Amount input */}
           <div className="space-y-2">
-            <Label className="text-[13px] font-medium text-foreground/80">
+            <Label htmlFor={supplyAmountId} className="text-[13px] font-medium text-foreground/80">
               Amount ({market.underlyingSymbol})
             </Label>
             <Input
+              id={supplyAmountId}
               type="text"
               placeholder="100"
               className="h-11 rounded-xl border-border/60 text-[15px] placeholder:text-muted-foreground/50"
@@ -189,16 +244,19 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
               onChange={(e) => setAmount(e.target.value)}
               disabled={step !== "idle"}
             />
+            {amount.length > 0 && !amountValid && (
+              <p className="text-[12px] text-red-600">Enter a valid amount</p>
+            )}
           </div>
 
           {/* 2-step progress */}
           <div className="flex items-center gap-3">
             <div className={`flex items-center gap-1.5 text-[12px] font-medium ${
-              approveComplete ? "text-emerald-600" : isWaiting ? "text-amber-700" : "text-foreground/60"
+              approveComplete ? "text-emerald-600" : isWaiting && !approveFailed ? "text-amber-700" : "text-foreground/60"
             }`}>
               {approveComplete
                 ? <CheckCircle2 className="h-3.5 w-3.5" />
-                : isWaiting
+                : isWaiting && !approveFailed
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <span className="h-3.5 w-3.5 rounded-full border-2 border-current flex items-center justify-center text-[9px]">1</span>
               }
@@ -217,7 +275,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
           </div>
 
           {/* Waiting for approval confirmation */}
-          {isWaiting && (
+          {isWaiting && !approveFailed && (
             <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
               <Loader2 className="h-3.5 w-3.5 text-amber-700 animate-spin shrink-0" />
               <p className="text-[12px] text-amber-700">
@@ -226,6 +284,11 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
                   <span className="ml-1 font-mono">({approveTxHash.slice(0, 8)}…)</span>
                 )}
               </p>
+            </div>
+          )}
+          {isWaiting && approveFailed && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+              <p className="text-[12px] text-red-600">Approval not confirmed, try again</p>
             </div>
           )}
 
@@ -246,7 +309,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
           ) : step === "idle" || step === "approving" ? (
             <Button
               className="w-full h-11 rounded-xl text-[14px] font-medium"
-              disabled={step === "approving" || !amount}
+              disabled={step === "approving" || !amountValid || !walletReady}
               onClick={handleApprove}
             >
               {step === "approving" ? (
@@ -256,11 +319,21 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
               ) : `1. Approve ${amount || "0"} ${market.underlyingSymbol}`}
             </Button>
           ) : step === "waiting_approve" ? (
-            <Button className="w-full h-11 rounded-xl text-[14px] font-medium" disabled>
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Waiting for confirmation…
-              </span>
-            </Button>
+            approveFailed ? (
+              <Button
+                className="w-full h-11 rounded-xl text-[14px] font-medium"
+                disabled={!amountValid || !walletReady}
+                onClick={handleApprove}
+              >
+                Retry
+              </Button>
+            ) : (
+              <Button className="w-full h-11 rounded-xl text-[14px] font-medium" disabled>
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Waiting for confirmation…
+                </span>
+              </Button>
+            )
           ) : (
             <div className="space-y-3">
               {approveTxHash && (
@@ -276,7 +349,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
               )}
               <Button
                 className="w-full h-11 rounded-xl text-[14px] font-medium"
-                disabled={step === "supplying"}
+                disabled={step === "supplying" || !amountValid || !walletReady}
                 onClick={handleSupply}
               >
                 {step === "supplying" ? (
@@ -313,10 +386,18 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
   const [txHash, setTxHash] = useState("");
   const [done, setDone] = useState(false);
   const [open, setOpen] = useState(false);
+  const withdrawRef = useRef(false);
+  const amountValid = isValidAmount(amount);
+  const walletReady = EVM_ADDRESS_RE.test(walletAddress);
+  const withdrawAmountId = `withdraw-amount-${position.chainIndex}-${position.fTokenAddress}`;
 
   const handleWithdraw = async (isAll = false) => {
-    const withdrawAmount = isAll ? position.underlyingAssetsUi : amount;
+    if (withdrawRef.current) return;
+    const withdrawAmount = isAll ? position.underlyingAssetsUi : normalizeAmount(amount);
+    if (!walletReady) return;
+    if (!isAll && !amountValid) return;
     if (!withdrawAmount) return;
+    withdrawRef.current = true;
     setLoading(true);
     try {
       const res = await fetch("/api/earn/withdraw", {
@@ -340,8 +421,10 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
       toast.success("Withdrawal submitted!");
       onSuccess();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Withdraw failed");
+      console.error(e);
+      toast.error(userFacingError(e, "Withdrawal failed"));
     } finally {
+      withdrawRef.current = false;
       setLoading(false);
     }
   };
@@ -413,11 +496,12 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
             <>
               {/* Amount input */}
               <div className="space-y-2">
-                <Label className="text-[13px] font-medium text-foreground/80">
+                <Label htmlFor={withdrawAmountId} className="text-[13px] font-medium text-foreground/80">
                   Amount ({position.underlyingSymbol})
                 </Label>
                 <div className="relative">
                   <Input
+                    id={withdrawAmountId}
                     type="text"
                     placeholder="0.00"
                     className="h-11 rounded-xl border-border/60 text-[15px] pr-14 placeholder:text-muted-foreground/50"
@@ -427,18 +511,22 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
                   />
                   <button
                     type="button"
+                    aria-label="Use maximum balance"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary hover:text-primary/80 cursor-pointer"
                     onClick={() => setAmount(maxAmount)}
                   >
                     MAX
                   </button>
                 </div>
+                {amount.length > 0 && !amountValid && (
+                  <p className="text-[12px] text-red-600">Enter a valid amount</p>
+                )}
               </div>
 
               <div className="flex gap-2">
                 <Button
                   className="flex-1 h-11 rounded-xl text-[13px] font-medium"
-                  disabled={loading || !amount}
+                  disabled={loading || !amountValid || !walletReady}
                   onClick={() => handleWithdraw(false)}
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Withdraw ${amount || ""}`}
@@ -446,7 +534,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
                 <Button
                   variant="outline"
                   className="h-11 rounded-xl text-[13px] font-medium border-border/60"
-                  disabled={loading}
+                  disabled={loading || !walletReady}
                   onClick={() => handleWithdraw(true)}
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "All"}

@@ -1,29 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { securityApprovals } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
+import { z } from "zod";
+import {
+  apiError,
+  badRequest,
+  chainId,
+  evmAddress,
+} from "@/lib/api/validation";
 
-export async function GET(request: NextRequest) {
+const querySchema = z.object({
+  address: evmAddress,
+  chain: chainId.optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  cursor: z.string().min(1).max(256).regex(/^\S+$/).optional(),
+});
+
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
-    const address = searchParams.get("address");
-    const chain = searchParams.get("chain") ?? undefined;
-    const limit = searchParams.get("limit") ?? undefined;
-    const cursor = searchParams.get("cursor") ?? undefined;
+    const parsed = querySchema.parse({
+      address: searchParams.get("address") ?? undefined,
+      chain: searchParams.get("chain") ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
+      cursor: searchParams.get("cursor") ?? undefined,
+    });
 
-    if (!address) {
-      return NextResponse.json(
-        { success: false, error: "address parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    const result = await securityApprovals({ address, chain, limit, cursor });
+    const result = await securityApprovals({
+      address: parsed.address,
+      chain: parsed.chain !== undefined ? String(parsed.chain) : undefined,
+      limit: parsed.limit !== undefined ? String(parsed.limit) : undefined,
+      cursor: parsed.cursor,
+    });
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Approvals query failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("security/approvals", error, "Request failed");
   }
-}
+});

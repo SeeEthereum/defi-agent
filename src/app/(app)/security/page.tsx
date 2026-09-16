@@ -1,10 +1,31 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CHAINS } from "@/lib/chains";
+
+function userFacingError(detail: unknown, fallback: string): string {
+  const message =
+    typeof detail === "string"
+      ? detail
+      : detail instanceof Error
+        ? detail.message
+        : "";
+  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
+    return message;
+  }
+  return fallback;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -200,10 +221,11 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
       {/* Chain selector (wallet mode — required) */}
       {mode === "wallet" && (
         <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">
+          <Label htmlFor="scan-chain" className="text-[13px] font-medium text-muted-foreground mb-2">
             Select chain
-          </p>
+          </Label>
           <select
+            id="scan-chain"
             className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
             value={chain}
             onChange={(e) => setChain(e.target.value)}
@@ -220,10 +242,11 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
       {/* Manual token input */}
       {mode === "manual" && (
         <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">
+          <Label htmlFor="scan-tokens" className="text-[13px] font-medium text-muted-foreground mb-2">
             Token list (chainId:address, comma-separated)
-          </p>
+          </Label>
           <Input
+            id="scan-tokens"
             placeholder="e.g. 1:0xdac17f958d2ee523a2206206994597c13d831ec7"
             value={manualTokens}
             onChange={(e) => setManualTokens(e.target.value)}
@@ -390,6 +413,14 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
 
 // ── Approvals Tab ────────────────────────────────────────────────────────────
 
+interface RevokePending {
+  tokenAddr: string;
+  spender: string;
+  chainIdx: number;
+  symbol: string;
+  chainName: string;
+}
+
 function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
   const [chain, setChain] = useState("");
   const [loading, setLoading] = useState(false);
@@ -399,9 +430,13 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
   const [revokingKey, setRevokingKey] = useState<string | null>(null);
   const [revokedKeys, setRevokedKeys] = useState<Set<string>>(new Set());
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<RevokePending | null>(null);
+  const revokingRef = useRef(false);
 
   const handleRevoke = useCallback(
     async (tokenAddr: string, spenderAddr: string, chainIdx: number) => {
+      if (revokingRef.current) return;
+      revokingRef.current = true;
       const key = `${tokenAddr}-${spenderAddr}-${chainIdx}`;
       setRevokingKey(key);
       setRevokeError(null);
@@ -419,11 +454,14 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
         if (data.success) {
           setRevokedKeys((prev) => new Set(prev).add(key));
         } else {
-          setRevokeError(data.error || "Revoke failed");
+          console.error(data.error);
+          setRevokeError(userFacingError(data.error, "Revoke failed"));
         }
-      } catch {
-        setRevokeError("Failed to connect to the server");
+      } catch (e) {
+        console.error(e);
+        setRevokeError(userFacingError(e, "Revoke failed"));
       } finally {
+        revokingRef.current = false;
         setRevokingKey(null);
       }
     },
@@ -480,10 +518,11 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
     <div className="space-y-5">
       {/* Chain filter */}
       <div>
-        <p className="text-[13px] font-medium text-muted-foreground mb-2">
+        <Label htmlFor="approvals-chain" className="text-[13px] font-medium text-muted-foreground mb-2">
           Filter by chain (optional)
-        </p>
+        </Label>
         <select
+          id="approvals-chain"
           className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
           value={chain}
           onChange={(e) => setChain(e.target.value)}
@@ -643,7 +682,13 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                     <div className="pt-1">
                       <Button
                         onClick={() =>
-                          handleRevoke(tokenAddr, spender, Number(chainIdx))
+                          setConfirmRevoke({
+                            tokenAddr,
+                            spender,
+                            chainIdx: Number(chainIdx),
+                            symbol,
+                            chainName: networkName ?? getChainName(chainIdx),
+                          })
                         }
                         disabled={isRevoking || !!revokingKey}
                         variant="outline"
@@ -681,6 +726,53 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
           })}
         </div>
       )}
+
+      <Dialog open={confirmRevoke !== null} onOpenChange={(open) => { if (!open) setConfirmRevoke(null); }}>
+        <DialogContent className="rounded-2xl sm:rounded-2xl border-border/60 shadow-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm revoke</DialogTitle>
+          </DialogHeader>
+          {confirmRevoke && (
+            <div className="space-y-3 text-[13px]">
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Token</span>
+                <span className="font-medium text-right">{confirmRevoke.symbol}</span>
+              </div>
+              <div className="space-y-1">
+                <span className="text-muted-foreground">Spender</span>
+                <p className="font-mono text-[12px] break-all leading-relaxed">{confirmRevoke.spender}</p>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Chain</span>
+                <span className="font-medium text-right">{confirmRevoke.chainName}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-xl"
+              onClick={() => setConfirmRevoke(null)}
+              disabled={!!revokingKey}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-10 rounded-xl"
+              disabled={!!revokingKey || !confirmRevoke}
+              onClick={() => {
+                const item = confirmRevoke;
+                setConfirmRevoke(null);
+                if (item) void handleRevoke(item.tokenAddr, item.spender, item.chainIdx);
+              }}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -176,15 +176,41 @@ No seed phrases. No browser extensions. Sign in with Google, Apple or email and 
 
 ## Security
 
+### Wallet isolation
+
+- **One wallet per browser session** — every browser gets a signed, `httpOnly` session cookie and its own private onchainos keystore (`ONCHAINOS_HOME` per session, file keyring forced on). One user's sign-in, keystore and signing key are never visible to another.
+- **No ambient authority** — every API route runs inside a verified session (`withSession`). A request without a valid session cookie gets 401, and a call made outside a session context fails closed instead of falling back to a shared wallet.
+- **CSRF protection** — `src/proxy.ts` rejects any state-changing API call whose `Origin` is missing or does not match the host.
+- **Session hygiene** — logout wipes the keystore directory and the cookie; abandoned login directories are swept after 2 hours, inactive keystores after 30 days.
+
+### Transaction safety
+
 - **TEE custody** — private keys are generated and stored inside OKX's hardware enclave. They are never exposed to the server, the frontend, or the user.
-- **No seed phrases** — wallet access is tied to your email. No mnemonic to lose or get stolen.
-- **Pre-execution scanning** — every swap transaction is analyzed for malicious contracts, rug pulls, and suspicious activity before signing.
-- **Token safety scanning** — detect honeypots, high tax tokens, mint/pause risks, and rug pull indicators before you trade.
-- **Approval management** — view and identify risky ERC-20/Permit2 approvals that should be revoked.
-- **DApp phishing detection** — scan URLs for known phishing sites and blacklisted domains.
+- **No seed phrases** — sign in with Google, Apple or email. No mnemonic to lose or get stolen.
+- **The server picks the address** — the recipient of a swap, the sender of a bridge and the destination of a Hyperliquid withdrawal always come from the signed-in session, never from the request body.
+- **Quote binding** — a quote route issues a one-minute, session-scoped quote id; the matching execute route refuses to sign without it, and refuses again if the price moved more than 1% since the quote.
+- **Exact-amount approvals** — ERC-20 approvals cover only the amount being spent, with the existing allowance checked first (and the USDT zero-reset handled).
+- **Spender checks** — a bridge is signed only when the quote's target contract and its approval spender match the request that produced it.
+- **Pre-execution scanning** — every swap is analyzed for malicious contracts and rug pulls before signing, and a scan that fails to answer blocks the transaction instead of waving it through.
+- **Strict input validation** — amounts must be plain positive numbers (no exponent, no negative, comma accepted and normalized), addresses must be real EVM addresses, chains must be supported, slippage is capped at 5%.
+- **Explicit confirmations** — sending, supplying, withdrawing, revoking, opening and closing a position all require a confirmation showing the exact parameters, and double submission is blocked.
 - **MEV protection** — optional sandwich attack prevention on supported chains.
-- **Slippage guards** — configurable tolerance to prevent excessive price impact losses.
-- **ERC-8021 attribution** — all transactions include a Builder Code suffix for on-chain attribution (zero execution cost, feature-flaggable).
+- **ERC-8021 attribution** — transactions carry a Builder Code suffix for on-chain attribution (zero execution cost, feature-flaggable).
+
+### AI safety
+
+- **The agent never signs** — it can only propose an action; the transaction leaves only after you confirm it in the UI.
+- **Proposals are validated server-side** — every parameter the model produces is re-checked against the same schemas the execution routes use.
+- **Prompt-injection resistant** — tool results are treated as untrusted data, and the system prompt forbids acting on instructions found inside them.
+- **Bounded cost** — the tool loop is capped, each turn has a timeout, and the chat endpoint is rate-limited per session.
+
+### Other
+
+- **Token safety scanning** — honeypots, high tax tokens, mint/pause risks and rug pull indicators.
+- **Approval management** — view and revoke risky ERC-20/Permit2 approvals.
+- **DApp phishing detection** — scan URLs for known phishing sites and blacklisted domains.
+- **Quota protection** — the paid market endpoints are rate-limited per session (20-60 requests per minute depending on the route).
+- **Errors stay inside** — CLI stderr, file paths and upstream bodies are logged server-side; the client only sees messages it can act on.
 
 ---
 
@@ -207,9 +233,31 @@ OKX_PASSPHRASE=your_passphrase
 OKX_PROJECT_ID=your_project_id
 OPENAI_API_KEY=your_openai_key
 
+# Signs the per-browser session cookie (required in production, 32+ chars)
+SESSION_SECRET=output_of_openssl_rand_hex_32
+
+# Optional: where each session's private onchainos keystore lives
+# (default ./.data/sessions — use a persistent disk to survive restarts)
+# ONCHAINOS_SESSIONS_DIR=/var/data/sessions
+
+# Optional: extra origins allowed to call state-changing APIs
+# ALLOWED_ORIGINS=https://app.example.com
+
+# Optional: enables GET /api/debug/health with header x-debug-token
+# DEBUG_HEALTH_TOKEN=some-long-random-value
+
 # Optional: disable ERC-8021 Builder Code suffix injection
 # OKX_BUILDER_CODE_DISABLED=true
 ```
+
+### Multi-user notes
+
+Each browser session has its own wallet — a private onchainos keystore under `ONCHAINOS_SESSIONS_DIR`. Two consequences:
+
+- The app must run as a **single instance**: locks and in-flight login state live in process memory and are not shared across replicas.
+- The sessions directory defaults to `./.data/sessions`, inside the build directory. On a host without a persistent disk (Render's free plan, for example) **every deploy signs all users out** and they sign in again with OKX. Mount a disk and point `ONCHAINOS_SESSIONS_DIR` at it to avoid that.
+
+`SESSION_SECRET` must stay stable: rotating it invalidates every session cookie and signs everyone out.
 
 ### Install & Run
 
@@ -223,6 +271,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Deploy
 
 The app is configured for deployment on [Render](https://render.com). Push to `main` and Render will auto-deploy.
+
+Before the first deploy, set the secrets in the Render dashboard (`OKX_*`, `OPENAI_API_KEY`) and make sure `SESSION_SECRET` exists — `render.yaml` generates it, but a service created before it was added needs it set by hand. In production the app refuses to sign session cookies without it. Keep the service on a single instance.
 
 ---
 
@@ -242,8 +292,9 @@ src/
 │       ├── ai/               # AI Assistant chat
 │       ├── security/         # Token scanner + Approvals manager + Revoke
 │       └── signals/          # Smart money signals + Leaderboard
+├── proxy.ts                  # Session cookie + CSRF origin check (Next 16 proxy)
 ├── app/api/
-│   ├── auth/                 # login, verify, status, logout
+│   ├── auth/                 # login, poll, status, logout
 │   ├── wallet/               # balances, addresses, send, history, accounts
 │   ├── swap/                 # quote, approve, execute
 │   ├── earn/                 # markets, positions, supply, withdraw, approve
@@ -256,8 +307,16 @@ src/
 │   ├── leaderboard/          # top trader rankings
 │   ├── tracker/              # address activity tracker
 │   ├── tokens/               # search, trending
+│   ├── perp/                 # Hyperliquid: markets, order, close, tpsl, deposit, withdraw
 │   └── portfolio/pnl/        # DEX PnL overview
 ├── lib/
+│   ├── session/
+│   │   ├── session.ts        # Per-session keystore, withSession, sweep
+│   │   └── token.ts          # Signed session cookie
+│   ├── api/
+│   │   ├── validation.ts     # Shared zod schemas + safe error mapping
+│   │   ├── quote-store.ts    # Quote id binding for swap and bridge
+│   │   └── rate-limit.ts     # Per-session request budgets
 │   ├── ai/
 │   │   ├── orchestrator.ts   # GPT-4.1 agentic loop (27 tools)
 │   │   ├── tools.ts          # Tool definitions
@@ -269,6 +328,7 @@ src/
 │   │   └── types.ts          # TypeScript interfaces
 │   ├── bridge/
 │   │   └── lifi.ts           # LI.FI bridge aggregator client
+│   ├── hyperliquid/          # Perp trading: signer, markets, order math
 │   ├── fluid/
 │   │   ├── constants.ts      # fToken addresses & configs
 │   │   ├── abis.ts           # ERC-4626 & resolver ABIs
@@ -286,6 +346,8 @@ src/
 
 ## API Endpoints
 
+Every endpoint requires the session cookie, and every state-changing call must carry a same-origin `Origin` header. `/api/swap/execute` and `/api/bridge/execute` also require the `quoteId` returned by the matching quote endpoint.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/auth/login` | Start browser sign-in, returns the OKX login URL |
@@ -298,10 +360,10 @@ src/
 | POST | `/api/wallet/send` | Send tokens |
 | GET | `/api/wallet/history` | Transaction history |
 | GET | `/api/wallet/accounts` | List wallet accounts |
-| POST | `/api/swap/quote` | Get swap quote |
+| POST | `/api/swap/quote` | Get swap quote, returns `quoteId` |
 | POST | `/api/swap/approve` | Approve token for swap |
 | POST | `/api/swap/execute` | Execute swap |
-| GET | `/api/bridge/quote` | Cross-chain bridge quote |
+| GET | `/api/bridge/quote` | Cross-chain bridge quote, returns `quoteId` |
 | POST | `/api/bridge/execute` | Execute cross-chain bridge |
 | GET | `/api/bridge/tokens` | Available bridge tokens per chain |
 | GET | `/api/bridge/status` | Bridge transaction status |
@@ -324,6 +386,18 @@ src/
 | GET | `/api/tokens/search` | Token search |
 | GET | `/api/tokens/trending` | Trending tokens |
 | GET | `/api/portfolio/pnl` | Portfolio PnL overview |
+| GET | `/api/perp/markets` | Hyperliquid markets with live mids and max leverage |
+| GET | `/api/perp/positions` | Open perp positions |
+| GET | `/api/perp/orders` | Open perp orders |
+| GET | `/api/perp/prices` | Perp mid prices |
+| GET | `/api/perp/quickstart` | Perp onboarding state for this session |
+| GET | `/api/perp/register` | Signing address registration state |
+| POST | `/api/perp/order` | Place a perp order |
+| POST | `/api/perp/close` | Close a position (reduce-only) |
+| POST | `/api/perp/cancel` | Cancel an order |
+| POST | `/api/perp/tpsl` | Set take-profit / stop-loss |
+| POST | `/api/perp/deposit` | Deposit USDC from Arbitrum |
+| POST | `/api/perp/withdraw` | Withdraw USDC to your own address |
 
 ---
 

@@ -23,6 +23,18 @@ describe("roundSize", () => {
   it("handles integer sizes for szDecimals=0", () => {
     expect(roundSize(42, 0)).toBe("42");
   });
+
+  it("does not lose a tenth to float multiply (1.14 * 100 is 113.999...)", () => {
+    expect(roundSize(1.14, 2)).toBe("1.14");
+  });
+
+  it("truncates 0.999 to 2 decimals without rounding up", () => {
+    expect(roundSize(0.999, 2)).toBe("0.99");
+  });
+
+  it("formats an integer size at szDecimals=0", () => {
+    expect(roundSize(10, 0)).toBe("10");
+  });
 });
 
 describe("roundPrice", () => {
@@ -47,6 +59,19 @@ describe("roundPrice", () => {
   it("low-magnitude tokens get the (6 - szDecimals) decimal cap, not unlimited precision", () => {
     // szDecimals=0 → max 6 decimals. Five sigfigs would require 7+, but cap wins.
     expect(roundPrice(0.0000123, 0)).toBe("0.000012");
+  });
+
+  it("integer prices above 5 sigfigs round to the nearest 10 (BTC szDecimals=5)", () => {
+    expect(roundPrice(108234.5, 5)).toBe("108230");
+  });
+
+  it("ETH-magnitude prices keep 5 sigfigs (2345.67 → 2345.7 at szDecimals=4)", () => {
+    expect(roundPrice(2345.67, 4)).toBe("2345.7");
+  });
+
+  it("low-magnitude 5-sigfig value is then printed at the (6 - szDecimals) cap", () => {
+    // 5 sigfigs want 7 decimals; the 6-decimal cap prints via toFixed.
+    expect(roundPrice(0.0012345, 0)).toBe("0.001234");
   });
 
   it("returns input as string for non-finite or non-positive prices (defensive)", () => {

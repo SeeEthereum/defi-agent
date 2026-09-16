@@ -1,6 +1,6 @@
 # onchainos CLI — upgrade notes & deliberate skip-list
 
-Last reviewed: **2026-09-14** against `onchainos-cli@v4.6.0`.
+Last reviewed: **2026-09-16** against `onchainos-cli@v4.6.0`.
 
 The `onchainos` binary is pinned in `scripts/install-onchainos.sh:LATEST`. This
 doc tracks two things:
@@ -9,6 +9,33 @@ doc tracks two things:
 2. Which net-new features in the latest release we **deliberately skip**, and
    why — so a future contributor doesn't waste time re-evaluating them from
    scratch.
+
+---
+
+## 2026-09-16 — Per-session ONCHAINOS_HOME
+
+Each browser session owns a private onchainos home at
+`<ONCHAINOS_SESSIONS_DIR>/<sid>` (default `./.data/sessions/<sid>`). Route
+handlers run inside `withSession`, which verifies the signed cookie and
+points every CLI child at that directory via `ONCHAINOS_HOME` and `HOME`.
+
+The file keyring is forced on (`ONCHAINOS_FORCE_FILE_KEYRING=1`) so a
+headless deploy never tries the OS keychain. `ONCHAINOS_NO_BROWSER=1`
+keeps the binary from opening a local browser.
+
+Abandoned session directories are swept lazily from `withSession` (at most
+once every six hours). A directory whose name matches the session-id
+pattern is deleted when the newest mtime of the directory and the files
+directly inside it is older than:
+
+- **30 days** if it contains `wallets.json` (a real logged-in keystore)
+- **2 hours** if it does not (an abandoned login attempt)
+
+Filesystem errors during the sweep are swallowed so they cannot take down
+a request. Paid Market read routes (`/api/market/{price,kline}`,
+`/api/tokens/{search,trending}`, `/api/signals`, `/api/tracker`,
+`/api/leaderboard`, `/api/portfolio/pnl`) also apply a per-session
+in-process rate limit and answer `429` before any CLI call.
 
 ---
 
