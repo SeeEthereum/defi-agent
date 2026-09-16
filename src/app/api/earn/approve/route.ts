@@ -1,57 +1,117 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
 import { encodeApprove, parseAmount } from "@/lib/fluid/ftokens";
-import { getFToken } from "@/lib/fluid/constants";
-import { FLUID_CHAIN_IDS } from "@/lib/chains";
+import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
+import { getPublicClient } from "@/lib/fluid/client";
+import { erc20Abi } from "@/lib/fluid/abis";
+import { withSession } from "@/lib/session/session";
+import {
+  decimalAmount,
+  chainId as chainIdSchema,
+  badRequest,
+  apiError,
+  sessionEvmAddress,
+} from "@/lib/api/validation";
 import { z } from "zod";
+
+const USDT_ADDRESSES = new Set([
+  "0xdac17f958d2ee523a2206206994597c13d831ec7", // Ethereum
+  "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", // Arbitrum
+  "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // Polygon
+  "0x55d398326f99059ff775485246999027b3197955", // BNB Chain
+]);
 
 const schema = z.object({
   fTokenSymbol: z.string().min(1),
-  amount: z.string().min(1),
-  chainIndex: z.number().refine((n) => FLUID_CHAIN_IDS.includes(n)),
-  fTokenAddress: z.string().regex(/^0x[0-9a-f]{40}$/).optional(),
-  underlyingAddress: z.string().regex(/^0x[0-9a-f]{40}$/).optional(),
-  decimals: z.number().optional(),
+  amount: decimalAmount,
+  chainIndex: chainIdSchema,
 });
 
-export async function POST(request: NextRequest) {
+function txHashOf(data: unknown): `0x${string}` | null {
+  if (typeof data === "string" && data.startsWith("0x")) {
+    return data as `0x${string}`;
+  }
+  if (data && typeof data === "object") {
+    const rec = data as {
+      txHash?: string;
+      hash?: string;
+      transactionHash?: string;
+    };
+    const hash = rec.txHash ?? rec.hash ?? rec.transactionHash;
+    if (hash?.startsWith("0x")) return hash as `0x${string}`;
+  }
+  return null;
+}
+
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex, fTokenAddress, underlyingAddress, decimals } =
-      schema.parse(body);
+    const { fTokenSymbol, amount, chainIndex: chainId } = schema.parse(body);
 
-    // ALWAYS prefer hardcoded lookup — it's verified on-chain per chain
-    const fToken = getFToken(chainIndex, fTokenSymbol);
-    const tokenAddress = fToken?.address ?? fTokenAddress;
-    const tokenUnderlying = fToken?.underlying ?? underlyingAddress;
-    const tokenDecimals = fToken?.underlyingDecimals ?? decimals;
-
-    console.log(`[Earn/Approve] chain=${chainIndex} symbol=${fTokenSymbol} fToken=${tokenAddress} underlying=${tokenUnderlying}`);
-
-    if (!tokenAddress || !tokenUnderlying || tokenDecimals === undefined) {
+    const fToken = getFToken(chainId, fTokenSymbol);
+    if (!fToken) {
       return NextResponse.json(
-        { success: false, error: `fToken ${fTokenSymbol} not found on chain ${chainIndex}` },
+        { success: false, error: "Unknown market" },
         { status: 400 }
       );
     }
 
-    const rawAmount = parseAmount(amount, tokenDecimals);
+    // Native deposits use msg.value — no ERC-20 allowance to set.
+    if (isNativeUnderlying(chainId, fTokenSymbol)) {
+      return NextResponse.json({
+        success: true,
+        data: { txHash: null, alreadyApproved: true },
+      });
+    }
 
-    // Approve the fToken contract to spend underlying tokens
-    const approveCalldata = encodeApprove(tokenAddress as `0x${string}`, rawAmount);
+    const owner = (await sessionEvmAddress(String(chainId))) as `0x${string}`;
+    const rawAmount = parseAmount(amount, fToken.underlyingDecimals);
+    const spender = fToken.address;
+    const token = fToken.underlying;
+
+    const client = getPublicClient(chainId);
+    const allowance = await client.readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [owner, spender],
+    });
+
+    if (allowance >= rawAmount) {
+      return NextResponse.json({
+        success: true,
+        data: { txHash: null, alreadyApproved: true },
+      });
+    }
+
+    if (USDT_ADDRESSES.has(token) && allowance > 0n) {
+      const resetResult = await walletContractCall({
+        to: token,
+        chain: String(chainId),
+        inputData: encodeApprove(spender, 0n),
+        force: true,
+      });
+      const resetHash = txHashOf(resetResult.data);
+      if (resetHash) {
+        await client.waitForTransactionReceipt({ hash: resetHash });
+      } else {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
 
     const result = await walletContractCall({
-      to: tokenUnderlying,
-      chain: String(chainIndex),
-      inputData: approveCalldata,
+      to: token,
+      chain: String(chainId),
+      inputData: encodeApprove(spender, rawAmount),
+      force: true,
     });
 
     return NextResponse.json({
       success: true,
-      data: { approveTxHash: (result.data as { txHash?: string })?.txHash },
+      data: { txHash: txHashOf(result.data) },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Approve failed";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("earn/approve", error, "Approve failed");
   }
-}
+});

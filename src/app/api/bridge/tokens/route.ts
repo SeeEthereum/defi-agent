@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeTokens } from "@/lib/bridge/lifi";
+import { withSession } from "@/lib/session/session";
+import { z } from "zod";
+import { apiError, badRequest, chainId } from "@/lib/api/validation";
 
-export async function GET(request: NextRequest) {
+const schema = z.object({
+  fromChain: chainId,
+  toChain: chainId,
+});
+
+export const GET = withSession(async (request: NextRequest) => {
   try {
     const { searchParams } = request.nextUrl;
-    const fromChain = searchParams.get("fromChain");
-    const toChain = searchParams.get("toChain");
+    const { fromChain, toChain } = schema.parse({
+      fromChain: searchParams.get("fromChain"),
+      toChain: searchParams.get("toChain"),
+    });
 
-    if (!fromChain || !toChain) {
-      return NextResponse.json(
-        { success: false, error: "Missing required parameters: fromChain, toChain" },
-        { status: 400 }
-      );
-    }
-
-    const tokens = await bridgeTokens(fromChain, toChain);
+    const tokens = await bridgeTokens(String(fromChain), String(toChain));
 
     return NextResponse.json({ success: true, data: tokens });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to get bridge tokens";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("bridge/tokens", error, "Failed to get bridge tokens");
   }
-}
+});

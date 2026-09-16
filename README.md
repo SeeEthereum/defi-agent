@@ -207,9 +207,26 @@ OKX_PASSPHRASE=your_passphrase
 OKX_PROJECT_ID=your_project_id
 OPENAI_API_KEY=your_openai_key
 
+# Signs the per-browser session cookie (required in production, 32+ chars)
+SESSION_SECRET=output_of_openssl_rand_hex_32
+
+# Optional: where each session's private onchainos keystore lives
+# (default ./.data/sessions — use a persistent disk in production)
+# ONCHAINOS_SESSIONS_DIR=/var/data/sessions
+
+# Optional: extra origins allowed to call state-changing APIs
+# ALLOWED_ORIGINS=https://app.example.com
+
+# Optional: enables GET /api/debug/health with header x-debug-token
+# DEBUG_HEALTH_TOKEN=some-long-random-value
+
 # Optional: disable ERC-8021 Builder Code suffix injection
 # OKX_BUILDER_CODE_DISABLED=true
 ```
+
+### Multi-user notes
+
+Each browser session has its own wallet — a private onchainos keystore under `ONCHAINOS_SESSIONS_DIR`. The app must run as a **single instance**: in-process locks and login state are not shared across replicas. Point `ONCHAINOS_SESSIONS_DIR` at a persistent disk; an ephemeral filesystem signs everyone out on restart.
 
 ### Install & Run
 

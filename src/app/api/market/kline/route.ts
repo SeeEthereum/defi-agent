@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketKline } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // `market kline` is Basic ($0.0001/req post-quota). Candle data is
 // inherently discretized — a 30s memo aligns reasonably with intraday bar
 // granularities (1m+) and only causes one-bar-of-staleness at the edge.
 const KLINE_TTL_MS = 30_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("kline:" + currentSession().sid, 60, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -29,11 +39,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Kline query failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("kline", error, "Kline query failed");
   }
-}
+});

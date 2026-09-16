@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPrice } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // `market price` is Basic ($0.0001/req post-quota). Token prices move
 // fast but a 10s server-side memo cuts polling thunder — the UI's SWR
 // poll interval is typically 30s+, so 10s rarely shows stale data.
 const PRICE_TTL_MS = 10_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("price:" + currentSession().sid, 60, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -27,11 +37,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Price query failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("price", error, "Price query failed");
   }
-}
+});

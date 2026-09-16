@@ -38,6 +38,7 @@ interface QuoteData {
   toToken: BridgeTokenInfo;
   fromToken: BridgeTokenInfo;
   executionDuration: number;
+  quoteId: string;
   /** LI.FI's router/bridge contract that needs ERC-20 allowance. Absent for native tokens. */
   approvalAddress?: string;
   feeCosts: Array<{
@@ -73,11 +74,52 @@ interface StatusData {
   };
 }
 
-function toWei(amount: string, decimals: number): string {
-  const [intPart, fracPart = ""] = amount.split(".");
-  const padded = fracPart.padEnd(decimals, "0").slice(0, decimals);
-  const raw = intPart + padded;
-  return raw.replace(/^0+/, "") || "0";
+function toWei(amount: string, decimals: number): string | null {
+  const normalized = amount.trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+  const [intPart, fracPart = ""] = normalized.split(".");
+  const truncatedFrac = fracPart.slice(0, decimals);
+  const padded = truncatedFrac.padEnd(decimals, "0");
+  try {
+    return BigInt(intPart + padded).toString();
+  } catch {
+    return null;
+  }
+}
+
+function weiToAmount(wei: string, decimals: number): string {
+  const s = wei.padStart(decimals + 1, "0");
+  const intPart = s.slice(0, s.length - decimals) || "0";
+  const fracPart = s.slice(s.length - decimals).replace(/0+$/, "");
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+function makeQuoteKey(
+  fromChain: number,
+  toChain: number,
+  fromToken: BridgeTokenInfo,
+  toToken: BridgeTokenInfo,
+  amount: string
+): string {
+  return `${fromChain}|${toChain}|${fromToken.address}|${toToken.address}|${amount}`;
+}
+
+function readQuoteId(payload: unknown): string {
+  if (typeof payload !== "object" || payload == null) return "";
+  const source = Array.isArray(payload) ? payload[0] : payload;
+  if (typeof source !== "object" || source == null) return "";
+  const id = (source as Record<string, unknown>).quoteId;
+  return typeof id === "string" ? id : "";
+}
+
+function abbreviateAddress(addr: string): string {
+  if (addr.length <= 12) return addr;
+  return addr.slice(0, 6) + "..." + addr.slice(-4);
+}
+
+function mapBackendError(detail: unknown): string {
+  console.error(detail);
+  return "Bridge failed, please try again";
 }
 
 function fromWei(amount: string, decimals: number): string {
@@ -112,6 +154,39 @@ function Spinner({ className = "" }: { className?: string }) {
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
       />
     </svg>
+  );
+}
+
+function TokenLogo({
+  logoURI,
+  symbol,
+  size,
+}: {
+  logoURI?: string;
+  symbol: string;
+  size: number;
+}) {
+  if (logoURI?.startsWith("https://")) {
+    return (
+      <img
+        src={logoURI}
+        alt={symbol}
+        width={size}
+        height={size}
+        className="rounded-full shrink-0"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
+    );
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary"
+      style={{ width: size, height: size }}
+    >
+      {symbol.slice(0, 2)}
+    </div>
   );
 }
 
@@ -193,16 +268,7 @@ function TokenDropdown({
       </p>
       {selected ? (
         <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary px-4 h-11">
-          {selected.logoURI && (
-            <img
-              src={selected.logoURI}
-              alt={selected.symbol}
-              width={24}
-              height={24}
-              className="rounded-full shrink-0"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          )}
+          <TokenLogo logoURI={selected.logoURI} symbol={selected.symbol} size={24} />
           <span className="font-semibold text-sm tracking-tight">
             {selected.symbol}
           </span>
@@ -255,16 +321,7 @@ function TokenDropdown({
                       setShowDropdown(false);
                     }}
                   >
-                    {t.logoURI && (
-                      <img
-                        src={t.logoURI}
-                        alt={t.symbol}
-                        width={28}
-                        height={28}
-                        className="rounded-full shrink-0"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                    )}
+                    <TokenLogo logoURI={t.logoURI} symbol={t.symbol} size={28} />
                     <div className="flex-1 min-w-0">
                       <span className="font-semibold tracking-tight">
                         {t.symbol}
@@ -302,6 +359,9 @@ export default function BridgePage() {
   const [walletAssets, setWalletAssets] = useState<WalletToken[]>([]);
   const [walletAssetsLoading, setWalletAssetsLoading] = useState(false);
   const [quote, setQuote] = useState<QuoteData | null>(null);
+  const [quoteKey, setQuoteKey] = useState<string | null>(null);
+  const [quoteReceivedAt, setQuoteReceivedAt] = useState<number | null>(null);
+  const [quoteExpired, setQuoteExpired] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
@@ -309,6 +369,26 @@ export default function BridgePage() {
   const [bridgeStatus, setBridgeStatus] = useState<StatusData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCancelledRef = useRef(false);
+  const quoteAbortRef = useRef<AbortController | null>(null);
+  const skipClearQuoteErrorRef = useRef(false);
+  const currentKeyRef = useRef<string | null>(null);
+
+  const liveQuoteKey =
+    fromToken && toToken
+      ? makeQuoteKey(fromChainIndex, toChainIndex, fromToken, toToken, amount)
+      : null;
+  currentKeyRef.current = liveQuoteKey;
+
+  const parsedAmountWei = fromToken ? toWei(amount, fromToken.decimals) : null;
+  const invalidAmount = amount.trim() !== "" && parsedAmountWei === null;
+
+  const clearQuote = useCallback(() => {
+    setQuote(null);
+    setQuoteKey(null);
+    setQuoteReceivedAt(null);
+    setQuoteExpired(false);
+  }, []);
 
   // Fetch wallet balances for source chain
   const fetchWalletAssets = useCallback(async () => {
@@ -351,7 +431,7 @@ export default function BridgePage() {
     setTokensLoading(true);
     setFromToken(null);
     setToToken(null);
-    setQuote(null);
+    clearQuote();
     try {
       const res = await fetch(
         `/api/bridge/tokens?fromChain=${fromChainIndex}&toChain=${toChainIndex}`
@@ -374,18 +454,35 @@ export default function BridgePage() {
     } finally {
       setTokensLoading(false);
     }
-  }, [fromChainIndex, toChainIndex]);
+  }, [fromChainIndex, toChainIndex, clearQuote]);
 
   useEffect(() => {
     fetchTokens();
   }, [fetchTokens]);
 
-  // Cleanup poll on unmount
+  // Cleanup poll and in-flight quote on unmount
   useEffect(() => {
     return () => {
+      pollCancelledRef.current = true;
       if (pollRef.current) clearInterval(pollRef.current);
+      quoteAbortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!quote || quoteReceivedAt == null) {
+      setQuoteExpired(false);
+      return;
+    }
+    const remaining = 60_000 - (Date.now() - quoteReceivedAt);
+    if (remaining <= 0) {
+      setQuoteExpired(true);
+      return;
+    }
+    setQuoteExpired(false);
+    const id = window.setTimeout(() => setQuoteExpired(true), remaining);
+    return () => window.clearTimeout(id);
+  }, [quote, quoteReceivedAt]);
 
   // When source chain changes and equals dest chain, swap dest
   const handleFromChainChange = (chainIndex: number) => {
@@ -393,7 +490,7 @@ export default function BridgePage() {
       setToChainIndex(fromChainIndex);
     }
     setFromChainIndex(chainIndex);
-    setQuote(null);
+    clearQuote();
     setError(null);
     setBridgeResult(null);
     setBridgeStatus(null);
@@ -404,7 +501,7 @@ export default function BridgePage() {
       setFromChainIndex(toChainIndex);
     }
     setToChainIndex(chainIndex);
-    setQuote(null);
+    clearQuote();
     setError(null);
     setBridgeResult(null);
     setBridgeStatus(null);
@@ -419,7 +516,7 @@ export default function BridgePage() {
     setToChainIndex(prevFrom);
     setFromToken(prevToToken);
     setToToken(prevFromToken);
-    setQuote(null);
+    clearQuote();
     setError(null);
     setBridgeResult(null);
     setBridgeStatus(null);
@@ -449,7 +546,7 @@ export default function BridgePage() {
       setToToken(destMatch);
     }
 
-    setQuote(null);
+    clearQuote();
     setError(null);
   };
 
@@ -460,22 +557,61 @@ export default function BridgePage() {
         a.address.toLowerCase() === fromToken.address.toLowerCase() ||
         a.symbol.toLowerCase() === fromToken.symbol.toLowerCase()
     );
-    if (asset) {
-      setAmount(asset.balance);
-      setQuote(null);
-      setError(null);
+    if (!asset) return;
+
+    let nextAmount = asset.balance;
+    const isNative =
+      fromToken.address.toLowerCase() === NATIVE_TOKEN_LIFI;
+    if (isNative) {
+      const reserveHuman = fromChainIndex === 1 ? "0.002" : "0.0005";
+      const balWei = toWei(asset.balance, fromToken.decimals);
+      const reserveWei = toWei(reserveHuman, fromToken.decimals);
+      if (balWei !== null && reserveWei !== null) {
+        const remaining = BigInt(balWei) - BigInt(reserveWei);
+        nextAmount =
+          remaining > 0n
+            ? weiToAmount(remaining.toString(), fromToken.decimals)
+            : "0";
+      } else {
+        const bal = Number(asset.balance);
+        const reserve = fromChainIndex === 1 ? 0.002 : 0.0005;
+        nextAmount = Number.isFinite(bal) ? String(Math.max(0, bal - reserve)) : "0";
+      }
     }
+
+    setAmount(nextAmount);
+    clearQuote();
+    setError(null);
   };
 
   const handleGetQuote = async () => {
+    const preserveError = skipClearQuoteErrorRef.current;
+    skipClearQuoteErrorRef.current = false;
     if (!fromToken || !toToken || !amount || !walletAddress) return;
+    const amountWei = toWei(amount, fromToken.decimals);
+    if (amountWei === null) {
+      setError("Enter a valid amount");
+      return;
+    }
+    const requestKey = makeQuoteKey(
+      fromChainIndex,
+      toChainIndex,
+      fromToken,
+      toToken,
+      amount
+    );
+
+    quoteAbortRef.current?.abort();
+    const controller = new AbortController();
+    quoteAbortRef.current = controller;
+
     setQuoteLoading(true);
-    setQuote(null);
-    setError(null);
+    clearQuote();
+    if (!preserveError) {
+      setError(null);
+    }
 
     try {
-      const amountWei = toWei(amount, fromToken.decimals);
-
       const qs = new URLSearchParams({
         fromChain: String(fromChainIndex),
         toChain: String(toChainIndex),
@@ -485,8 +621,12 @@ export default function BridgePage() {
         fromAddress: walletAddress,
       });
 
-      const res = await fetch(`/api/bridge/quote?${qs.toString()}`);
+      const res = await fetch(`/api/bridge/quote?${qs.toString()}`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
+
+      if (currentKeyRef.current !== requestKey) return;
 
       if (data.success && data.data) {
         const q = data.data;
@@ -497,30 +637,54 @@ export default function BridgePage() {
           toToken: q.action?.toToken ?? toToken,
           fromToken: q.action?.fromToken ?? fromToken,
           executionDuration: q.estimate?.executionDuration ?? 0,
+          quoteId: readQuoteId(q),
           approvalAddress: q.estimate?.approvalAddress,
           feeCosts: q.estimate?.feeCosts ?? [],
           gasCosts: q.estimate?.gasCosts ?? [],
         });
+        setQuoteKey(requestKey);
+        setQuoteReceivedAt(Date.now());
+        setQuoteExpired(false);
       } else {
-        setError(data.error || "Failed to get bridge quote");
+        setError(mapBackendError(data.error || "Failed to get bridge quote"));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to get bridge quote");
+      if (controller.signal.aborted) return;
+      if (currentKeyRef.current !== requestKey) return;
+      setError(mapBackendError(e));
     } finally {
-      setQuoteLoading(false);
+      if (quoteAbortRef.current === controller) {
+        setQuoteLoading(false);
+      }
     }
   };
 
   const handleBridge = async () => {
     if (!fromToken || !toToken || !amount || !walletAddress || !quote) return;
+    const requestKey = makeQuoteKey(
+      fromChainIndex,
+      toChainIndex,
+      fromToken,
+      toToken,
+      amount
+    );
+    if (quoteKey !== requestKey) return;
+    if (quoteExpired || (quoteReceivedAt != null && Date.now() - quoteReceivedAt >= 60_000)) {
+      return;
+    }
+    const amountWei = toWei(amount, fromToken.decimals);
+    if (amountWei === null) {
+      setError("Enter a valid amount");
+      return;
+    }
     setBridgeLoading(true);
     setError(null);
     setBridgeResult(null);
     setBridgeStatus(null);
+    pollCancelledRef.current = true;
     if (pollRef.current) clearInterval(pollRef.current);
 
     try {
-      const amountWei = toWei(amount, fromToken.decimals);
       const res = await fetch("/api/bridge/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -530,32 +694,60 @@ export default function BridgePage() {
           fromToken: fromToken.address,
           toToken: toToken.address,
           fromAmount: amountWei,
-          fromAddress: walletAddress,
+          quoteId: quote.quoteId,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 409) {
+        skipClearQuoteErrorRef.current = true;
+        clearQuote();
+        setError("Quote expired or price moved, refreshing...");
+        void handleGetQuote();
+        return;
+      }
       if (data.success && data.data) {
         const result = data.data as BridgeResult;
         setBridgeResult(result);
-        setQuote(null);
+        clearQuote();
         setAmount("");
 
-        // Start polling for status
         if (result.txHash) {
+          pollCancelledRef.current = false;
+          const startedAt = Date.now();
+          const pollMaxMs = 10 * 60 * 1000;
           pollRef.current = setInterval(async () => {
+            if (pollCancelledRef.current) {
+              if (pollRef.current) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+              }
+              return;
+            }
+            if (Date.now() - startedAt >= pollMaxMs) {
+              if (pollRef.current) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+              }
+              return;
+            }
             try {
               const statusRes = await fetch(
                 `/api/bridge/status?txHash=${result.txHash}&fromChain=${result.fromChain}&toChain=${result.toChain}&bridge=${encodeURIComponent(result.bridge)}`
               );
               const statusData = await statusRes.json();
+              if (pollCancelledRef.current) return;
               if (statusData.success && statusData.data) {
                 setBridgeStatus(statusData.data);
                 if (
                   statusData.data.status === "DONE" ||
-                  statusData.data.status === "FAILED"
+                  statusData.data.status === "FAILED" ||
+                  statusData.data.status === "INVALID"
                 ) {
-                  if (pollRef.current) clearInterval(pollRef.current);
+                  if (pollRef.current) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                  }
                 }
               }
             } catch {
@@ -568,10 +760,10 @@ export default function BridgePage() {
         // stablecoin gas payment. Modal handles pick + setup, then re-runs.
         setGasStation(data.gasStation);
       } else {
-        setError(data.error || "Bridge execution failed");
+        setError(mapBackendError(data.error || "Bridge execution failed"));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bridge execution failed");
+      setError(mapBackendError(e));
     } finally {
       setBridgeLoading(false);
     }
@@ -590,22 +782,30 @@ export default function BridgePage() {
   const fromChainConfig = CHAIN_LIST.find((c) => c.chainIndex === fromChainIndex);
   const toChainConfig = CHAIN_LIST.find((c) => c.chainIndex === toChainIndex);
 
+  const quoteIsCurrent = quote !== null && quoteKey === liveQuoteKey;
+  const activeQuote = quoteIsCurrent ? quote : null;
+
   const quoteReceiveAmount =
-    quote && quote.toToken
-      ? fromWei(quote.toAmount, quote.toToken.decimals)
+    activeQuote && activeQuote.toToken
+      ? fromWei(activeQuote.toAmount, activeQuote.toToken.decimals)
       : null;
 
-  const totalFeeUsd = quote
+  const quoteMinAmount =
+    activeQuote && activeQuote.toToken
+      ? fromWei(activeQuote.toAmountMin, activeQuote.toToken.decimals)
+      : null;
+
+  const totalFeeUsd = activeQuote
     ? [
-        ...(quote.feeCosts ?? []),
-        ...(quote.gasCosts ?? []),
+        ...(activeQuote.feeCosts ?? []),
+        ...(activeQuote.gasCosts ?? []),
       ]
         .reduce((sum, c) => sum + parseFloat(c.amountUSD ?? "0"), 0)
         .toFixed(2)
     : null;
 
-  const estimatedMinutes = quote
-    ? Math.ceil(quote.executionDuration / 60)
+  const estimatedMinutes = activeQuote
+    ? Math.ceil(activeQuote.executionDuration / 60)
     : null;
 
   // Find the selected fromToken's wallet balance
@@ -715,7 +915,7 @@ export default function BridgePage() {
               selected={fromToken}
               onSelect={(t) => {
                 setFromToken(t);
-                setQuote(null);
+                clearQuote();
                 setError(null);
                 // Auto-match destination token by symbol
                 if (t && toTokens.length > 0) {
@@ -759,11 +959,15 @@ export default function BridgePage() {
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
-                  setQuote(null);
                   setError(null);
                 }}
                 className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
               />
+              {invalidAmount && (
+                <p className="text-[12px] text-red-600 mt-1.5">
+                  Enter a valid amount
+                </p>
+              )}
             </div>
           </div>
 
@@ -806,7 +1010,7 @@ export default function BridgePage() {
               selected={toToken}
               onSelect={(t) => {
                 setToToken(t);
-                setQuote(null);
+                clearQuote();
                 setError(null);
               }}
               loading={tokensLoading}
@@ -815,7 +1019,7 @@ export default function BridgePage() {
           </div>
 
           {/* Quote result */}
-          {quote && quoteReceiveAmount && (
+          {activeQuote && quoteReceiveAmount && (
             <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
               <div className="p-4 pb-3">
                 <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
@@ -824,7 +1028,7 @@ export default function BridgePage() {
                 <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
                   <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
                   <span className="text-base font-semibold text-primary">
-                    {quote.toToken.symbol}
+                    {activeQuote.toToken.symbol}
                   </span>
                 </p>
                 <p className="text-[12px] text-primary/80 mt-0.5">
@@ -833,10 +1037,18 @@ export default function BridgePage() {
               </div>
 
               <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
+                {quoteMinAmount != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-muted-foreground">Minimum received</span>
+                    <span className="text-[12px] font-medium text-foreground tabular-nums">
+                      {quoteMinAmount} {activeQuote.toToken.symbol}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] text-muted-foreground">Bridge</span>
                   <span className="text-[12px] font-medium text-foreground capitalize">
-                    {quote.tool}
+                    {activeQuote.tool}
                   </span>
                 </div>
                 {fromToken && toToken && fromToken.symbol !== toToken.symbol && (
@@ -847,22 +1059,33 @@ export default function BridgePage() {
                     </span>
                   </div>
                 )}
-                {estimatedMinutes != null && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Estimated Time</span>
-                    <span className="text-[12px] font-medium text-foreground">
-                      ~{estimatedMinutes} min
-                    </span>
-                  </div>
-                )}
-                {totalFeeUsd && parseFloat(totalFeeUsd) > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Total Fees</span>
-                    <span className="text-[12px] font-medium text-foreground">
-                      ~${totalFeeUsd}
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-muted-foreground">Estimated Time</span>
+                  <span className="text-[12px] font-medium text-foreground">
+                    {estimatedMinutes != null ? `~${estimatedMinutes} min` : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-muted-foreground">Total Fees</span>
+                  <span className="text-[12px] font-medium text-foreground">
+                    {totalFeeUsd != null ? `~$${totalFeeUsd}` : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-muted-foreground">Destination chain</span>
+                  <span className="text-[12px] font-medium text-foreground">
+                    {toChainConfig?.name ?? "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] text-muted-foreground shrink-0">Destination address</span>
+                  <span
+                    className="text-[12px] font-medium text-foreground font-mono truncate"
+                    title={walletAddress ?? undefined}
+                  >
+                    {walletAddress ? abbreviateAddress(walletAddress) : "—"}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-emerald-100/60">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-600 shrink-0">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -872,7 +1095,7 @@ export default function BridgePage() {
                   </span>
                 </div>
                 {/* Approval notice: ERC-20 bridges need an approve tx before the bridge call */}
-                {quote.approvalAddress &&
+                {activeQuote.approvalAddress &&
                   fromToken &&
                   fromToken.address.toLowerCase() !== NATIVE_TOKEN_LIFI && (
                     <div className="flex items-start gap-2 pt-2 mt-0.5 border-t border-amber-100/60">
@@ -939,7 +1162,7 @@ export default function BridgePage() {
                 <p className="text-[13px] font-semibold text-emerald-800 mb-0.5">
                   {bridgeStatus?.status === "DONE"
                     ? "Bridge Complete"
-                    : bridgeStatus?.status === "FAILED"
+                    : bridgeStatus?.status === "FAILED" || bridgeStatus?.status === "INVALID"
                     ? "Bridge Failed"
                     : "Bridge In Progress"}
                 </p>
@@ -947,7 +1170,7 @@ export default function BridgePage() {
                   {bridgeStatus?.substatusMessage ??
                     (bridgeStatus?.status === "DONE"
                       ? "Tokens have been delivered to the destination chain."
-                      : bridgeStatus?.status === "FAILED"
+                      : bridgeStatus?.status === "FAILED" || bridgeStatus?.status === "INVALID"
                       ? "The bridge transaction failed. Your funds may be returned."
                       : `Bridging via ${bridgeResult.bridge}. Estimated ~${Math.ceil(bridgeResult.estimatedTime / 60)} min.`)}
                 </p>
@@ -983,6 +1206,7 @@ export default function BridgePage() {
                 onClick={() => {
                   setBridgeResult(null);
                   setBridgeStatus(null);
+                  pollCancelledRef.current = true;
                   if (pollRef.current) clearInterval(pollRef.current);
                 }}
                 className="shrink-0 text-emerald-600 hover:text-emerald-600 transition-colors p-0.5"
@@ -999,7 +1223,7 @@ export default function BridgePage() {
           <div className="flex gap-3 pt-1">
             <Button
               onClick={handleGetQuote}
-              disabled={quoteLoading || !fromToken || !toToken || !amount}
+              disabled={quoteLoading || !fromToken || !toToken || parsedAmountWei === null}
               variant="outline"
               className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-secondary active:bg-secondary transition-all"
             >
@@ -1012,20 +1236,35 @@ export default function BridgePage() {
                 "Get Quote"
               )}
             </Button>
-            <Button
-              onClick={handleBridge}
-              disabled={bridgeLoading || !quote}
-              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
-            >
-              {bridgeLoading ? (
-                <span className="flex items-center gap-2">
-                  <Spinner />
-                  Bridging...
-                </span>
-              ) : (
-                "Bridge"
-              )}
-            </Button>
+            {quoteIsCurrent && quoteExpired ? (
+              <Button
+                onClick={handleGetQuote}
+                disabled={quoteLoading || parsedAmountWei === null}
+                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
+              >
+                Quote expired, refresh
+              </Button>
+            ) : (
+              <Button
+                onClick={handleBridge}
+                disabled={
+                  bridgeLoading ||
+                  !activeQuote ||
+                  quoteExpired ||
+                  parsedAmountWei === null
+                }
+                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
+              >
+                {bridgeLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner />
+                    Bridging...
+                  </span>
+                ) : (
+                  "Bridge"
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>
