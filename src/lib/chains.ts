@@ -57,7 +57,7 @@ export const CHAINS: Record<string, ChainConfig> = {
     rpcUrl: "https://polygon-bor-rpc.publicnode.com",
     explorer: "https://polygonscan.com",
     hasFluid: true,
-    nativeSymbol: "MATIC",
+    nativeSymbol: "POL",
     nativeDecimals: 18,
   },
   optimism: {

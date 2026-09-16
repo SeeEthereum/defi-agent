@@ -6,9 +6,10 @@
  *   { success: false, error, errorCode?, suggestion? }  (400)   — domain error from HL
  *     (e.g. insufficient margin, min-notional, signer rejection — all the
  *      structured failures mapped in hyperliquid/cli.ts)
- *   { success: false, error: "<throw message>" }        (500)   — unexpected
- *     failures (network / keystore / panics) that couldn't be mapped to a
- *     user-facing error code.
+ *   { success: false, error: "Hyperliquid request failed" } (500)
+ *     — unexpected failures; actionable messages (not logged in,
+ *       insufficient, max leverage, stop-loss, take-profit, withdrawable,
+ *       deposit) stay visible, everything else is logged server-side.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -56,11 +57,16 @@ export function respond<T>(result: HlResult<T>): NextResponse {
   );
 }
 
+const ACTIONABLE_HL_MESSAGE =
+  /not logged in|insufficient|max leverage|stop-loss|take-profit|withdrawable|deposit/i;
+
 export function respondBinError(error: unknown, fallback: string): NextResponse {
-  const message = error instanceof Error ? error.message : fallback;
   console.error("[perp] route error:", error);
+  const message = error instanceof Error ? error.message : "";
+  const visible = ACTIONABLE_HL_MESSAGE.test(message);
+  void fallback;
   return NextResponse.json(
-    { success: false, error: message },
+    { success: false, error: visible ? message : "Hyperliquid request failed" },
     { status: 500 }
   );
 }

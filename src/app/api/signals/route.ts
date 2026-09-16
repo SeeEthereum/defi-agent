@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signalList } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // `signal list` is a Premium-tier Market API endpoint ($0.0005/req post-quota
 // from 2026-06-01). Public deterministic data → safe to cache aggressively.
 // 30s matches the smart-money refresh cadence the UI implies.
 const SIGNALS_TTL_MS = 30_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("signals:" + currentSession().sid, 30, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain");
@@ -51,11 +61,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Signal query failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("signals", error, "Signal query failed");
   }
-}
+});

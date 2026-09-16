@@ -1,29 +1,37 @@
 /**
- * Process-wide mutex for onchainos binary invocations.
+ * Per-session mutex for onchainos binary invocations.
  *
- * The onchainos keystore is a single-threaded file-based resource: two
- * concurrent process spawns (e.g. a Hyperliquid signTypedData overlapping
- * a walletBalance lookup) can corrupt lock files, race nonces, or force
- * the backend into 429/500. Every module that shells out to the onchainos
- * binary MUST serialize through this single lock.
+ * Each session's keystore is a single-threaded file-based resource: two
+ * concurrent process spawns on the same ONCHAINOS_HOME (e.g. a Hyperliquid
+ * signTypedData overlapping a walletBalance lookup) can corrupt lock files,
+ * race nonces, or force the backend into 429/500. Every module that shells
+ * out to the onchainos binary MUST serialize through this lock. Different
+ * sessions have different keystores, so they run in parallel.
  *
- * Usage:
+ * Usage (inside a `withSession` route handler):
  *   import { withOnchainosLock } from "@/lib/okx/lock";
  *   await withOnchainosLock(() => execFileAsync(ONCHAINOS_BIN, args));
  *
- * The lock is a single module-level promise chain — Node's single-threaded
- * event loop guarantees atomic chaining (no need for a real semaphore).
- * Each acquirer `.then(fn)` after the previous holder, and `.finally`
- * releases the next waiter regardless of success/failure.
+ * Each lock is a promise chain keyed by ONCHAINOS_HOME — Node's
+ * single-threaded event loop guarantees atomic chaining. `.finally`
+ * releases the next waiter regardless of success/failure, and the entry is
+ * dropped once its chain is idle.
  */
 
-let lock: Promise<void> = Promise.resolve();
+import { currentSession } from "@/lib/session/session";
+
+const locks = new Map<string, Promise<void>>();
 
 export function withOnchainosLock<T>(fn: () => Promise<T>): Promise<T> {
-  const prev = lock;
+  const key = currentSession().home;
+  const prev = locks.get(key) ?? Promise.resolve();
   let release!: () => void;
-  lock = new Promise<void>((resolve) => {
+  const tail = new Promise<void>((resolve) => {
     release = resolve;
   });
-  return prev.then(fn).finally(() => release());
+  locks.set(key, tail);
+  return prev.then(fn).finally(() => {
+    release();
+    if (locks.get(key) === tail) locks.delete(key);
+  });
 }

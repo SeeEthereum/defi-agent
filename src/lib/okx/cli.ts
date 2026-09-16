@@ -5,6 +5,7 @@ import fs from "fs";
 import type { CliResult, GasStationConfirming, GasStationToken } from "./types";
 import { appendBuilderCode } from "./builder-code";
 import { withOnchainosLock } from "./lock";
+import { currentSession, ensureSessionHome, onchainosEnv, sessionHomeExists } from "@/lib/session/session";
 
 const execFileAsync = promisify(execFile);
 
@@ -127,7 +128,13 @@ export function parseGasStationConfirming(
  * integer, got \"0x298dfa\"").
  */
 export function normalizeGasLimit(raw: string): string {
-  return raw.startsWith("0x") ? BigInt(raw).toString() : raw;
+  try {
+    const value = /^0x/i.test(raw) ? BigInt(raw) : BigInt(raw);
+    if (value < 0n) throw new RangeError("negative");
+    return value.toString();
+  } catch {
+    throw new OkxCliError("gas-limit", null, `Invalid gas limit: ${raw.slice(0, 32)}`);
+  }
 }
 
 /**
@@ -159,6 +166,11 @@ export function buildCliArgs(
     if (value === true) {
       cmdArgs.push(`--${key}`);
     } else if (value !== false && value !== "") {
+      // A value starting with "-" would be parsed as another flag, so a
+      // request could smuggle CLI options through any string field.
+      if (value.startsWith("-")) {
+        throw new OkxCliError(subcommands.join(" "), null, `Invalid value for --${key}`);
+      }
       cmdArgs.push(`--${key}`, value);
     }
   }
@@ -169,13 +181,34 @@ export async function runCli<T = unknown>(
   subcommands: string[],
   args: Record<string, string | boolean> = {}
 ): Promise<CliResult<T>> {
+  const session = currentSession();
+  const isLogin = subcommands[0] === "wallet" && subcommands[1] === "login";
+
+  // A session gets a keystore directory only when it starts a login, so
+  // anonymous traffic never creates directories. Without one, every
+  // command would fail with "not logged in" anyway.
+  if (!isLogin && !sessionHomeExists(session)) {
+    if (subcommands[0] === "wallet" && subcommands[1] === "status") {
+      return {
+        ok: true,
+        data: { loggedIn: false, email: "", currentAccountId: "", currentAccountName: "", accountCount: 0 } as T,
+        raw: "",
+      };
+    }
+    throw new OkxCliError(subcommands.join(" "), null, "Not logged in. Please sign in first.");
+  }
+
   return withOnchainosLock(async () => {
     const cmdArgs = buildCliArgs(subcommands, args);
+    if (isLogin) ensureSessionHome(session);
 
     try {
       const { stdout } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
         timeout: 30_000,
-        env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+        // SIGTERM alone leaves a wedged binary holding this session's lock.
+        killSignal: "SIGKILL",
+        maxBuffer: 8 * 1024 * 1024,
+        env: onchainosEnv(session),
       });
 
       let parsed: T | undefined;
@@ -205,6 +238,24 @@ export async function runCli<T = unknown>(
             cmd: subcommands.join(" "),
             notifications: json.notifications,
           });
+          // Such a response carries the payment terms, not the data that was
+          // asked for. Returning it as success would hand the UI a notice
+          // shaped like a result (a "price" that is really a quota notice).
+          if (json.data === undefined) {
+            throw new OkxCliError(
+              subcommands.join(" "),
+              0,
+              "Market data quota exceeded. Please try again later."
+            );
+          }
+        }
+
+        if (json.ok === false) {
+          throw new OkxCliError(
+            subcommands.join(" "),
+            0,
+            typeof json.error === "string" ? json.error : "Command reported a failure"
+          );
         }
 
         if (json.ok !== undefined) {
@@ -212,16 +263,30 @@ export async function runCli<T = unknown>(
         }
         parsed = json as T;
       } catch (parseOrConfirming) {
-        // Re-throw the typed Confirming signal — only swallow JSON.parse
-        // failures (stdout is not JSON).
+        // Re-throw typed signals — only swallow JSON.parse failures
+        // (stdout is not JSON).
         if (parseOrConfirming instanceof GasStationConfirmingError) {
           throw parseOrConfirming;
         }
+        if (parseOrConfirming instanceof OkxCliError) throw parseOrConfirming;
+
+        // Every command answers with a JSON envelope. Anything else means
+        // the output was truncated or the binary printed a diagnostic, and
+        // returning the raw text as `data` would look like a success.
+        console.error("[onchainos] non-JSON output", {
+          cmd: subcommands.join(" "),
+          stdout: stdout.slice(0, 500),
+        });
+        throw new OkxCliError(
+          subcommands.join(" "),
+          0,
+          "Unexpected output from the wallet backend. Please try again."
+        );
       }
 
       return {
         ok: true,
-        data: (parsed ?? stdout.trim()) as T,
+        data: parsed as T,
         raw: stdout.trim(),
       };
     } catch (error: unknown) {
@@ -240,7 +305,7 @@ export async function runCli<T = unknown>(
       console.error("[onchainos]", {
         cmd: subcommands.join(" "),
         bin: ONCHAINOS_BIN,
-        home: process.env.HOME,
+        session: session.sid.slice(0, 8),
         exitCode: err.exitCode,
         code: err.code,
         stderr: err.stderr,

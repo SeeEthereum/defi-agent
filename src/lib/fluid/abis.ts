@@ -183,4 +183,15 @@ export const fWethNativeAbi = [
     ],
     outputs: [{ name: "shares", type: "uint256" }],
   },
+  {
+    name: "redeemNative",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "shares", type: "uint256" },
+      { name: "receiver", type: "address" },
+      { name: "owner", type: "address" },
+    ],
+    outputs: [{ name: "assets", type: "uint256" }],
+  },
 ] as const;
