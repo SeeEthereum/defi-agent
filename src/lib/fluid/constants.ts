@@ -2,7 +2,7 @@
 export const LENDING_RESOLVER =
   "0x48d32f49afeaec7ae66ad7b9264f446fc11a1569" as const;
 export const VAULT_RESOLVER =
-  "0xa5c3e16523eeddcc34706b0e6be88b4c6ea95cc" as const;
+  "0xa5c3e16523eeeddcc34706b0e6be88b4c6ea95cc" as const;
 export const LENDING_FACTORY =
   "0x54b91a0d94cb471f37f949c60f7fa7935b551d03" as const;
 
@@ -117,4 +117,19 @@ export function getFToken(
   symbol: string
 ): FTokenConfig | undefined {
   return FTOKENS[chainIndex]?.[symbol];
+}
+
+/** fTokens whose underlying is the chain native (ETH / POL) and expose depositNative / withdrawNative. */
+const NATIVE_UNDERLYING_SYMBOLS: Record<number, ReadonlySet<string>> = {
+  1: new Set(["fWETH"]),
+  42161: new Set(["fWETH"]),
+  8453: new Set(["fWETH"]),
+  137: new Set(["fWPOL"]),
+};
+
+export function isNativeUnderlying(
+  chainIndex: number,
+  symbol: string
+): boolean {
+  return NATIVE_UNDERLYING_SYMBOLS[chainIndex]?.has(symbol) ?? false;
 }

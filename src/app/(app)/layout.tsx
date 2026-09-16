@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -34,12 +34,56 @@ function getAcceptedServer(): DisclaimerState {
   return null;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusablesIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+}
+
+/** Send the user to sign-in when a response is a missing/expired session cookie. */
+function redirectIfNoSession(res: Response): void {
+  if (res.status !== 401) return;
+  res
+    .clone()
+    .json()
+    .then((body: { code?: string }) => {
+      if (body?.code === "no_session") window.location.replace("/auth");
+    })
+    .catch(() => {});
+}
+
+/**
+ * Client session guard. useAuthState already polls /api/auth/status for the
+ * OKX login flag; this additionally treats HTTP 401 `{ code: "no_session" }`
+ * (missing/expired session cookie) as a hard redirect to /auth.
+ */
+function useSessionGuard() {
+  useEffect(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const res = await nativeFetch(...args);
+      redirectIfNoSession(res);
+      return res;
+    };
+
+    nativeFetch("/api/auth/status").then(redirectIfNoSession).catch(() => {});
+
+    return () => {
+      window.fetch = nativeFetch;
+    };
+  }, []);
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const authState = useAuthState();
   const router = useRouter();
   const pathname = usePathname();
   const accepted = useSyncExternalStore(subscribeToStorage, getAcceptedClient, getAcceptedServer);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useSessionGuard();
 
   useEffect(() => {
     // Only redirect on a definitive "declined" — `null` means we haven't
@@ -47,6 +91,47 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // deep links and refreshes.
     if (accepted === false) router.replace("/welcome");
   }, [accepted, router]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const panel = drawerRef.current;
+    if (!panel) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const nodes = focusablesIn(panel);
+    (nodes[0] ?? panel).focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMobileMenuOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const tabbable = focusablesIn(panel);
+      if (tabbable.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = tabbable[0];
+      const last = tabbable[tabbable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first || !panel.contains(document.activeElement)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last || !panel.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previous?.focus();
+    };
+  }, [mobileMenuOpen]);
 
   const ready = accepted === true;
 
@@ -74,6 +159,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           />
         )}
         <div
+          ref={drawerRef}
+          role={mobileMenuOpen ? "dialog" : undefined}
+          aria-modal={mobileMenuOpen ? true : undefined}
+          aria-label={mobileMenuOpen ? "Menu" : undefined}
+          aria-hidden={!mobileMenuOpen}
+          inert={!mobileMenuOpen}
+          tabIndex={-1}
           className={`fixed inset-y-0 left-0 z-50 md:hidden transition-transform duration-300 ${
             mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
           }`}

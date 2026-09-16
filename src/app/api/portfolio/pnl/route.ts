@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketPortfolioOverview, marketPortfolioRecentPnl } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // PnL supported chains (from onchainos market portfolio-supported-chains)
 const PNL_CHAINS = ["1", "8453", "56"]; // Ethereum, Base, BNB Chain
@@ -13,7 +16,14 @@ const PNL_CHAINS = ["1", "8453", "56"]; // Ethereum, Base, BNB Chain
 // per-user spend to 1 premium call/min/chain (instead of 4/load).
 const PORTFOLIO_TTL_MS = 60_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("pnl:" + currentSession().sid, 20, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const address = searchParams.get("address");
@@ -28,14 +38,9 @@ export async function GET(request: NextRequest) {
     const payload = await memoTTL(key, PORTFOLIO_TTL_MS, () => computePnl(address));
     return NextResponse.json({ success: true, data: payload });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch portfolio PnL";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("pnl", error, "Failed to fetch portfolio PnL");
   }
-}
+});
 
 async function computePnl(address: string) {
     // Fetch PnL overview for all supported chains in parallel

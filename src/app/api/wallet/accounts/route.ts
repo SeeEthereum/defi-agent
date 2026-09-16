@@ -1,34 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCli } from "@/lib/okx/cli";
+import { withSession } from "@/lib/session/session";
+import { z } from "zod";
+import { apiError, badRequest } from "@/lib/api/validation";
 
 // GET /api/wallet/accounts — list all accounts (wallet status gives accountCount)
 // POST /api/wallet/accounts — add a new wallet account
 // PATCH /api/wallet/accounts — switch to a different account
 
-export async function POST() {
+const patchSchema = z.object({
+  accountId: z.string().regex(/^\d+$/),
+});
+
+export const POST = withSession(async () => {
   try {
     const result = await runCli(["wallet", "add"]);
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to add wallet";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("wallet/accounts", error, "Request failed");
   }
-}
+});
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withSession(async (request: NextRequest) => {
   try {
-    const body = await request.json();
-    const { accountId } = body;
-    if (!accountId) {
-      return NextResponse.json(
-        { success: false, error: "accountId is required" },
-        { status: 400 }
-      );
-    }
+    const { accountId } = patchSchema.parse(await request.json());
     const result = await runCli(["wallet", "switch", accountId]);
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to switch account";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("wallet/accounts", error, "Request failed");
   }
-}
+});

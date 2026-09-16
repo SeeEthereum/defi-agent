@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leaderboardList } from "@/lib/okx/cli";
 import { memoTTL, cacheKey } from "@/lib/cache";
+import { currentSession, withSession } from "@/lib/session/session";
+import { rateLimit } from "@/lib/api/rate-limit";
+import { apiError } from "@/lib/api/validation";
 
 // `leaderboard list` is Premium ($0.0005/req post-quota). Time frames are
 // 1d/3d/7d/1m/3m so the rankings move slowly — 60s is conservative.
 const LEADERBOARD_TTL_MS = 60_000;
 
-export async function GET(request: NextRequest) {
+export const GET = withSession(async (request: NextRequest) => {
+  const { ok, retryAfter } = rateLimit("leaderboard:" + currentSession().sid, 30, 60_000);
+  if (!ok) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests, slow down.", code: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   try {
     const { searchParams } = new URL(request.url);
     const chain = searchParams.get("chain");
@@ -28,11 +38,6 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Leaderboard query failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return apiError("leaderboard", error, "Leaderboard query failed");
   }
-}
+});

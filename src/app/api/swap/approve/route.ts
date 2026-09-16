@@ -4,21 +4,24 @@ import { walletContractCall } from "@/lib/okx/cli";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
+import { withSession } from "@/lib/session/session";
+import {
+  tokenAddress,
+  baseUnitAmount,
+  badRequest,
+  apiError,
+} from "@/lib/api/validation";
 
 const schema = z.object({
-  token: z.string().min(1),
-  amount: z.string().min(1), // minimal units
+  token: tokenAddress,
+  amount: baseUnitAmount,
   chain: z.string().min(1),
 });
 
-export async function POST(request: NextRequest) {
+export const POST = withSession(async (request: NextRequest) => {
   try {
     const body = await request.json();
-    // `amount` is validated by the schema but not forwarded — we always
-    // approve max uint256 (see comment further down where the actual
-    // approve calldata is built). Keep it in the schema so callers
-    // continue to send it without a 400, but extract only what we use.
-    const { token, chain } = schema.parse(body);
+    const { token, amount, chain } = schema.parse(body);
 
     const chainConfig = getChainBySwapName(chain);
     if (!chainConfig) {
@@ -31,16 +34,11 @@ export async function POST(request: NextRequest) {
     const chainIndex = String(chainConfig.chainIndex);
     const tokenAddr = normalizeAddress(token);
 
-    // Get approve calldata from OKX DEX Aggregator API.
-    // Use max uint256 to avoid issues where the router needs slightly more
-    // than the exact swap amount (fees, rounding). This is standard practice
-    // for DEX approvals — the user already confirmed the swap action.
-    const MAX_UINT256 =
-      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+    // Approve only the amount being swapped.
     const approveData = await dexApproveTransaction({
       chainIndex,
       tokenContractAddress: tokenAddr,
-      approveAmount: MAX_UINT256,
+      approveAmount: amount,
     });
 
     if (!approveData?.data) {
@@ -104,11 +102,7 @@ export async function POST(request: NextRequest) {
       data: { txHash, ...callData },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Approve failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) return badRequest(error);
+    return apiError("swap/approve", error, "Approve failed");
   }
-}
+});
