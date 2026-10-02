@@ -34,7 +34,8 @@ export const GET = withSession(async (request: NextRequest) => {
     },
   };
 
-  if (fs.existsSync(resolvedBin)) {
+  // resolvedBin can come from ONCHAINOS_PATH or HOME at runtime; keep it out of output tracing.
+  if (fs.existsSync(/*turbopackIgnore: true*/ resolvedBin)) {
     try {
       const { stdout } = await execFileAsync(resolvedBin, ["--version"], {
         timeout: 5000,

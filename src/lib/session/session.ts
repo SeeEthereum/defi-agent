@@ -35,8 +35,12 @@ export class NoSessionError extends Error {
 
 const storage = new AsyncLocalStorage<UserSession>();
 
+// Runtime data, never code: the ignore comment keeps Turbopack's output
+// tracing from treating this env-configurable path as "the whole project".
 export function sessionsRoot(): string {
-  return process.env.ONCHAINOS_SESSIONS_DIR ?? path.join(process.cwd(), ".data", "sessions");
+  return path.resolve(
+    /*turbopackIgnore: true*/ process.env.ONCHAINOS_SESSIONS_DIR ?? path.join(process.cwd(), ".data", "sessions")
+  );
 }
 
 export function sessionHome(sid: string): string {
