@@ -19,7 +19,8 @@ export type LineIconName =
   | "coins"
   | "layers"
   | "alert"
-  | "flame";
+  | "flame"
+  | "lock";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   swap: (
@@ -95,6 +96,12 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
   ),
   flame: (
     <path d="M12 21c-3.9 0-7-2.9-7-6.5 0-2.8 1.6-4.6 3-6 .3 1.7 1.2 2.9 2.3 3.2C9.9 8.8 11 5.6 13.5 3c.4 3 2 4.8 3.3 6.3C18 10.6 19 12.3 19 14.5 19 18.1 15.9 21 12 21z" />
+  ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
   ),
 };
 

@@ -9,6 +9,7 @@ import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
+import { ConfidentialPanel } from "./confidential-panel";
 
 // Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
 const NATIVE_TOKEN_LIFI = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -348,6 +349,7 @@ function TokenDropdown({
 
 export default function BridgePage() {
   const { authenticated, walletAddress } = useAuth();
+  const [mode, setMode] = useState<"standard" | "confidential">("standard");
   const [fromChainIndex, setFromChainIndex] = useState(1);
   const [toChainIndex, setToChainIndex] = useState(42161);
   const [fromToken, setFromToken] = useState<BridgeTokenInfo | null>(null);
@@ -831,16 +833,45 @@ export default function BridgePage() {
       />
       {/* Page header */}
       <div>
-        <p className="text-eyebrow">CROSS-CHAIN · LI.FI</p>
+        <p className="text-eyebrow">
+          {mode === "confidential" ? "CONFIDENTIAL · NEAR INTENTS" : "CROSS-CHAIN · LI.FI"}
+        </p>
         <h1 className="mt-1.5 text-display-lg text-foreground">
           Bridge
         </h1>
         <p className="text-[13px] text-muted-foreground mt-2">
-          Transfer tokens across chains via LI.FI
+          {mode === "confidential"
+            ? "Swap to another address without linking it to this wallet"
+            : "Transfer tokens across chains via LI.FI"}
         </p>
       </div>
 
-      {/* Main card */}
+      {/* Mode switch */}
+      <div role="tablist" aria-label="Bridge mode" className="grid grid-cols-2 gap-1 rounded-full border border-border/60 bg-card p-1">
+        {(["standard", "confidential"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={mode === m}
+            onClick={() => setMode(m)}
+            className={`h-9 rounded-full text-[13px] font-semibold transition-colors ${
+              mode === m ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {m === "standard" ? "Standard" : "Confidential"}
+          </button>
+        ))}
+      </div>
+
+      {mode === "confidential" ? (
+        walletAddress ? (
+          <ConfidentialPanel walletAddress={walletAddress} />
+        ) : (
+          <p className="text-[13px] text-muted-foreground">Loading your wallet…</p>
+        )
+      ) : (
+      /* Main card */
       <div className="voxr-card">
         <div className="p-5 space-y-5">
           {/* Source chain */}
@@ -1268,6 +1299,7 @@ export default function BridgePage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

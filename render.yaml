@@ -33,3 +33,5 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: NEAR_INTENTS_API_KEY # 1Click partner key (confidential swaps)
+        sync: false

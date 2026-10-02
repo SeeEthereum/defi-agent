@@ -14,6 +14,7 @@ albicocca is a non-custodial DeFi platform that combines:
 
 - **DEX Aggregation** — swap any token across 500+ DEX sources at the best price, zero platform fees
 - **Cross-Chain Bridge** — bridge tokens between any supported chain via LI.FI aggregator (20+ bridge protocols), with cross-token support
+- **Confidential swaps** — swap to another address through NEAR Intents without linking it to your wallet
 - **Yield Farming** — supply assets to Fluid Protocol and earn passive interest
 - **Security Center** — scan tokens for honeypots and rug pulls, manage and revoke ERC-20 approvals, check DApps for phishing
 - **Smart Money Intelligence** — track whale/KOL/smart money buy signals and view top trader leaderboards
@@ -53,6 +54,14 @@ No seed phrases. No browser extensions. Sign in with Google, Apple or email and 
 - Explorer links for both source and destination chain transactions
 - 0% platform commission — only bridge protocol fees and gas
 - ERC-8021 Builder Code attribution
+
+### Confidential swaps (NEAR Intents)
+
+- **Confidential** tab on the Bridge page, through the NEAR Intents 1Click API with `confidentiality: "basic"`
+- Pays a different address you choose: deposit and payout stay public, the link between them is hidden
+- Recipient is validated on the server (format, EIP-55 checksum, not the zero address, not the sending wallet) and bound to the quote
+- One deposit per quote, so a lost response cannot send funds twice; refunds go back to the sending wallet
+- Requires `NEAR_INTENTS_API_KEY` (Distribution Channel key from the NEAR Intents partner dashboard)
 
 ### Earn (Fluid Protocol)
 
@@ -233,6 +242,9 @@ OKX_PASSPHRASE=your_passphrase
 OKX_PROJECT_ID=your_project_id
 OPENAI_API_KEY=your_openai_key
 
+# NEAR Intents 1Click partner key (Distribution Channel) — confidential swaps
+NEAR_INTENTS_API_KEY=your_partner_jwt
+
 # Signs the per-browser session cookie (required in production, 32+ chars)
 SESSION_SECRET=output_of_openssl_rand_hex_32
 
@@ -272,7 +284,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 The app is configured for deployment on [Render](https://render.com). Push to `main` and Render will auto-deploy.
 
-Before the first deploy, set the secrets in the Render dashboard (`OKX_*`, `OPENAI_API_KEY`) and make sure `SESSION_SECRET` exists — `render.yaml` generates it, but a service created before it was added needs it set by hand. In production the app refuses to sign session cookies without it. Keep the service on a single instance.
+Before the first deploy, set the secrets in the Render dashboard (`OKX_*`, `OPENAI_API_KEY`, `NEAR_INTENTS_API_KEY`) and make sure `SESSION_SECRET` exists — `render.yaml` generates it, but a service created before it was added needs it set by hand. In production the app refuses to sign session cookies without it. Keep the service on a single instance.
 
 ---
 
