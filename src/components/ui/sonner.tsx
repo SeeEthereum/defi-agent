@@ -2,14 +2,15 @@
 
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { useResolvedTheme } from "@/hooks/use-theme"
 
-// The app has a single light theme and no next-themes provider, so
-// useTheme() always returned "system" and toasts followed the OS: on a Mac in
-// dark mode they rendered sonner's dark theme inside a light app.
+// Toasts follow the app's own theme (data-theme), not the OS: "auto" is
+// resolved against the system in useResolvedTheme.
 const Toaster = ({ ...props }: ToasterProps) => {
+  const theme = useResolvedTheme()
   return (
     <Sonner
-      theme="light"
+      theme={theme}
       className="toaster group"
       icons={{
         success: (

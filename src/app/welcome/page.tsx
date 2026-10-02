@@ -1,224 +1,418 @@
-"use client";
-
 /**
  * albicocca landing — the public entry to the app.
  *
- * Every "Sign in" call to action goes to /auth, which shows the risk
- * disclaimer and then the OKX sign-in. The (app) layout redirects here when
- * the disclaimer has not been accepted yet.
+ * A Server Component: every word is in the HTML before any script runs.
+ * Interactive and moving parts are small client islands (Masthead, Marquee,
+ * LandingMotion). Every "Sign in" goes to /auth, which shows the risk
+ * disclaimer and then the OKX sign-in.
  *
- * Markup and styles come from the approved vocina-family design canvas; this
- * component only wires its behaviour. The logic mirrors the canvas script
- * value for value (reveal threshold, parallax factors, carousel scaling).
- * One deliberate difference: the canvas was a standalone page and never
- * removed its document-level listeners, which in a single-page app would keep
- * intercepting clicks and keys after you leave. Everything is torn down here.
+ * Copy is the approved copy, typeset for print: curly quotes, no em dashes,
+ * last two words joined (see lib/typeset).
  */
 
-import { useEffect } from "react";
-import "./albicocca.css";
-import { LANDING_HTML } from "./landing-markup";
+import Image from "next/image";
+import { BrandMark } from "@/components/brand-mark";
+import { LineIcon } from "@/components/line-icon";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { typeset as t } from "@/lib/typeset";
+import { LandingMotion } from "./landing-motion";
+import { Marquee } from "./marquee";
+import { Masthead } from "./masthead";
+import lightRoom from "./media/light-room.jpg";
+import engraving from "./media/engraving.jpg";
+import "./landing.css";
+
+const MARQUEE = ["Swap", "Bridge", "Earn", "Perps", "Smart money signals", "Token safety", "Gas in stablecoins", "Six chains"];
+
+/** A headline line split into words, each rising in turn (CSS only). */
+function Words({ text, from = 0 }: { text: string; from?: number }) {
+  const words = text.split(" ");
+  return (
+    <>
+      {words.map((w, i) => (
+        <span key={i} className="w" style={{ "--i": from + i } as React.CSSProperties}>
+          {w}
+          {i < words.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function SignInButton({ large = false }: { large?: boolean }) {
+  return (
+    <a className={`btn btn--primary${large ? " btn--lg" : ""}`} href="/auth">
+      Sign in
+      <span className="well" aria-hidden="true">
+        <LineIcon name="arrow-up-right" size={large ? 18 : 16} />
+      </span>
+    </a>
+  );
+}
 
 export default function WelcomePage() {
-  useEffect(() => {
-    const timers: number[] = [];
-    const cleanups: Array<() => void> = [];
-    const on = <K extends keyof WindowEventMap>(
-      target: Window | Document | Element,
-      type: K | string,
-      fn: EventListener,
-      opts?: AddEventListenerOptions
-    ) => {
-      target.addEventListener(type, fn, opts);
-      cleanups.push(() => target.removeEventListener(type, fn, opts));
-    };
+  return (
+    <div className="lp" id="top">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <div className="lp-ambient" aria-hidden="true" />
+      <div className="lp-grain" aria-hidden="true" />
+      <span id="top-sentinel" aria-hidden="true" style={{ position: "absolute", top: 0, height: 1, width: 1 }} />
 
-    // In-page anchors (#what, #how, #custody) scroll smoothly on this page
-    // only; the setting is restored when you navigate away.
-    const root = document.documentElement;
-    const prevScrollBehavior = root.style.scrollBehavior;
-    root.style.scrollBehavior = "smooth";
+      <Masthead />
 
-    const qsa = <T extends Element = HTMLElement>(sel: string) =>
-      Array.from(document.querySelectorAll<T & Element>(sel)) as T[];
+      <main id="main" tabIndex={-1}>
+        {/* ───────── Hero ───────── */}
+        <div className="wrap">
+          <section className="hero" aria-labelledby="hero-title">
+            <div className="hero-core">
+              <div className="hero-art" aria-hidden="true">
+                <Image src={lightRoom} alt="" fill priority sizes="(max-width: 1080px) 100vw, 75vw" placeholder="blur" />
+              </div>
 
-    // ── Reveal on scroll ─────────────────────────────────────────────────
-    // getBoundingClientRect rather than IntersectionObserver, as in the source.
-    let pending = qsa<HTMLElement>("[data-reveal]");
-    let ticking = false;
-    let onScroll = () => {};
+              <div className="hero-copy">
+                <p className="kicker">Live on six chains</p>
+                <h1 id="hero-title" className="h1">
+                  <span className="line">
+                    <Words text="Ask your wallet." />
+                  </span>
+                  <span className="line">
+                    <Words text="It does the rest." from={3} />
+                  </span>
+                </h1>
+                <p className="lead">
+                  {t(
+                    "albicocca is an onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it. No seed phrase, no bridge tabs, no gas token you forgot to buy."
+                  )}
+                </p>
+                <div className="actions">
+                  <SignInButton large />
+                  <a className="btn btn--lg" href="#what">
+                    See what it does
+                  </a>
+                </div>
+              </div>
 
-    // Sections with continuous animations pause while off screen.
-    const animScopes = qsa<HTMLElement>("[data-anim]");
-    let io: IntersectionObserver | null = null;
-    if (animScopes.length && "IntersectionObserver" in window) {
-      io = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((e) => e.target.classList.toggle("anim-off", !e.isIntersecting));
-        },
-        { rootMargin: "25% 0px" }
-      );
-      animScopes.forEach((el) => io!.observe(el));
-    }
+              <figure className="hero-card bezel" aria-label="Example: the assistant turns a request into a plan you confirm">
+                <div className="core">
+                  <p className="chat-me" data-seq style={{ "--s": 0 } as React.CSSProperties}>
+                    {t("Move half my USDC to Base and earn on it")}
+                  </p>
+                  <p className="chat-ai" data-seq style={{ "--s": 1 } as React.CSSProperties}>
+                    Found <span className="num">412 USDC</span> on Arbitrum. Bridging <span className="num">206</span> to Base, then supplying.
+                    Two&nbsp;steps.
+                  </p>
+                  <ul className="plan" data-seq style={{ "--s": 2 } as React.CSSProperties}>
+                    <li>
+                      <span className="op">Bridge</span>
+                      <span className="num">206 USDC → Base</span>
+                    </li>
+                    <li>
+                      <span className="op then">Then supply</span>
+                      <span>Lending pool</span>
+                    </li>
+                  </ul>
+                  <div className="confirm" data-seq style={{ "--s": 3 } as React.CSSProperties} aria-hidden="true">
+                    <span className="yes">Confirm</span>
+                    <span className="no">Cancel</span>
+                  </div>
+                </div>
+              </figure>
+            </div>
+          </section>
 
-    const reveal = (el: HTMLElement) => {
-      el.classList.add("in");
-      const d = parseFloat(getComputedStyle(el).getPropertyValue("--d")) || 0;
-      timers.push(window.setTimeout(() => el.classList.add("done"), 1150 + d * 1000));
-    };
+          {/* ───────── Feature deck ───────── */}
+          <div className="deck-wrap">
+            <div className="deck" data-loop="on" role="list" aria-label="What you can ask for">
+              <div className="tile-slot" role="listitem" style={{ "--k": 0 } as React.CSSProperties}>
+                <div className="tile tile--swap">
+                  <div className="tile-icon" aria-hidden="true">
+                    <LineIcon name="swap" size={26} strokeWidth={1.9} />
+                  </div>
+                  <div className="tile-body" aria-hidden="true">
+                    <div className="rows">
+                      <i style={{ "--d": "0s", "--w": "30px" } as React.CSSProperties}><b /><s /><u /></i>
+                      <i style={{ "--d": "0.35s", "--w": "22px" } as React.CSSProperties}><b /><s /><u /></i>
+                      <i style={{ "--d": "0.7s", "--w": "34px" } as React.CSSProperties}><b /><s /><u /></i>
+                      <span className="badge">Best route</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="tile-name">Swap</div>
+                    <div className="tile-sub">500+ liquidity sources</div>
+                  </div>
+                </div>
+              </div>
 
-    const check = () => {
-      ticking = false;
-      const vh = window.innerHeight || document.documentElement.clientHeight || 800;
-      const limit = vh * 0.92;
-      const hit: HTMLElement[] = [];
-      pending = pending.filter((el) => {
-        const r = el.getBoundingClientRect();
-        if (r.top < limit && r.bottom > 0) {
-          hit.push(el);
-          return false;
-        }
-        return true;
-      });
-      onScroll();
-      hit.forEach(reveal);
-    };
-    const requestCheck = () => {
-      if (!ticking) {
-        ticking = true;
-        window.requestAnimationFrame(check);
-      }
-    };
-    on(window, "scroll", requestCheck as EventListener, { passive: true });
+              <div className="tile-slot" role="listitem" style={{ "--k": 1 } as React.CSSProperties}>
+                <div className="tile tile--earn">
+                  <div className="tile-icon" aria-hidden="true">
+                    <LineIcon name="bar-chart" size={26} strokeWidth={1.9} />
+                  </div>
+                  <div className="tile-body" aria-hidden="true">
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>Supplied</div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                      <span style={{ fontSize: 15, opacity: 0.8 }}>$</span>
+                      <span className="tick num">
+                        <span>
+                          <span>1,240</span>
+                          <span>1,268</span>
+                          <span>1,291</span>
+                          <span>1,317</span>
+                          <span>1,240</span>
+                        </span>
+                      </span>
+                    </div>
+                    <div className="bar">
+                      <span />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.9 }}>
+                      <span style={{ padding: "3px 8px", borderRadius: 999, background: "rgba(255,255,255,0.22)", fontWeight: 600 }}>Earning</span>
+                      <span>every block</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="tile-name">Earn</div>
+                    <div className="tile-sub">Lending, no lock-up</div>
+                  </div>
+                </div>
+              </div>
 
-    // ── Tile carousel (≤900px) ───────────────────────────────────────────
-    const hero = document.querySelector<HTMLElement>("[data-hero]");
-    const spreads = qsa<HTMLElement>("[data-spread]");
-    const tilesEl = document.querySelector<HTMLElement>(".albi .tiles");
-    const dots = [".dot-a", ".dot-b", ".dot-c"].map((s) => document.querySelector<HTMLElement>(s));
-    const isCarousel = () => window.innerWidth <= 900;
+              <div className="tile-slot" role="listitem" style={{ "--k": 2 } as React.CSSProperties}>
+                <div className="tile tile--trade">
+                  <div className="tile-icon" aria-hidden="true">
+                    <LineIcon name="trending-up" size={26} strokeWidth={1.9} />
+                  </div>
+                  <div className="tile-body" aria-hidden="true">
+                    <div className="chart">
+                      <svg width="100%" height="88" viewBox="0 0 200 88" fill="none" style={{ overflow: "visible", display: "block" }}>
+                        <path pathLength={1} d="M4 72 L30 60 L54 66 L80 42 L106 48 L130 24 L156 32 L196 8" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span className="runner" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="tile-name">Trade</div>
+                    <div className="tile-sub">Perps with a stop attached</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="deck-dots" aria-hidden="true">
+              <span />
+              <span data-on="true" />
+              <span />
+            </div>
+          </div>
+        </div>
 
-    let tileTick = false;
-    const syncTiles = () => {
-      tileTick = false;
-      if (!tilesEl || !isCarousel()) return;
-      const c = tilesEl.getBoundingClientRect();
-      const mid = c.left + c.width / 2;
-      let best = 0;
-      let bestD = Infinity;
-      spreads.forEach((el, n) => {
-        const r = el.getBoundingClientRect();
-        const dist = Math.abs(r.left + r.width / 2 - mid);
-        const d = Math.min(1, dist / Math.max(1, r.width));
-        el.style.transform = `scale(${(1 - d * 0.08).toFixed(3)})`;
-        el.style.opacity = (1 - d * 0.4).toFixed(3);
-        if (dist < bestD) {
-          bestD = dist;
-          best = n;
-        }
-      });
-      dots.forEach((d, n) => {
-        if (d) d.style.background = n === best ? "#1d1d1f" : "rgba(0,0,0,0.2)";
-      });
-    };
-    const requestTiles = () => {
-      if (!tileTick) {
-        tileTick = true;
-        window.requestAnimationFrame(syncTiles);
-      }
-    };
-    const centerTile = (n: number) => {
-      if (!tilesEl || !spreads[n]) return;
-      const r = spreads[n].getBoundingClientRect();
-      const c = tilesEl.getBoundingClientRect();
-      tilesEl.scrollLeft += r.left + r.width / 2 - (c.left + c.width / 2);
-    };
-    if (tilesEl) {
-      on(tilesEl, "scroll", requestTiles as EventListener, { passive: true });
-      if (isCarousel()) {
-        centerTile(1);
-        syncTiles();
-      }
-      timers.push(window.setTimeout(syncTiles, 400));
-    }
+        <Marquee items={MARQUEE} />
 
-    // ── Nav: scrolled state, dark section, mobile menu ───────────────────
-    const navEl = document.querySelector<HTMLElement>("[data-nav]");
-    const darkSec = document.querySelector<HTMLElement>("[data-dark]");
-    const menuBtn = document.querySelector<HTMLElement>("[data-menu-btn]");
-    const menuEl = document.querySelector<HTMLElement>("[data-menu]");
-    const setMenu = (open: boolean) => {
-      if (!navEl || !menuBtn) return;
-      navEl.classList.toggle("menu-open", open);
-      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
-      menuBtn.setAttribute("aria-label", open ? "Close the menu" : "Open the menu");
-    };
-    if (menuBtn && menuEl && navEl) {
-      on(menuBtn, "click", (() => setMenu(!navEl.classList.contains("menu-open"))) as EventListener);
-      on(menuEl, "click", ((e: Event) => {
-        if ((e.target as Element).closest("a")) setMenu(false);
-      }) as EventListener);
-      on(document, "keydown", ((e: KeyboardEvent) => {
-        if (e.key === "Escape") setMenu(false);
-      }) as EventListener);
-      on(document, "click", ((e: Event) => {
-        if (navEl.classList.contains("menu-open") && !navEl.contains(e.target as Node)) setMenu(false);
-      }) as EventListener);
-    }
+        {/* ───────── What it does ───────── */}
+        <section id="what" className="section" aria-labelledby="what-title">
+          <div className="wrap">
+            <div data-reveal>
+              <span className="label">What it does</span>
+              <h2 id="what-title" className="h2">
+                You say it. <span className="soft">It routes&nbsp;it.</span>
+              </h2>
+              <p className="sec-lead">
+                {t("Every action is proposed before it runs. You see the chain, the token and the amount, and nothing moves until you confirm.")}
+              </p>
+            </div>
 
-    let lastY = 0;
-    onScroll = () => {
-      const y = Math.max(0, window.scrollY || window.pageYOffset || 0);
-      const carousel = isCarousel();
-      let overDark = false;
-      if (navEl && darkSec) {
-        const dr = darkSec.getBoundingClientRect();
-        overDark = dr.top <= 56 && dr.bottom >= 56;
-      }
-      if (!carousel) {
-        const k = Math.min(1, y / 500);
-        spreads.forEach((el) => {
-          const dir = parseFloat(el.getAttribute("data-spread") || "0") || 0;
-          el.style.transform = `translate(${(dir * k * 90).toFixed(1)}px, ${(Math.abs(dir) * k * -30).toFixed(1)}px) rotate(${(dir * k * 4).toFixed(2)}deg)`;
-        });
-      }
-      if (navEl) {
-        navEl.classList.toggle("nav-scrolled", y > 8);
-        if (darkSec) navEl.classList.toggle("nav-dark", overDark);
-        if (navEl.classList.contains("menu-open") && Math.abs(y - lastY) > 80) setMenu(false);
-      }
-      lastY = y;
-      if (!hero) return;
-      if (carousel) {
-        // On phones the hero slides under the tiles and fades, never overlapping.
-        const pm = Math.min(1, y / 420);
-        hero.style.transform = `translateY(${(y * 0.18).toFixed(1)}px) scale(${(1 - pm * 0.04).toFixed(3)})`;
-        hero.style.opacity = String(1 - pm * 0.9);
-        return;
-      }
-      const p = Math.min(1, y / 640);
-      hero.style.transform = `translateY(${(y * 0.32).toFixed(1)}px) scale(${(1 - p * 0.06).toFixed(3)})`;
-      hero.style.opacity = String(1 - p * 0.85);
-    };
+            <div className="bento">
+              <article className="bezel cell-assistant" data-spot data-reveal="0">
+                <div className="core">
+                  <div>
+                    <span className="cell-label">Assistant</span>
+                    <h3 className="h3">Ask in plain words.</h3>
+                    <p className="quote">{t(`"Move half my USDC to Base and put it to work."`)}</p>
+                  </div>
+                  <div>
+                  <p className="cell-text">
+                    {t("It reads your balances, picks the route, and hands you a card to approve. No dropdowns, no chain switcher, no copying addresses between tabs.")}
+                  </p>
+                  <div className="quote-rule" aria-hidden="true">
+                    <span className="op">Swap</span>
+                    <span className="op">Bridge</span>
+                    <span className="op">Earn</span>
+                    <span className="op">Perps</span>
+                  </div>
+                  </div>
+                </div>
+              </article>
 
-    const onResize = () => {
-      if (isCarousel()) requestTiles();
-      else spreads.forEach((el) => (el.style.opacity = ""));
-      requestCheck();
-    };
-    on(window, "resize", onResize as EventListener);
+              <article className="bezel cell-gas" data-spot data-reveal="0.08">
+                <div className="core">
+                  <span className="cell-label">Gas Station</span>
+                  <h3 className="h3">No native token? Fine.</h3>
+                  <p className="cell-text">
+                    {t("Out of ETH on the chain you need? Pay the gas in USDC or USDT instead and keep going. A relayer fronts the native token and your stablecoin settles it in the same transaction.")}
+                  </p>
+                  <div className="mini" aria-label="Example: paying gas with a stablecoin">
+                    <div className="mini-foot" style={{ paddingTop: 0 }}>
+                      <span>Not enough ETH for gas</span>
+                    </div>
+                    <div className="mini-row on">
+                      <span>USDC</span>
+                      <span className="num">412.08</span>
+                    </div>
+                    <div className="mini-row">
+                      <span>USDT</span>
+                      <span className="num">96.40</span>
+                    </div>
+                    <div className="mini-foot">
+                      <span>Network fee</span>
+                      <span className="num">0.13 USDC</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
 
-    check();
-    timers.push(window.setTimeout(check, 300));
-    timers.push(window.setTimeout(check, 1200));
+              <article className="bezel cell-safety" data-spot data-reveal="0.16">
+                <div className="core">
+                  <span className="cell-label">Safety</span>
+                  <h3 className="h3">It checks before you sign.</h3>
+                  <p className="cell-text">
+                    {t("Every transaction is scanned before it goes out, and unfamiliar tokens are screened for honeypots and hidden sell taxes. Old approvals you left behind are listed so you can revoke them in a tap.")}
+                  </p>
+                  <div className="mini" aria-label="Example: a safety check">
+                    <div className="mini-row">
+                      <span className="ok">
+                        <LineIcon name="check" size={16} strokeWidth={2.2} />
+                        Contract verified
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="ok">
+                        <LineIcon name="check" size={16} strokeWidth={2.2} />
+                        Not a honeypot
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="warn">
+                        <span className="num">3</span> old approvals open
+                      </span>
+                      <span className="op">Revoke all</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
 
-    return () => {
-      cleanups.forEach((fn) => fn());
-      timers.forEach((t) => window.clearTimeout(t));
-      io?.disconnect();
-      root.style.scrollBehavior = prevScrollBehavior;
-    };
-  }, []);
+        {/* ───────── How it works ───────── */}
+        <section id="how" className="section" aria-labelledby="how-title">
+          <div className="wrap how">
+            <div className="how-head" data-reveal>
+              <h2 id="how-title" className="h2">
+                Three steps. <span className="soft">Then just&nbsp;ask.</span>
+              </h2>
+              <p className="sec-lead">
+                {t("You are never asked to write down twelve words, install an extension, or approve a transaction you cannot read.")}
+              </p>
+            </div>
+            <div className="steps">
+              <span className="steps-track" aria-hidden="true" />
+              <span className="steps-fill" aria-hidden="true" />
+              <ol>
+              <li className="step" data-reveal="0">
+                <h3>Sign in</h3>
+                <p>{t("Google, Apple or your email. A wallet is created for you in the same moment: nothing to write down, nothing to lose.")}</p>
+              </li>
+              <li className="step" data-reveal="0.05">
+                <h3>Add funds</h3>
+                <p>{t("Send crypto to your new address on any supported chain.")}</p>
+              </li>
+              <li className="step" data-reveal="0.1">
+                <h3>Ask for it</h3>
+                <p>{t("Swap, bridge, lend, open a position, check what the smart money is buying. Read the card it hands back, then confirm.")}</p>
+              </li>
+              </ol>
+            </div>
+          </div>
+        </section>
 
-  return <div className="albi" dangerouslySetInnerHTML={{ __html: LANDING_HTML }} />;
+        {/* ───────── Custody ───────── */}
+        <section id="custody" className="section" aria-labelledby="custody-title" style={{ paddingTop: 0 }}>
+          <div className="wrap">
+            <div className="bezel vault" data-reveal>
+              <div className="core">
+                <div className="vault-copy">
+                  <div>
+                    <span className="label">Custody</span>
+                    <h2 id="custody-title" className="h2">
+                      Your keys stay <span className="soft">in the&nbsp;enclave.</span>
+                    </h2>
+                    <p className="sec-lead">
+                      {t("Your private key is generated inside OKX's secure enclave and never leaves it. The assistant can prepare a transaction and ask you to sign it, but it cannot read your key, and neither can we.")}
+                    </p>
+                  </div>
+                  <ul className="points">
+                    <li>
+                      <LineIcon name="lock" size={22} />
+                      <div>
+                        <h3>No seed phrase</h3>
+                        <p>{t("Nothing to write on paper and nothing to lose. You sign in the way you already sign in everywhere else.")}</p>
+                      </div>
+                    </li>
+                    <li>
+                      <LineIcon name="shield-check" size={22} />
+                      <div>
+                        <h3>You confirm everything</h3>
+                        <p>{t("The assistant proposes, you approve. It never signs on its own, however you phrase the request.")}</p>
+                      </div>
+                    </li>
+                    <li>
+                      <LineIcon name="exit" size={22} />
+                      <div>
+                        <h3>Leave whenever</h3>
+                        <p>{t("It is your wallet on public chains. Send everything out the day you decide to stop. No notice, no queue.")}</p>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+                <div className="vault-art" aria-hidden="true">
+                  <Image src={engraving} alt="" fill sizes="(max-width: 1080px) 100vw, 45vw" placeholder="blur" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ───────── Closing ───────── */}
+        <section id="access" className="closing" aria-labelledby="access-title">
+          <div className="wrap" data-reveal>
+            <h2 id="access-title" className="h-close">
+              Start in a&nbsp;minute.
+            </h2>
+            <p className="sec-lead">
+              {t("Sign in with Google, Apple or email. Your wallet is created on the spot, and you can ask for your first swap straight after.")}
+            </p>
+            <div className="actions">
+              <SignInButton large />
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="foot">
+        <div className="wrap foot-row">
+          <BrandMark size={19} />
+          <nav className="foot-links" aria-label="Footer">
+            <a href="#what">What it does</a>
+            <a href="#custody">Custody</a>
+            <a href="/auth">Sign in</a>
+          </nav>
+          <ThemeSwitch />
+          <small>© 2026 albicocca</small>
+        </div>
+      </footer>
+
+      <LandingMotion />
+    </div>
+  );
 }
