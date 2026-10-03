@@ -593,3 +593,35 @@
   & .trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .row .end .glp { margin-top: 2px; min-height: 22px; font-size: 12px; }
 }
+.app {
+  & .tok-fallback { display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  & .row.is-on { background: var(--brand-soft); }
+  & .leg-top .select--chip .input { min-height: 34px; font-size: 13.5px; background: var(--card); }
+  & .tok-btn:disabled { opacity: 0.6; cursor: wait; }
+}
+.app {
+  & .chip-pair { display: flex; flex-wrap: wrap; gap: 6px; }
+  & .leg-sym { flex-shrink: 0; font-size: 15px; font-weight: 500; color: var(--text-2); }
+  & .conf-quote { display: grid; gap: 14px; padding: 16px 18px; border-radius: 20px; border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); background: color-mix(in srgb, var(--brand) 6%, var(--card)); }
+  & .conf-out { display: grid; gap: 2px; }
+  & .conf-out .muted { font-size: 13px; }
+  & .conf-out .num { font-size: clamp(26px, 3vw, 34px); letter-spacing: -0.05em; white-space: normal; }
+  & .conf-recipient { white-space: normal; overflow-wrap: anywhere; font-size: 12.5px; }
+  & .conf-links { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 4px; }
+  & .check { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start; font-size: 13.5px; line-height: 1.5; cursor: pointer; }
+  & .check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  & .check .box { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; border: 1.5px solid var(--border-strong); color: transparent; transition: background-color 0.25s var(--spring), border-color 0.25s var(--spring), color 0.25s var(--spring); }
+  & .check input:checked + .box { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+  & .check input:focus-visible + .box { outline: 2px solid var(--ring); outline-offset: 2px; }
+  & .steps-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  & .steps-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14.5px; }
+  & .steps-list li:first-child { border-top: 0; padding-top: 0; }
+  & .steps-list .n { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--shell); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+  & span.flip { cursor: default; }
+}
+.app {
+  & .leg-top { flex-wrap: wrap; }
+  & .chip-pair { flex-wrap: nowrap; }
+  & .chip-pair .select--chip .input { padding-right: 34px; }
+  & .chip-pair .select--chip::after { right: 13px; }
+}

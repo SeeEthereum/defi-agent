@@ -10,11 +10,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
+import { Empty, Panel } from "@/components/premium";
 import { CHAINS } from "@/lib/chains";
 import { getAddress } from "viem";
 import { checkRecipient } from "@/lib/near-intents/recipient";
@@ -105,26 +104,37 @@ function fromBaseUnits(value: string, decimals: number): string {
 }
 
 function chainName(chainIndex: number): string {
-  return CHAIN_LIST.find((c) => c.chainIndex === chainIndex)?.name ?? "—";
+  return CHAIN_LIST.find((c) => c.chainIndex === chainIndex)?.name ?? "unknown network";
 }
 
 function explorer(chainIndex: number): string {
   return CHAIN_LIST.find((c) => c.chainIndex === chainIndex)?.explorer ?? "https://etherscan.io";
 }
 
-const SELECT_CLASS =
-  "flex h-11 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer";
-const SELECT_STYLE = {
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 14px center",
-} as const;
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** A compact select shown as a chip; the label is for screen readers. */
+function ChipSelect({
+  id,
+  label,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  id: string;
+  label: string;
+  value: string | number;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <p className="text-[13px] font-medium text-muted-foreground mb-2">{label}</p>
-      {children}
+    <div className="select select--chip">
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <select id={id} className="input" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
     </div>
   );
 }
@@ -349,9 +359,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
   };
 
   if (tokensError) {
-    return (
-      <div className="voxr-card p-5 text-[13px] text-muted-foreground">{tokensError}</div>
-    );
+    return <Empty icon="lock" title="Confidential swaps are unavailable" text={tokensError} />;
   }
 
   const minOut = activeQuote ? fromBaseUnits(activeQuote.minAmountOut, activeQuote.toDecimals) : null;
@@ -360,9 +368,12 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
       ? Math.max(0, Number(activeQuote.amountInUsd) - Number(activeQuote.amountOutUsd))
       : null;
   const finished = status && TERMINAL.includes(status.status);
+  const payUsd = fromToken?.priceUsd && amountBase ? Number(amount.replace(",", ".")) * fromToken.priceUsd : null;
+  const statusText = STATUS_TEXT[status?.status ?? "PENDING_DEPOSIT"];
+  const statusBad = status?.status === "FAILED" || status?.status === "INCOMPLETE_DEPOSIT";
 
   return (
-    <div className="space-y-5">
+    <div className="bento">
       <GasStationModal
         open={gasStation !== null}
         chain={String(fromChain)}
@@ -374,301 +385,329 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
         }}
       />
 
-      <div className="voxr-card">
-        <div className="p-5 space-y-5">
-          {/* Source */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="From network">
-                <select
-                  className={SELECT_CLASS}
-                  style={SELECT_STYLE}
-                  value={fromChain}
-                  onChange={(e) => {
-                    setFromChain(Number(e.target.value));
-                    setBalance(null);
-                    resetQuote();
-                  }}
-                >
-                  {CHAIN_LIST.map((c) => (
-                    <option key={c.chainIndex} value={c.chainIndex}>{c.name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Token">
-                <select
-                  className={SELECT_CLASS}
-                  style={SELECT_STYLE}
-                  value={fromAddress}
-                  disabled={fromTokens.length === 0}
-                  onChange={(e) => {
-                    setFromAddr(e.target.value);
-                    setBalance(null);
-                    resetQuote();
-                  }}
-                >
-                  {fromTokens.length === 0 && <option value="">Loading…</option>}
-                  {fromTokens.map((t) => (
-                    <option key={t.address} value={t.address}>{t.symbol}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[13px] font-medium text-muted-foreground">Amount</p>
-                {balance !== null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                      Bal: {Number(balance).toFixed(Number(balance) < 1 ? 4 : 2)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleMax}
-                      className="text-[11px] font-semibold text-primary px-1.5 py-0.5 rounded bg-primary/15"
-                    >
-                      MAX
-                    </button>
-                  </div>
-                )}
-              </div>
-              <Input
-                placeholder="0.00"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => {
-                  setAmount(e.target.value);
-                  setError(null);
+      <Panel className="span-7 ticket" index={1}>
+        {/* source */}
+        <div className="leg">
+          <div className="leg-top">
+            <div className="chip-pair">
+              <ChipSelect
+                id="conf-from-chain"
+                label="From network"
+                value={fromChain}
+                onChange={(v) => {
+                  setFromChain(Number(v));
+                  setBalance(null);
+                  resetQuote();
                 }}
-                className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums"
-              />
-              {amount.trim() !== "" && amountBase === null && (
-                <p className="text-[12px] text-loss-ink mt-1.5">Enter a valid amount</p>
-              )}
-              {insufficient && (
-                <p className="text-[12px] text-loss-ink mt-1.5">
-                  Not enough {fromToken?.symbol} on {chainName(fromChain)}.
-                </p>
-              )}
+              >
+                {CHAIN_LIST.map((c) => (
+                  <option key={c.chainIndex} value={c.chainIndex}>
+                    {c.name}
+                  </option>
+                ))}
+              </ChipSelect>
+              <ChipSelect
+                id="conf-from-token"
+                label="Token to send"
+                value={fromAddress}
+                disabled={fromTokens.length === 0}
+                onChange={(v) => {
+                  setFromAddr(v);
+                  setBalance(null);
+                  resetQuote();
+                }}
+              >
+                {fromTokens.length === 0 && <option value="">Loading…</option>}
+                {fromTokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.symbol}
+                  </option>
+                ))}
+              </ChipSelect>
             </div>
-          </div>
-
-          {/* Destination */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="To network">
-                <select
-                  className={SELECT_CLASS}
-                  style={SELECT_STYLE}
-                  value={toChain}
-                  onChange={(e) => {
-                    setToChain(Number(e.target.value));
-                    resetQuote();
-                  }}
-                >
-                  {CHAIN_LIST.map((c) => (
-                    <option key={c.chainIndex} value={c.chainIndex}>{c.name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Token">
-                <select
-                  className={SELECT_CLASS}
-                  style={SELECT_STYLE}
-                  value={toAddress}
-                  disabled={toTokens.length === 0}
-                  onChange={(e) => {
-                    setToAddr(e.target.value);
-                    resetQuote();
-                  }}
-                >
-                  {toTokens.length === 0 && <option value="">Loading…</option>}
-                  {toTokens.map((t) => (
-                    <option key={t.address} value={t.address}>{t.symbol}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            {sameAsset && (
-              <p className="text-[12px] text-warn-ink">Pick a different token or network to receive.</p>
+            {balance !== null && (
+              <span className="leg-bal">
+                <span className="num">{Number(balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                {Number(balance) > 0 && (
+                  <button type="button" className="max" onClick={handleMax}>
+                    Max
+                  </button>
+                )}
+              </span>
             )}
-            <Field label="Recipient address">
-              <Input
-                placeholder="0x…"
-                spellCheck={false}
-                autoComplete="off"
-                value={recipient}
-                onChange={(e) => {
-                  setRecipient(e.target.value);
-                  setError(null);
+          </div>
+          <div className="leg-main">
+            <label htmlFor="conf-amount" className="sr-only">
+              Amount to send
+            </label>
+            <input
+              id="conf-amount"
+              className="amount-in"
+              placeholder="0"
+              inputMode="decimal"
+              autoComplete="off"
+              value={amount}
+              aria-invalid={(amount.trim() !== "" && amountBase === null) || insufficient}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setError(null);
+              }}
+            />
+            <span className="leg-sym">{fromToken?.symbol}</span>
+          </div>
+          <div className="leg-foot">
+            {amount.trim() !== "" && amountBase === null ? (
+              <span className="err">Enter a valid amount</span>
+            ) : insufficient ? (
+              <span className="err">
+                Not enough {fromToken?.symbol} on {chainName(fromChain)}.
+              </span>
+            ) : (
+              <span className="num">{payUsd != null ? `$${payUsd.toFixed(2)}` : "\u00a0"}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flip-wrap" aria-hidden="true">
+          <span className="flip">
+            <LineIcon name="arrow-down" size={18} />
+          </span>
+        </div>
+
+        {/* destination */}
+        <div className="leg">
+          <div className="leg-top">
+            <div className="chip-pair">
+              <ChipSelect
+                id="conf-to-chain"
+                label="To network"
+                value={toChain}
+                onChange={(v) => {
+                  setToChain(Number(v));
+                  resetQuote();
                 }}
-                className="h-11 rounded-xl border-border/60 bg-secondary px-4 font-mono text-[13px]"
-              />
-              {recipientCheck && !recipientCheck.ok && (
-                <p className="text-[12px] text-loss-ink mt-1.5">{recipientCheck.error}</p>
+              >
+                {CHAIN_LIST.map((c) => (
+                  <option key={c.chainIndex} value={c.chainIndex}>
+                    {c.name}
+                  </option>
+                ))}
+              </ChipSelect>
+              <ChipSelect
+                id="conf-to-token"
+                label="Token to receive"
+                value={toAddress}
+                disabled={toTokens.length === 0}
+                onChange={(v) => {
+                  setToAddr(v);
+                  resetQuote();
+                }}
+              >
+                {toTokens.length === 0 && <option value="">Loading…</option>}
+                {toTokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.symbol}
+                  </option>
+                ))}
+              </ChipSelect>
+            </div>
+          </div>
+          <div className="field" style={{ marginTop: 6 }}>
+            <label htmlFor="conf-recipient">Recipient address</label>
+            <input
+              id="conf-recipient"
+              className="input mono"
+              placeholder="0x…"
+              spellCheck={false}
+              autoComplete="off"
+              value={recipient}
+              aria-invalid={recipientCheck != null && !recipientCheck.ok}
+              onChange={(e) => {
+                setRecipient(e.target.value);
+                setError(null);
+              }}
+            />
+            {recipientCheck && !recipientCheck.ok ? (
+              <p className="err">{recipientCheck.error}</p>
+            ) : (
+              <p className="hint">Use an address that has never received funds from this&nbsp;wallet.</p>
+            )}
+          </div>
+        </div>
+
+        {sameAsset && (
+          <p className="note warn">
+            <LineIcon name="alert" size={16} />
+            <span>Pick a different token or network to receive.</span>
+          </p>
+        )}
+
+        {activeQuote && (
+          <div className="conf-quote in">
+            <div className="conf-out">
+              <span className="muted">Recipient gets</span>
+              <span className="num">
+                <NumberDisplay value={activeQuote.amountOutFormatted} decimals={6} minDecimals={0} /> {toToken?.symbol}
+              </span>
+              <span className="muted">on {chainName(toChain)}</span>
+            </div>
+            <dl className="sum quote-sum">
+              <div>
+                <dt>You send</dt>
+                <dd className="num">
+                  {activeQuote.amountInFormatted} {fromToken?.symbol} on {chainName(fromChain)}
+                </dd>
+              </div>
+              {minOut && (
+                <div>
+                  <dt>Minimum received</dt>
+                  <dd className="num">
+                    {minOut} {toToken?.symbol}
+                  </dd>
+                </div>
               )}
-              <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-                Use an address that has never received funds from this wallet. Anything you later send back here links the two again.
-              </p>
-            </Field>
-          </div>
-
-          {/* What stays visible */}
-          <div className="flex gap-2.5 rounded-xl border border-border/50 px-4 py-3">
-            <LineIcon name="lock" size={16} className="text-primary shrink-0 mt-0.5" />
-            <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Your deposit and the payout are still public transactions. NEAR Intents hides the link between them. Round amounts and waiting before you move the funds again make them harder to match.
-            </p>
-          </div>
-
-          {/* Quote */}
-          {activeQuote && (
-            <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
-              <div className="p-4 pb-3">
-                <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
-                  Recipient gets
-                </p>
-                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
-                  <NumberDisplay value={activeQuote.amountOutFormatted} decimals={6} minDecimals={0} />{" "}
-                  <span className="text-base font-semibold text-primary">{toToken?.symbol}</span>
-                </p>
-                <p className="text-[12px] text-primary/80 mt-0.5">on {chainName(toChain)}</p>
+              {costUsd !== null && (
+                <div>
+                  <dt>Cost, fees and spread</dt>
+                  <dd className="num">{costUsd < 0.01 ? "under $0.01" : `$${costUsd.toFixed(2)}`}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Time</dt>
+                <dd>About {Math.max(1, Math.round(activeQuote.timeEstimate))} s after your deposit confirms</dd>
               </div>
-              <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5 text-[12px]">
-                <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">You send</span>
-                  <span className="font-medium tabular-nums">
-                    {activeQuote.amountInFormatted} {fromToken?.symbol} on {chainName(fromChain)}
-                  </span>
-                </div>
-                {minOut && (
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Minimum received</span>
-                    <span className="font-medium tabular-nums">{minOut} {toToken?.symbol}</span>
-                  </div>
-                )}
-                {costUsd !== null && (
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Cost (fees and spread)</span>
-                    <span className="font-medium tabular-nums">
-                      {costUsd < 0.01 ? "<$0.01" : `~$${costUsd.toFixed(2)}`}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Estimated time</span>
-                  <span className="font-medium">~{Math.max(1, Math.round(activeQuote.timeEstimate))} s after your deposit confirms</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Route</span>
-                  <span className="font-medium">Confidential · NEAR Intents</span>
-                </div>
-                <div className="pt-2 border-t border-primary/15">
-                  <p className="text-muted-foreground mb-1">Recipient</p>
-                  <p className="font-mono text-[12px] font-medium break-all text-foreground">
-                    {getAddress(activeQuote.recipient)}
-                  </p>
-                </div>
-                <label className="flex items-start gap-2.5 pt-2 border-t border-primary/15 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={confirmed}
-                    onChange={(e) => setConfirmed(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
-                  />
-                  <span className="text-[12px] text-foreground leading-relaxed">
-                    I checked every character of the recipient address. Funds sent to a wrong address cannot be recovered.
-                  </span>
-                </label>
+              <div>
+                <dt>Recipient</dt>
+                <dd className="num conf-recipient">{getAddress(activeQuote.recipient)}</dd>
               </div>
+            </dl>
+            <label className="check">
+              <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+              <span className="box" aria-hidden="true">
+                <LineIcon name="check" size={13} strokeWidth={2.6} />
+              </span>
+              <span>I checked every character of the recipient address. Funds sent to a wrong address cannot be&nbsp;recovered.</span>
+            </label>
+          </div>
+        )}
+
+        <Fade in={!!error}>
+          {error && (
+            <div className="note loss msg-note" role="alert">
+              <LineIcon name="alert" size={16} />
+              <div>
+                <p>{error}</p>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => setError(null)} aria-label="Dismiss">
+                <LineIcon name="x" size={15} />
+              </button>
             </div>
           )}
+        </Fade>
 
-          {/* Error */}
-          <Fade in={!!error}>
-            {error && (
-              <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 flex gap-3 items-start">
-                <LineIcon name="alert" size={16} className="text-loss-ink shrink-0 mt-0.5" />
-                <p className="flex-1 text-[12px] text-loss-ink leading-relaxed">{error}</p>
-                <button type="button" onClick={() => setError(null)} className="text-loss-ink p-0.5" aria-label="Dismiss">
-                  <LineIcon name="close" size={14} />
-                </button>
-              </div>
-            )}
-          </Fade>
-
-          {/* Progress */}
-          <Fade in={!!execution}>
-            {execution && (
-              <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1.5">
-                <p className="text-[13px] font-semibold text-gain-ink">
-                  {STATUS_TEXT[status?.status ?? "PENDING_DEPOSIT"].title}
+        <Fade in={!!execution}>
+          {execution && (
+            <div className={`note msg-note ${statusBad ? "loss" : "gain"}`} role="status">
+              {status?.status === "SUCCESS" ? <LineIcon name="check" size={16} /> : finished ? <LineIcon name="alert" size={16} /> : <span className="spin" aria-hidden="true" />}
+              <div>
+                <strong>{statusText.title}</strong>
+                <p>
+                  {statusText.body}
+                  {status?.status === "SUCCESS" && status.amountOutFormatted && ` ${status.amountOutFormatted} ${execution.toSymbol} on ${chainName(execution.toChain)}.`}
+                  {status?.status === "REFUNDED" && status.refundedAmountFormatted && ` Refunded: ${status.refundedAmountFormatted}.`}
                 </p>
-                <p className="text-[12px] text-gain-ink leading-relaxed">
-                  {STATUS_TEXT[status?.status ?? "PENDING_DEPOSIT"].body}
-                  {status?.status === "SUCCESS" && status.amountOutFormatted &&
-                    ` ${status.amountOutFormatted} ${execution.toSymbol} on ${chainName(execution.toChain)}.`}
-                  {status?.status === "REFUNDED" && status.refundedAmountFormatted &&
-                    ` Refunded: ${status.refundedAmountFormatted}.`}
-                </p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[12px] font-medium">
+                <p className="conf-links">
                   {execution.txHash && (
-                    <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
-                      href={`${explorer(execution.fromChain)}/tx/${execution.txHash}`}>
-                      Your deposit
+                    <a className="tx-link" target="_blank" rel="noopener noreferrer" href={`${explorer(execution.fromChain)}/tx/${execution.txHash}`}>
+                      Your deposit <LineIcon name="arrow-up-right" size={13} />
                     </a>
                   )}
                   {status?.destinationTxHash && (
-                    <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
-                      href={`${explorer(execution.toChain)}/tx/${status.destinationTxHash}`}>
-                      Payout on {chainName(execution.toChain)}
+                    <a className="tx-link" target="_blank" rel="noopener noreferrer" href={`${explorer(execution.toChain)}/tx/${status.destinationTxHash}`}>
+                      Payout on {chainName(execution.toChain)} <LineIcon name="arrow-up-right" size={13} />
                     </a>
                   )}
-                  <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
-                    href="https://explorer.near-intents.org">
-                    NEAR Intents explorer
+                  <a className="tx-link" target="_blank" rel="noopener noreferrer" href="https://explorer.near-intents.org">
+                    NEAR Intents explorer <LineIcon name="arrow-up-right" size={13} />
                   </a>
-                </div>
-                <p className="text-[11px] text-gain-ink/80 pt-1">
-                  Deposit address (search it on the explorer):{" "}
-                  <span className="font-mono break-all">{execution.depositAddress}</span>
                 </p>
-                {finished && (
-                  <button
-                    type="button"
-                    className="text-[12px] text-gain-ink pt-1"
-                    onClick={() => {
-                      setExecution(null);
-                      setStatus(null);
-                    }}
-                  >
-                    Dismiss
-                  </button>
-                )}
+                <p>
+                  Deposit address, to search on the explorer: <span className="num conf-recipient">{execution.depositAddress}</span>
+                </p>
               </div>
-            )}
-          </Fade>
+              {finished && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Dismiss"
+                  onClick={() => {
+                    setExecution(null);
+                    setStatus(null);
+                  }}
+                >
+                  <LineIcon name="x" size={15} />
+                </button>
+              )}
+            </div>
+          )}
+        </Fade>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-1">
-            <Button
-              onClick={getQuote}
-              disabled={quoteLoading || !liveKey || sameAsset}
-              variant="outline"
-              className="flex-1 h-11 rounded-xl text-[13px] font-semibold"
-            >
-              {quoteLoading ? "Getting quote…" : activeQuote && quoteExpired ? "Refresh quote" : "Get quote"}
-            </Button>
-            <Button
-              onClick={execute}
-              disabled={executing || !activeQuote || quoteExpired || !confirmed || insufficient}
-              className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold"
-            >
-              {executing ? "Sending…" : "Swap privately"}
-            </Button>
-          </div>
+        <div className="ticket-actions">
+          <button type="button" className="btn" onClick={getQuote} disabled={quoteLoading || !liveKey || sameAsset}>
+            {quoteLoading ? (
+              <>
+                <span className="spin" aria-hidden="true" />
+                Getting quote…
+              </>
+            ) : activeQuote && quoteExpired ? (
+              "Refresh quote"
+            ) : (
+              "Get quote"
+            )}
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={execute}
+            disabled={executing || !activeQuote || quoteExpired || !confirmed || insufficient}
+          >
+            {executing ? (
+              <>
+                <span className="spin" aria-hidden="true" />
+                Sending…
+              </>
+            ) : (
+              <>
+                <LineIcon name="lock" size={16} />
+                Swap privately
+              </>
+            )}
+          </button>
         </div>
-      </div>
+      </Panel>
+
+      <Panel className="span-5" index={2} title="How it stays private">
+        <ol className="steps-list">
+          <li>
+            <span className="n num">1</span>
+            <span>Your wallet pays a one-time deposit address.</span>
+          </li>
+          <li>
+            <span className="n num">2</span>
+            <span>Solvers fill the swap on NEAR&rsquo;s private network.</span>
+          </li>
+          <li>
+            <span className="n num">3</span>
+            <span>The recipient is paid from an address that is not yours.</span>
+          </li>
+        </ol>
+        <p className="note" style={{ marginTop: 16 }}>
+          <LineIcon name="lock" size={16} />
+          <span>
+            Both transfers stay public; the link between them does not. Round amounts and a pause before you move the funds again make them harder to&nbsp;match.
+          </span>
+        </p>
+      </Panel>
     </div>
   );
 }

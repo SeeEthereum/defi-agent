@@ -1,14 +1,19 @@
 "use client";
 
+/**
+ * Bridge: a ticket (from, to, quote) beside the assets on the source chain.
+ * The Confidential tab hands over to the NEAR Intents panel.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
+import { LineIcon } from "@/components/line-icon";
+import { Empty, PageHead, Panel, PillTabs, Picker, PickRow, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { ConfidentialPanel } from "./confidential-panel";
 
 // Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
@@ -131,33 +136,6 @@ function fromWei(amount: string, decimals: number): string {
   return trimmed ? `${intPart}.${trimmed}` : intPart;
 }
 
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={`animate-spin-breathe ${className}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
-}
-
 function TokenLogo({
   logoURI,
   symbol,
@@ -169,54 +147,46 @@ function TokenLogo({
 }) {
   if (logoURI?.startsWith("https://")) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- LI.FI logos come from many hosts
       <img
         src={logoURI}
-        alt={symbol}
+        alt=""
         width={size}
         height={size}
-        className="rounded-full shrink-0"
+        className="tok-logo"
         onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
+          (e.target as HTMLImageElement).style.visibility = "hidden";
         }}
       />
     );
   }
   return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary"
-      style={{ width: size, height: size }}
-    >
+    <span className="tok-fallback" style={{ width: size, height: size }} aria-hidden="true">
       {symbol.slice(0, 2)}
-    </div>
+    </span>
   );
 }
 
-function ChainSelector({
+/** Network as a compact select; `label` is read by screen readers. */
+function ChainSelect({
+  id,
   label,
   value,
   onChange,
   excludeChainIndex,
 }: {
+  id: string;
   label: string;
   value: number;
   onChange: (chainIndex: number) => void;
   excludeChainIndex?: number;
 }) {
   return (
-    <div>
-      <p className="text-[13px] font-medium text-muted-foreground mb-2">
+    <div className="select select--chip">
+      <label htmlFor={id} className="sr-only">
         {label}
-      </p>
-      <select
-        className="flex h-11 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "right 14px center",
-        }}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      >
+      </label>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(Number(e.target.value))}>
         {CHAIN_LIST.filter((c) => c.chainIndex !== excludeChainIndex).map((c) => (
           <option key={c.chainIndex} value={c.chainIndex}>
             {c.name}
@@ -227,31 +197,25 @@ function ChainSelector({
   );
 }
 
-function TokenDropdown({
+/** Token button plus a searchable picker over the LI.FI list for one chain. */
+function TokenChoice({
   tokens,
   selected,
   onSelect,
   loading,
-  label,
+  title,
 }: {
   tokens: BridgeTokenInfo[];
   selected: BridgeTokenInfo | null;
   onSelect: (t: BridgeTokenInfo) => void;
   loading: boolean;
-  label?: string;
+  title: string;
 }) {
   const [query, setQuery] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
   }, []);
 
   const filtered = query
@@ -263,87 +227,45 @@ function TokenDropdown({
     : tokens.slice(0, 50);
 
   return (
-    <div ref={containerRef}>
-      <p className="text-[13px] font-medium text-muted-foreground mb-2">
-        {label ?? "Token"}
-      </p>
-      {selected ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary px-4 h-11">
-          <TokenLogo logoURI={selected.logoURI} symbol={selected.symbol} size={24} />
-          <span className="font-semibold text-sm tracking-tight">
-            {selected.symbol}
-          </span>
-          <span className="text-xs text-muted-foreground truncate">
-            {selected.name}
-          </span>
-          <button
-            type="button"
-            className="ml-auto text-[13px] font-medium text-primary hover:text-primary transition-colors"
-            onClick={() => onSelect(null as unknown as BridgeTokenInfo)}
-          >
-            Change
-          </button>
-        </div>
-      ) : (
-        <div className="relative">
-          <Input
-            placeholder={loading ? "Loading tokens..." : "Search token..."}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setShowDropdown(true);
+    <>
+      <button
+        type="button"
+        className={`tok-btn${selected ? "" : " empty"}`}
+        onClick={() => setOpen(true)}
+        disabled={loading}
+        aria-haspopup="dialog"
+        aria-label={selected ? `${title}: ${selected.symbol}. Change token` : title}
+      >
+        {loading ? (
+          <span>Loading…</span>
+        ) : selected ? (
+          <>
+            <TokenLogo logoURI={selected.logoURI} symbol={selected.symbol} size={26} />
+            <span>{selected.symbol}</span>
+          </>
+        ) : (
+          <span>Select token</span>
+        )}
+        <LineIcon name="chevron-down" size={15} />
+      </button>
+      <Picker open={open} onClose={close} title={title} query={query} onQuery={setQuery} placeholder="Search a name or symbol">
+        {filtered.length === 0 && <p className="picker-hint">No tokens found.</p>}
+        {filtered.map((t, i) => (
+          <PickRow
+            key={`${t.address}-${i}`}
+            icon={<TokenLogo logoURI={t.logoURI} symbol={t.symbol} size={34} />}
+            title={t.symbol}
+            sub={t.name}
+            end={t.priceUSD && parseFloat(t.priceUSD) > 0 ? <span className="num">${parseFloat(t.priceUSD).toFixed(2)}</span> : undefined}
+            selected={selected?.address.toLowerCase() === t.address.toLowerCase()}
+            onPick={() => {
+              onSelect(t);
+              close();
             }}
-            onFocus={() => setShowDropdown(true)}
-            disabled={loading}
-            className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-primary/25 focus-visible:border-primary"
           />
-          <AnimatePresence>
-            {showDropdown && !loading && (
-              <motion.div
-                className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-popover shadow-lg shadow-black/5 origin-top"
-                initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
-                animate={{ opacity: 1, scaleY: 1, y: 0 }}
-                exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
-                transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
-              >
-                {filtered.length === 0 && (
-                  <div className="px-4 py-3 text-[13px] text-muted-foreground">
-                    No tokens found
-                  </div>
-                )}
-                {filtered.map((t, i) => (
-                  <button
-                    key={`${t.address}-${i}`}
-                    type="button"
-                    className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors"
-                    onClick={() => {
-                      onSelect(t);
-                      setQuery("");
-                      setShowDropdown(false);
-                    }}
-                  >
-                    <TokenLogo logoURI={t.logoURI} symbol={t.symbol} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-semibold tracking-tight">
-                        {t.symbol}
-                      </span>
-                      <span className="text-muted-foreground text-xs truncate ml-2">
-                        {t.name.length > 24 ? t.name.slice(0, 22) + "..." : t.name}
-                      </span>
-                    </div>
-                    {t.priceUSD && parseFloat(t.priceUSD) > 0 && (
-                      <span className="text-[11px] text-muted-foreground font-mono">
-                        ${parseFloat(t.priceUSD).toFixed(2)}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-    </div>
+        ))}
+      </Picker>
+    </>
   );
 }
 
@@ -704,7 +626,7 @@ export default function BridgePage() {
       if (res.status === 409) {
         skipClearQuoteErrorRef.current = true;
         clearQuote();
-        setError("Quote expired or price moved, refreshing...");
+        setError("The quote expired or the price moved. Getting a fresh one…");
         void handleGetQuote();
         return;
       }
@@ -773,10 +695,8 @@ export default function BridgePage() {
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground text-[15px]">
-          Please connect your wallet first.
-        </p>
+      <div className="page">
+        <Empty icon="bridge" title="Sign in first" text="Connect your wallet to move tokens between chains." />
       </div>
     );
   }
@@ -819,8 +739,16 @@ export default function BridgePage() {
       )
     : null;
 
+  const usdFmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const payUsd =
+    fromToken?.priceUSD && parsedAmountWei !== null && amount ? parseFloat(amount.replace(",", ".")) * parseFloat(fromToken.priceUSD) : null;
+  const receiveUsd =
+    activeQuote?.toToken?.priceUSD && quoteReceiveAmount ? parseFloat(quoteReceiveAmount) * parseFloat(activeQuote.toToken.priceUSD) : null;
+  const bridgeDone = bridgeStatus?.status === "DONE";
+  const bridgeFailed = bridgeStatus?.status === "FAILED" || bridgeStatus?.status === "INVALID";
+
   return (
-    <div className="max-w-md mx-auto space-y-5 py-2">
+    <div className="page">
       <GasStationModal
         open={gasStation !== null}
         chain={String(fromChainIndex)}
@@ -831,474 +759,335 @@ export default function BridgePage() {
           void handleBridge();
         }}
       />
-      {/* Page header */}
-      <div>
-        <p className="text-eyebrow">
-          {mode === "confidential" ? "Confidential · NEAR Intents" : "Cross-chain · LI.FI"}
-        </p>
-        <h1 className="mt-1.5 text-display-lg text-foreground">
-          Bridge
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-2">
-          {mode === "confidential"
-            ? "Swap to another address without linking it to this wallet"
-            : "Transfer tokens across chains via LI.FI"}
-        </p>
-      </div>
 
-      {/* Mode switch */}
-      <div role="tablist" aria-label="Bridge mode" className="grid grid-cols-2 gap-1 rounded-full border border-border/60 bg-card p-1">
-        {(["standard", "confidential"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={mode === m}
-            onClick={() => setMode(m)}
-            className={`h-9 rounded-full text-[13px] font-semibold transition-colors ${
-              mode === m ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {m === "standard" ? "Standard" : "Confidential"}
-          </button>
-        ))}
-      </div>
+      <PageHead
+        title="Bridge"
+        lede={
+          mode === "confidential"
+            ? "Swap to another address without linking it to this wallet, through NEAR Intents."
+            : "Move tokens between chains through LI.FI. albicocca adds no commission."
+        }
+      />
+
+      <PillTabs
+        id="bridge-mode"
+        label="Bridge mode"
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "standard", label: "Standard" },
+          {
+            value: "confidential",
+            label: (
+              <>
+                <LineIcon name="lock" size={14} />
+                Confidential
+              </>
+            ),
+          },
+        ]}
+      />
 
       {mode === "confidential" ? (
         walletAddress ? (
           <ConfidentialPanel walletAddress={walletAddress} />
         ) : (
-          <p className="text-[13px] text-muted-foreground">Loading your wallet…</p>
+          <Skeleton height={320} />
         )
       ) : (
-      /* Main card */
-      <div className="voxr-card">
-        <div className="p-5 space-y-5">
-          {/* Source chain */}
-          <ChainSelector
-            label="From Network"
-            value={fromChainIndex}
-            onChange={handleFromChainChange}
-            excludeChainIndex={toChainIndex}
-          />
-
-          {/* Your Assets section */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4">
-            <p className="text-[13px] font-medium text-muted-foreground mb-2.5">
-              Your Assets on {fromChainConfig?.name ?? "source chain"}
-            </p>
-            {walletAssetsLoading ? (
-              <div className="flex items-center gap-2 py-3 justify-center text-muted-foreground">
-                <Spinner />
-                <span className="text-[13px]">Loading balances...</span>
+        <div className="bento">
+          <Panel className="span-7 ticket" index={1}>
+            {/* from */}
+            <div className="leg">
+              <div className="leg-top">
+                <ChainSelect
+                  id="bridge-from"
+                  label="From network"
+                  value={fromChainIndex}
+                  onChange={handleFromChainChange}
+                  excludeChainIndex={toChainIndex}
+                />
+                {selectedAssetBalance && (
+                  <span className="leg-bal">
+                    <span className="num">{parseFloat(selectedAssetBalance.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                    <button type="button" className="max" onClick={handleMaxBalance}>
+                      Max
+                    </button>
+                  </span>
+                )}
               </div>
-            ) : walletAssets.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground py-2 text-center">
-                No tokens found on this chain
-              </p>
-            ) : (
-              <div className="space-y-1 max-h-48 overflow-auto">
-                {walletAssets.map((asset, i) => (
-                  <button
-                    key={`${asset.address}-${i}`}
-                    type="button"
-                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-sm transition-colors ${
-                      fromToken &&
-                      (fromToken.address.toLowerCase() === asset.address.toLowerCase() ||
-                        fromToken.symbol.toLowerCase() === asset.symbol.toLowerCase())
-                        ? "bg-primary/15 border border-primary/30"
-                        : "hover:bg-secondary active:bg-primary/12 border border-transparent"
-                    }`}
-                    onClick={() => handleSelectWalletAsset(asset)}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
-                        {asset.symbol.slice(0, 2)}
+              <div className="leg-main">
+                <label htmlFor="bridge-amount" className="sr-only">
+                  Amount to send
+                </label>
+                <input
+                  id="bridge-amount"
+                  className="amount-in"
+                  placeholder="0"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={amount}
+                  aria-invalid={invalidAmount}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    setError(null);
+                  }}
+                />
+                <TokenChoice
+                  tokens={fromTokens}
+                  selected={fromToken}
+                  onSelect={(t) => {
+                    setFromToken(t);
+                    clearQuote();
+                    setError(null);
+                    // Auto-match destination token by symbol
+                    if (t && toTokens.length > 0) {
+                      const destMatch = toTokens.find((dt) => dt.symbol.toLowerCase() === t.symbol.toLowerCase());
+                      if (destMatch) setToToken(destMatch);
+                    }
+                  }}
+                  loading={tokensLoading}
+                  title={`Send from ${fromChainConfig?.name ?? "source chain"}`}
+                />
+              </div>
+              <div className="leg-foot">
+                {invalidAmount ? (
+                  <span className="err" role="alert">
+                    Enter a valid amount
+                  </span>
+                ) : (
+                  <span className="num">{payUsd != null ? usdFmt(payUsd) : " "}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flip-wrap">
+              <button type="button" className="flip" onClick={handleSwapChains} aria-label="Swap source and destination chains">
+                <LineIcon name="swap" size={18} />
+              </button>
+            </div>
+
+            {/* to */}
+            <div className="leg">
+              <div className="leg-top">
+                <ChainSelect
+                  id="bridge-to"
+                  label="To network"
+                  value={toChainIndex}
+                  onChange={handleToChainChange}
+                  excludeChainIndex={fromChainIndex}
+                />
+                {walletAddress && (
+                  <span className="leg-bal">
+                    to <span className="num">{abbreviateAddress(walletAddress).replace("...", "…")}</span>
+                  </span>
+                )}
+              </div>
+              <div className="leg-main">
+                <output className={`amount-out${quoteReceiveAmount ? "" : " muted"}`} aria-live="polite">
+                  {activeQuote && quoteReceiveAmount ? <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} /> : "0"}
+                  {quoteLoading && <span className="spin" aria-label="Getting a quote" />}
+                </output>
+                <TokenChoice
+                  tokens={toTokens}
+                  selected={toToken}
+                  onSelect={(t) => {
+                    setToToken(t);
+                    clearQuote();
+                    setError(null);
+                  }}
+                  loading={tokensLoading}
+                  title={`Receive on ${toChainConfig?.name ?? "destination chain"}`}
+                />
+              </div>
+              <div className="leg-foot">
+                <span className="num">{receiveUsd != null ? usdFmt(receiveUsd) : " "}</span>
+              </div>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {activeQuote && quoteReceiveAmount && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ display: "grid", gap: 12 }}
+                >
+                  <dl className="sum quote-sum">
+                    {quoteMinAmount != null && (
+                      <div>
+                        <dt>Minimum received</dt>
+                        <dd className="num">
+                          {quoteMinAmount} {activeQuote.toToken.symbol}
+                        </dd>
                       </div>
-                      <div className="min-w-0">
-                        <span className="font-semibold tracking-tight text-[13px]">
-                          {asset.symbol}
-                        </span>
+                    )}
+                    <div>
+                      <dt>Bridge</dt>
+                      <dd style={{ textTransform: "capitalize" }}>{activeQuote.tool}</dd>
+                    </div>
+                    {fromToken && toToken && fromToken.symbol !== toToken.symbol && (
+                      <div>
+                        <dt>Route</dt>
+                        <dd>
+                          {fromToken.symbol} to {toToken.symbol}
+                        </dd>
                       </div>
+                    )}
+                    <div>
+                      <dt>Estimated time</dt>
+                      <dd>{estimatedMinutes != null ? `About ${estimatedMinutes} min` : "Unknown"}</dd>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[13px] font-medium tabular-nums">
-                        {parseFloat(asset.balance).toFixed(
-                          parseFloat(asset.balance) < 0.01 ? 6 : parseFloat(asset.balance) < 1 ? 4 : 2
-                        )}
-                      </p>
-                      {parseFloat(asset.balanceUsd) > 0 && (
-                        <p className="text-[11px] text-muted-foreground tabular-nums">
-                          ${parseFloat(asset.balanceUsd).toFixed(2)}
-                        </p>
-                      )}
+                    <div>
+                      <dt>Fees and gas</dt>
+                      <dd className="num">{totalFeeUsd != null ? `$${totalFeeUsd}` : "Unknown"}</dd>
                     </div>
+                    <div>
+                      <dt>Arrives at</dt>
+                      <dd className="num" title={walletAddress ?? undefined}>
+                        {walletAddress ? abbreviateAddress(walletAddress).replace("...", "…") : "Unknown"} on {toChainConfig?.name ?? "destination"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {activeQuote.approvalAddress && fromToken && fromToken.address.toLowerCase() !== NATIVE_TOKEN_LIFI && (
+                    <p className="note warn">
+                      <LineIcon name="alert" size={16} />
+                      <span>Two transactions: first an approval for the bridge contract, then the bridge itself. Both run one after the other when you press&nbsp;Bridge.</span>
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <Fade in={!!error}>
+              {error && (
+                <div className="note loss msg-note" role="alert">
+                  <LineIcon name="alert" size={16} />
+                  <div>
+                    <strong>Bridge error</strong>
+                    <p>{error}</p>
+                  </div>
+                  <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setError(null)}>
+                    <LineIcon name="x" size={15} />
                   </button>
+                </div>
+              )}
+            </Fade>
+
+            <Fade in={!!bridgeResult}>
+              {bridgeResult && (
+                <div className={`note msg-note ${bridgeFailed ? "loss" : "gain"}`} role="status">
+                  {bridgeDone ? <LineIcon name="check" size={16} /> : bridgeFailed ? <LineIcon name="alert" size={16} /> : <span className="spin" aria-hidden="true" />}
+                  <div>
+                    <strong>{bridgeDone ? "Bridge complete" : bridgeFailed ? "Bridge failed" : "Bridge in progress"}</strong>
+                    <p>
+                      {bridgeStatus?.substatusMessage ??
+                        (bridgeDone
+                          ? "The tokens have arrived on the destination chain."
+                          : bridgeFailed
+                            ? "The bridge transaction failed. Your funds may be returned."
+                            : `Bridging via ${bridgeResult.bridge}. About ${Math.ceil(bridgeResult.estimatedTime / 60)} min.`)}
+                    </p>
+                    {bridgeResult.txHash && (
+                      <a className="tx-link" href={`${fromChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeResult.txHash}`} target="_blank" rel="noopener noreferrer">
+                        Sent on {fromChainConfig?.name} <LineIcon name="arrow-up-right" size={13} />
+                      </a>
+                    )}
+                    {bridgeStatus?.receiving?.txHash && (
+                      <a className="tx-link" href={`${toChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeStatus.receiving.txHash}`} target="_blank" rel="noopener noreferrer">
+                        Received on {toChainConfig?.name} <LineIcon name="arrow-up-right" size={13} />
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Dismiss"
+                    onClick={() => {
+                      setBridgeResult(null);
+                      setBridgeStatus(null);
+                      pollCancelledRef.current = true;
+                      if (pollRef.current) clearInterval(pollRef.current);
+                    }}
+                  >
+                    <LineIcon name="x" size={15} />
+                  </button>
+                </div>
+              )}
+            </Fade>
+
+            <div className="ticket-actions">
+              <button type="button" className="btn" onClick={handleGetQuote} disabled={quoteLoading || !fromToken || !toToken || parsedAmountWei === null}>
+                {quoteLoading ? (
+                  <>
+                    <span className="spin" aria-hidden="true" />
+                    Getting quote…
+                  </>
+                ) : activeQuote ? (
+                  "Refresh quote"
+                ) : (
+                  "Get quote"
+                )}
+              </button>
+              {quoteIsCurrent && quoteExpired ? (
+                <button type="button" className="btn btn--primary" onClick={handleGetQuote} disabled={quoteLoading || parsedAmountWei === null}>
+                  Quote expired, refresh
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={handleBridge}
+                  disabled={bridgeLoading || !activeQuote || quoteExpired || parsedAmountWei === null}
+                >
+                  {bridgeLoading ? (
+                    <>
+                      <span className="spin" aria-hidden="true" />
+                      Bridging…
+                    </>
+                  ) : (
+                    "Bridge"
+                  )}
+                </button>
+              )}
+            </div>
+          </Panel>
+
+          <Panel className="span-5" flush index={2} title={`On ${fromChainConfig?.name ?? "this chain"}`} sub="Tap a token to send it">
+            {walletAssetsLoading ? (
+              <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} height={48} />
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Source token + amount */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4 space-y-3">
-            <TokenDropdown
-              tokens={fromTokens}
-              selected={fromToken}
-              onSelect={(t) => {
-                setFromToken(t);
-                clearQuote();
-                setError(null);
-                // Auto-match destination token by symbol
-                if (t && toTokens.length > 0) {
-                  const destMatch = toTokens.find(
-                    (dt) => dt.symbol.toLowerCase() === t.symbol.toLowerCase()
-                  );
-                  if (destMatch) setToToken(destMatch);
-                }
-              }}
-              loading={tokensLoading}
-              label="Source Token"
-            />
-
-            {/* Amount input with MAX */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[13px] font-medium text-muted-foreground">
-                  Amount
-                </p>
-                {selectedAssetBalance && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                      Bal: {parseFloat(selectedAssetBalance.balance).toFixed(
-                        parseFloat(selectedAssetBalance.balance) < 1 ? 4 : 2
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleMaxBalance}
-                      className="text-[11px] font-semibold text-primary hover:text-primary transition-colors px-1.5 py-0.5 rounded bg-primary/15 hover:bg-primary/15"
-                    >
-                      MAX
-                    </button>
-                  </div>
-                )}
-              </div>
-              <Input
-                placeholder="0.00"
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => {
-                  setAmount(e.target.value);
-                  setError(null);
-                }}
-                className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
-              />
-              {invalidAmount && (
-                <p className="text-[12px] text-loss-ink mt-1.5">
-                  Enter a valid amount
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Swap chains arrow */}
-          <div className="flex justify-center -my-2 relative z-10">
-            <button
-              type="button"
-              onClick={handleSwapChains}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M7 16V4m0 0L3 8m4-4l4 4" />
-                <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Destination chain */}
-          <ChainSelector
-            label="To Network"
-            value={toChainIndex}
-            onChange={handleToChainChange}
-            excludeChainIndex={fromChainIndex}
-          />
-
-          {/* Destination token selector */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4">
-            <TokenDropdown
-              tokens={toTokens}
-              selected={toToken}
-              onSelect={(t) => {
-                setToToken(t);
-                clearQuote();
-                setError(null);
-              }}
-              loading={tokensLoading}
-              label="Destination Token"
-            />
-          </div>
-
-          {/* Quote result */}
-          {activeQuote && quoteReceiveAmount && (
-            <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
-              <div className="p-4 pb-3">
-                <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
-                  You will receive
-                </p>
-                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
-                  <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
-                  <span className="text-base font-semibold text-primary">
-                    {activeQuote.toToken.symbol}
-                  </span>
-                </p>
-                <p className="text-[12px] text-primary/80 mt-0.5">
-                  on {toChainConfig?.name ?? "destination chain"}
-                </p>
-              </div>
-
-              <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
-                {quoteMinAmount != null && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Minimum received</span>
-                    <span className="text-[12px] font-medium text-foreground tabular-nums">
-                      {quoteMinAmount} {activeQuote.toToken.symbol}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-muted-foreground">Bridge</span>
-                  <span className="text-[12px] font-medium text-foreground capitalize">
-                    {activeQuote.tool}
-                  </span>
-                </div>
-                {fromToken && toToken && fromToken.symbol !== toToken.symbol && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Route</span>
-                    <span className="text-[12px] font-medium text-foreground">
-                      {fromToken.symbol} &rarr; {toToken.symbol}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-muted-foreground">Estimated Time</span>
-                  <span className="text-[12px] font-medium text-foreground">
-                    {estimatedMinutes != null ? `~${estimatedMinutes} min` : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-muted-foreground">Total Fees</span>
-                  <span className="text-[12px] font-medium text-foreground">
-                    {totalFeeUsd != null ? `~$${totalFeeUsd}` : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-muted-foreground">Destination chain</span>
-                  <span className="text-[12px] font-medium text-foreground">
-                    {toChainConfig?.name ?? "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[12px] text-muted-foreground shrink-0">Destination address</span>
-                  <span
-                    className="text-[12px] font-medium text-foreground font-mono truncate"
-                    title={walletAddress ?? undefined}
-                  >
-                    {walletAddress ? abbreviateAddress(walletAddress) : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-gain/60">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gain-ink shrink-0">
-                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span className="text-[11px] font-medium text-gain-ink">
-                    Zero commission — albicocca does not charge any fees on bridges
-                  </span>
-                </div>
-                {/* Approval notice: ERC-20 bridges need an approve tx before the bridge call */}
-                {activeQuote.approvalAddress &&
-                  fromToken &&
-                  fromToken.address.toLowerCase() !== NATIVE_TOKEN_LIFI && (
-                    <div className="flex items-start gap-2 pt-2 mt-0.5 border-t border-warn/60">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-warn-ink shrink-0 mt-[1px]">
-                        <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      <span className="text-[11px] text-warn-ink leading-relaxed">
-                        Two transactions required: first an ERC-20 <strong>approve</strong> for the bridge router, then the <strong>bridge</strong> itself. Both happen in sequence after you click Bridge.
-                      </span>
-                    </div>
-                  )}
-              </div>
-            </div>
-          )}
-
-          {/* Error display */}
-          <Fade in={!!error}>
-            {error && (
-            <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-loss-soft">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-loss-ink">
-                  <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-loss-ink mb-0.5">
-                  Bridge Error
-                </p>
-                <p className="text-[12px] text-loss-ink leading-relaxed">
-                  {error}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="shrink-0 text-loss-ink hover:text-loss-ink transition-colors p-0.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-            )}
-          </Fade>
-
-          {/* Bridge result + status tracking */}
-          <Fade in={!!bridgeResult}>
-            {bridgeResult && (
-            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gain-soft">
-                {(!bridgeStatus || bridgeStatus.status === "PENDING" || bridgeStatus.status === "NOT_FOUND") ? (
-                  <Spinner className="text-gain-ink" />
-                ) : bridgeStatus.status === "DONE" ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-gain-ink">
-                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-loss-ink">
-                    <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-gain-ink mb-0.5">
-                  {bridgeStatus?.status === "DONE"
-                    ? "Bridge Complete"
-                    : bridgeStatus?.status === "FAILED" || bridgeStatus?.status === "INVALID"
-                    ? "Bridge Failed"
-                    : "Bridge In Progress"}
-                </p>
-                <p className="text-[12px] text-gain-ink leading-relaxed">
-                  {bridgeStatus?.substatusMessage ??
-                    (bridgeStatus?.status === "DONE"
-                      ? "Tokens have been delivered to the destination chain."
-                      : bridgeStatus?.status === "FAILED" || bridgeStatus?.status === "INVALID"
-                      ? "The bridge transaction failed. Your funds may be returned."
-                      : `Bridging via ${bridgeResult.bridge}. Estimated ~${Math.ceil(bridgeResult.estimatedTime / 60)} min.`)}
-                </p>
-                {bridgeResult.txHash && (
-                  <a
-                    href={`${fromChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeResult.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-gain-ink hover:text-gain-ink underline underline-offset-2 transition-colors"
-                  >
-                    View on Explorer
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-                    </svg>
-                  </a>
-                )}
-                {bridgeStatus?.receiving?.txHash && (
-                  <a
-                    href={`${toChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeStatus.receiving.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1 text-[12px] font-medium text-gain-ink hover:text-gain-ink underline underline-offset-2 transition-colors"
-                  >
-                    Receiving tx on {toChainConfig?.name}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-                    </svg>
-                  </a>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setBridgeResult(null);
-                  setBridgeStatus(null);
-                  pollCancelledRef.current = true;
-                  if (pollRef.current) clearInterval(pollRef.current);
-                }}
-                className="shrink-0 text-gain-ink hover:text-gain-ink transition-colors p-0.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-            )}
-          </Fade>
-
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-1">
-            <Button
-              onClick={handleGetQuote}
-              disabled={quoteLoading || !fromToken || !toToken || parsedAmountWei === null}
-              variant="outline"
-              className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-secondary active:bg-secondary transition-all"
-            >
-              {quoteLoading ? (
-                <span className="flex items-center gap-2">
-                  <Spinner />
-                  Getting quote...
-                </span>
-              ) : (
-                "Get Quote"
-              )}
-            </Button>
-            {quoteIsCurrent && quoteExpired ? (
-              <Button
-                onClick={handleGetQuote}
-                disabled={quoteLoading || parsedAmountWei === null}
-                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
-              >
-                Quote expired, refresh
-              </Button>
+            ) : walletAssets.length === 0 ? (
+              <Empty icon="wallet" title="Nothing here" text={`You hold no tokens on ${fromChainConfig?.name ?? "this chain"}. Pick another source network.`} />
             ) : (
-              <Button
-                onClick={handleBridge}
-                disabled={
-                  bridgeLoading ||
-                  !activeQuote ||
-                  quoteExpired ||
-                  parsedAmountWei === null
-                }
-                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
-              >
-                {bridgeLoading ? (
-                  <span className="flex items-center gap-2">
-                    <Spinner />
-                    Bridging...
-                  </span>
-                ) : (
-                  "Bridge"
-                )}
-              </Button>
+              <ul className="rows wal-pad">
+                {walletAssets.map((asset, i) => {
+                  const on =
+                    fromToken != null &&
+                    (fromToken.address.toLowerCase() === asset.address.toLowerCase() ||
+                      fromToken.symbol.toLowerCase() === asset.symbol.toLowerCase());
+                  return (
+                    <li key={`${asset.address}-${i}`}>
+                      <button type="button" className={`row${on ? " is-on" : ""}`} aria-pressed={on} onClick={() => handleSelectWalletAsset(asset)}>
+                        <TokenLogo symbol={asset.symbol} size={34} logoURI={fromTokens.find((t) => t.address.toLowerCase() === asset.address.toLowerCase())?.logoURI} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="t">{asset.symbol}</div>
+                          <div className="sub num">{parseFloat(asset.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</div>
+                        </div>
+                        <div className="end num">{parseFloat(asset.balanceUsd) > 0 ? `$${parseFloat(asset.balanceUsd).toFixed(2)}` : ""}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </div>
+          </Panel>
         </div>
-      </div>
       )}
     </div>
   );
