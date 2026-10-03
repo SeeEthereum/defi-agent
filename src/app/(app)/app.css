@@ -625,3 +625,41 @@
   & .chip-pair .select--chip .input { padding-right: 34px; }
   & .chip-pair .select--chip::after { right: 13px; }
 }
+
+/* ───────── sheets and earn ───────── */
+.app {
+  & .sheet-body { display: grid; gap: 18px; padding: 4px 12px 12px; overflow-y: auto; }
+  & .sheet-cta { width: 100%; min-height: 52px; }
+  & .sheet-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+  & .sheet-actions .btn { min-height: 52px; }
+  & .sheet-body .hint { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.5; }
+  & .yield-hero { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 20px; background: var(--shell); border: 1px solid var(--border); }
+  & .yield-hero > div { display: grid; }
+  & .yield-hero .muted { font-size: 13px; }
+  & .yield-hero .num { font-size: 32px; letter-spacing: -0.05em; line-height: 1.1; }
+  & .two-steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--muted-foreground); }
+  & .two-steps li { display: inline-flex; align-items: center; gap: 8px; }
+  & .two-steps li.line { flex: 1; height: 1px; background: var(--border); }
+  & .two-steps .dot { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--border-strong); font: 500 12px var(--font-geist-mono), var(--font-system-mono); }
+  & .two-steps .dot .spin { width: 12px; height: 12px; }
+  & .two-steps [data-state="busy"] { color: var(--warn-ink); }
+  & .two-steps [data-state="busy"] .dot { border-color: currentColor; }
+  & .two-steps [data-state="done"] { color: var(--gain-ink); }
+  & .two-steps [data-state="done"] .dot { background: var(--gain-soft); border-color: transparent; }
+  & .msg-note > .btn { align-self: center; }
+
+  & .mkt-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  & .mkt-row--full { grid-template-columns: 36px minmax(0, 1fr) 72px 72px 84px 96px; }
+  & .mkt-row--full > .btn { justify-self: end; }
+  & .mkt-row .col-x { text-align: right; font-size: 14px; color: var(--text-2); }
+  & .mkt-row .glp { justify-self: end; }
+  & .mkt-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) 72px 72px 84px 96px; gap: 14px; padding: 0 var(--app-pad) 8px; font-size: 12.5px; color: var(--muted-foreground); }
+  & .mkt-head span:nth-child(1) { grid-column: 1 / 3; }
+  & .mkt-head span:nth-child(n + 2) { text-align: right; }
+  & .panel-head .pills { max-width: 100%; }
+  @media (max-width: 640px) {
+    & .mkt-row--full { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+    & .mkt-row .col-x, & .mkt-head { display: none; }
+    & .mkt-row { gap: 10px; }
+  }
+}

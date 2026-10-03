@@ -186,3 +186,4 @@ export function Skeleton({ height = 16, width = "100%" }: { height?: number; wid
 }
 
 export { Picker, PickRow } from "./picker";
+export { Picker as Sheet } from "./picker";

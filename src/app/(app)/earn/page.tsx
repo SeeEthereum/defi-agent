@@ -1,23 +1,17 @@
 "use client";
 
+/**
+ * Earn: your Fluid positions first, then every market in one table.
+ * Supply and withdraw open as sheets in the app's own language.
+ */
+
 import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useFluidMarkets, useFluidPositions } from "@/hooks/use-fluid-markets";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, TrendingUp, Layers } from "lucide-react";
 import { TokenIcon } from "@/components/token-icon";
+import { LineIcon } from "@/components/line-icon";
+import { Empty, Metric, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
 import type { FluidMarket, FluidUserPosition } from "@/lib/fluid/resolver";
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -136,13 +130,13 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
       // allowance already covers this amount — nothing to wait for.
       if (data.data?.alreadyApproved) {
         setStep("approved");
-        toast.success("Already approved! Now click Supply.");
+        toast.success("Already approved. Now press Supply.");
         return;
       }
       const txHash = data.data?.txHash ?? "";
       setApproveTxHash(txHash);
       setStep("waiting_approve");
-      toast.info("Waiting for approval to confirm on-chain...");
+      toast.info("Waiting for the approval to confirm on-chain…");
       // Wait for the approve tx to be mined before enabling Supply
       const confirmed = await waitForReceipt(txHash, market.chainIndex);
       if (!confirmed) {
@@ -150,7 +144,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
         return;
       }
       setStep("approved");
-      toast.success("Approval confirmed! Now click Supply.");
+      toast.success("Approval confirmed. Now press Supply.");
     } catch (e) {
       console.error(e);
       toast.error(userFacingError(e, "Supply failed"));
@@ -184,7 +178,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
       if (!data.success) throw new Error(data.error || "Supply failed");
       setDepositTxHash(data.data?.depositTxHash ?? "");
       setStep("done");
-      toast.success(`Deposited! Tx: ${data.data?.depositTxHash ?? "pending"}`);
+      toast.success("Supplied to Fluid");
     } catch (e) {
       console.error(e);
       toast.error(userFacingError(e, "Supply failed"));
@@ -205,169 +199,139 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
   const isWaiting = step === "waiting_approve";
   const approveComplete = step === "approved" || step === "supplying" || step === "done";
 
-  return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger
-        className="inline-flex shrink-0 items-center justify-center rounded-xl h-9 px-5 text-[13px] font-medium bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 cursor-pointer transition-colors"
-        onClick={() => setOpen(true)}
-      >
-        Supply
-      </DialogTrigger>
-      <DialogContent className="rounded-2xl sm:rounded-2xl border-border/60 shadow-lg p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle className="text-lg font-semibold tracking-tight flex items-center gap-2.5">
-            <TokenIcon symbol={market.underlyingSymbol} size={28} />
-            Supply {market.underlyingSymbol} on {market.chainName}
-          </DialogTitle>
-        </DialogHeader>
 
-        <div className="space-y-5 px-6 pb-6 pt-4">
-          {/* APY card */}
-          <div className="rounded-xl bg-gain-soft p-4">
-            <p className="text-[13px] text-gain-ink/80 font-medium">Estimated APY</p>
-            <p className="text-2xl font-semibold tracking-tight text-gain-ink mt-0.5">
-              {market.totalAprPercent.toFixed(2)}%
-            </p>
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+
+  return (
+    <>
+      <button type="button" className="btn btn--sm btn--primary" onClick={() => setOpen(true)}>
+        Supply
+      </button>
+      <Sheet open={open} onClose={close} title={`Supply ${market.underlyingSymbol} on ${market.chainName}`}>
+        <div className="sheet-body">
+          <div className="yield-hero">
+            <TokenIcon symbol={market.underlyingSymbol} size={40} />
+            <div>
+              <span className="muted">Estimated yield</span>
+              <span className="num text-gain-ink">{market.totalAprPercent.toFixed(2)}%</span>
+            </div>
           </div>
 
-          {/* Amount input */}
-          <div className="space-y-2">
-            <Label htmlFor={supplyAmountId} className="text-[13px] font-medium text-foreground/80">
-              Amount ({market.underlyingSymbol})
-            </Label>
-            <Input
+          <div className="field">
+            <label htmlFor={supplyAmountId}>Amount in {market.underlyingSymbol}</label>
+            <input
               id={supplyAmountId}
               type="text"
+              inputMode="decimal"
+              autoComplete="off"
               placeholder="100"
-              className="h-11 rounded-xl border-border/60 text-[15px] placeholder:text-muted-foreground/50"
+              className="input num-in"
               value={amount}
+              aria-invalid={amount.length > 0 && !amountValid}
               onChange={(e) => setAmount(e.target.value)}
               disabled={step !== "idle"}
             />
-            {amount.length > 0 && !amountValid && (
-              <p className="text-[12px] text-loss-ink">Enter a valid amount</p>
-            )}
+            {amount.length > 0 && !amountValid && <p className="err">Enter a valid amount</p>}
           </div>
 
-          {/* 2-step progress */}
-          <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-1.5 text-[12px] font-medium ${
-              approveComplete ? "text-gain-ink" : isWaiting && !approveFailed ? "text-warn-ink" : "text-foreground/60"
-            }`}>
-              {approveComplete
-                ? <CheckCircle2 className="h-3.5 w-3.5" />
-                : isWaiting && !approveFailed
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <span className="h-3.5 w-3.5 rounded-full border-2 border-current flex items-center justify-center text-[9px]">1</span>
-              }
+          <ol className="two-steps" aria-label="Progress">
+            <li data-state={approveComplete ? "done" : isWaiting && !approveFailed ? "busy" : step === "approving" ? "busy" : "todo"}>
+              <span className="dot" aria-hidden="true">
+                {approveComplete ? <LineIcon name="check" size={13} strokeWidth={2.6} /> : isWaiting && !approveFailed ? <span className="spin" /> : "1"}
+              </span>
               Approve
-            </div>
-            <div className="h-px flex-1 bg-border/50" />
-            <div className={`flex items-center gap-1.5 text-[12px] font-medium ${
-              step === "done" ? "text-gain-ink" : "text-foreground/60"
-            }`}>
-              {step === "done"
-                ? <CheckCircle2 className="h-3.5 w-3.5" />
-                : <span className="h-3.5 w-3.5 rounded-full border-2 border-current flex items-center justify-center text-[9px]">2</span>
-              }
+            </li>
+            <li className="line" aria-hidden="true" />
+            <li data-state={step === "done" ? "done" : step === "supplying" ? "busy" : "todo"}>
+              <span className="dot" aria-hidden="true">
+                {step === "done" ? <LineIcon name="check" size={13} strokeWidth={2.6} /> : step === "supplying" ? <span className="spin" /> : "2"}
+              </span>
               Supply
-            </div>
-          </div>
+            </li>
+          </ol>
 
-          {/* Waiting for approval confirmation */}
           {isWaiting && !approveFailed && (
-            <div className="flex items-center gap-2 rounded-lg bg-warn-soft border border-warn/30 px-3 py-2">
-              <Loader2 className="h-3.5 w-3.5 text-warn-ink animate-spin shrink-0" />
-              <p className="text-[12px] text-warn-ink">
-                Waiting for approval to confirm on-chain
-                {approveTxHash && (
-                  <span className="ml-1 font-mono">({approveTxHash.slice(0, 8)}…)</span>
-                )}
-              </p>
-            </div>
+            <p className="note warn">
+              <span className="spin" aria-hidden="true" />
+              <span>
+                Waiting for the approval to confirm on-chain
+                {approveTxHash && <span className="num"> ({approveTxHash.slice(0, 8)}…)</span>}
+              </span>
+            </p>
           )}
           {isWaiting && approveFailed && (
-            <div className="rounded-lg bg-loss-soft border border-loss/30 px-3 py-2">
-              <p className="text-[12px] text-loss-ink">Approval not confirmed, try again</p>
-            </div>
+            <p className="note loss">
+              <LineIcon name="alert" size={16} />
+              <span>The approval was not confirmed. Try again.</span>
+            </p>
           )}
 
-          {/* Done state */}
           {step === "done" ? (
-            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1">
-              <p className="text-[13px] font-semibold text-gain-ink">Supply complete!</p>
-              {depositTxHash && (
-                <p className="text-[11px] text-gain-ink font-mono break-all">
-                  Tx: {depositTxHash.slice(0, 10)}…{depositTxHash.slice(-8)}
-                </p>
-              )}
-              <Button size="sm" variant="outline" className="mt-2 h-8 rounded-lg text-[12px]"
-                onClick={() => { reset(); setOpen(false); }}>
+            <div className="note gain msg-note">
+              <LineIcon name="check" size={16} />
+              <div>
+                <strong>Supplied</strong>
+                {depositTxHash && (
+                  <p className="num">
+                    {depositTxHash.slice(0, 10)}…{depositTxHash.slice(-8)}
+                  </p>
+                )}
+              </div>
+              <button type="button" className="btn btn--sm" onClick={close}>
                 Close
-              </Button>
+              </button>
             </div>
           ) : step === "idle" || step === "approving" ? (
-            <Button
-              className="w-full h-11 rounded-xl text-[14px] font-medium"
-              disabled={step === "approving" || !amountValid || !walletReady}
-              onClick={handleApprove}
-            >
+            <button type="button" className="btn btn--primary sheet-cta" disabled={step === "approving" || !amountValid || !walletReady} onClick={handleApprove}>
               {step === "approving" ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Approving…
-                </span>
-              ) : `1. Approve ${amount || "0"} ${market.underlyingSymbol}`}
-            </Button>
+                <>
+                  <span className="spin" aria-hidden="true" /> Approving…
+                </>
+              ) : (
+                `Approve ${amount || "0"} ${market.underlyingSymbol}`
+              )}
+            </button>
           ) : step === "waiting_approve" ? (
             approveFailed ? (
-              <Button
-                className="w-full h-11 rounded-xl text-[14px] font-medium"
-                disabled={!amountValid || !walletReady}
-                onClick={handleApprove}
-              >
-                Retry
-              </Button>
+              <button type="button" className="btn btn--primary sheet-cta" disabled={!amountValid || !walletReady} onClick={handleApprove}>
+                Try the approval again
+              </button>
             ) : (
-              <Button className="w-full h-11 rounded-xl text-[14px] font-medium" disabled>
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Waiting for confirmation…
-                </span>
-              </Button>
+              <button type="button" className="btn btn--primary sheet-cta" disabled>
+                <span className="spin" aria-hidden="true" /> Waiting for confirmation…
+              </button>
             )
           ) : (
-            <div className="space-y-3">
+            <>
               {approveTxHash && (
-                <div className="flex items-center gap-2 rounded-lg bg-gain-soft px-3 py-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-gain-ink shrink-0" />
-                  <p className="text-[12px] text-gain-ink">
-                    Approved — tx{" "}
-                    <span className="font-mono">
-                      {approveTxHash.slice(0, 8)}…{approveTxHash.slice(-6)}
-                    </span>
-                  </p>
-                </div>
-              )}
-              <Button
-                className="w-full h-11 rounded-xl text-[14px] font-medium"
-                disabled={step === "supplying" || !amountValid || !walletReady}
-                onClick={handleSupply}
-              >
-                {step === "supplying" ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Supplying…
+                <p className="note gain">
+                  <LineIcon name="check" size={16} />
+                  <span>
+                    Approved in <span className="num">{approveTxHash.slice(0, 8)}…{approveTxHash.slice(-6)}</span>
                   </span>
-                ) : `2. Supply ${amount} ${market.underlyingSymbol}`}
-              </Button>
-            </div>
+                </p>
+              )}
+              <button type="button" className="btn btn--primary sheet-cta" disabled={step === "supplying" || !amountValid || !walletReady} onClick={handleSupply}>
+                {step === "supplying" ? (
+                  <>
+                    <span className="spin" aria-hidden="true" /> Supplying…
+                  </>
+                ) : (
+                  `Supply ${amount} ${market.underlyingSymbol}`
+                )}
+              </button>
+            </>
           )}
 
-          <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-            Step 1 authorises Fluid to spend your {market.underlyingSymbol}. We wait for on-chain
-            confirmation before Step 2.
+          <p className="hint">
+            The approval lets Fluid use your {market.underlyingSymbol}. The supply starts only after the approval is confirmed&nbsp;on-chain.
           </p>
         </div>
-      </DialogContent>
-    </Dialog>
+      </Sheet>
+    </>
   );
 }
 
@@ -418,7 +382,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
       if (!data.success) throw new Error(data.error || "Withdraw failed");
       setTxHash(data.data?.txHash ?? "");
       setDone(true);
-      toast.success("Withdrawal submitted!");
+      toast.success("Withdrawal sent");
       onSuccess();
     } catch (e) {
       console.error(e);
@@ -437,114 +401,90 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
 
   const maxAmount = position.underlyingAssetsUi;
 
-  return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger
-        className="inline-flex w-full items-center justify-center rounded-xl h-9 px-3 text-[13px] font-medium border border-border/60 bg-background hover:bg-accent transition-colors cursor-pointer"
-        onClick={() => setOpen(true)}
-      >
-        Withdraw
-      </DialogTrigger>
-      <DialogContent className="rounded-2xl sm:rounded-2xl border-border/60 shadow-lg p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle className="text-lg font-semibold tracking-tight flex items-center gap-2.5">
-            <TokenIcon symbol={position.underlyingSymbol} size={28} />
-            Withdraw {position.underlyingSymbol}
-            <Badge variant="outline" className="rounded-lg text-[11px] ml-1 border-border/60 text-muted-foreground">
-              {CHAIN_NAMES[position.chainIndex] ?? `Chain ${position.chainIndex}`}
-            </Badge>
-          </DialogTitle>
-        </DialogHeader>
 
-        <div className="space-y-5 px-6 pb-6 pt-4">
-          {/* Position summary */}
-          <div className="rounded-xl bg-muted/40 p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-muted-foreground">Available</span>
-              <span className="text-[14px] font-semibold">
+  const close = () => {
+    setOpen(false);
+    reset();
+  };
+
+  return (
+    <>
+      <button type="button" className="btn btn--sm" onClick={() => setOpen(true)}>
+        Withdraw
+      </button>
+      <Sheet open={open} onClose={close} title={`Withdraw ${position.underlyingSymbol} on ${CHAIN_NAMES[position.chainIndex] ?? `chain ${position.chainIndex}`}`}>
+        <div className="sheet-body">
+          <dl className="sum">
+            <div>
+              <dt>Available</dt>
+              <dd className="num">
                 {parseFloat(maxAmount).toFixed(6)} {position.underlyingSymbol}
-              </span>
+              </dd>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-muted-foreground">Shares ({position.symbol})</span>
-              <span className="text-[12px] font-mono text-muted-foreground">
-                {(parseFloat(position.shares) / 10 ** position.underlyingDecimals).toFixed(6)}
-              </span>
+            <div>
+              <dt>Shares ({position.symbol})</dt>
+              <dd className="num">{(parseFloat(position.shares) / 10 ** position.underlyingDecimals).toFixed(6)}</dd>
             </div>
             {apy !== undefined && (
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] text-muted-foreground">Current APY</span>
-                <span className="text-[13px] font-semibold text-gain-ink">{apy.toFixed(2)}%</span>
+              <div>
+                <dt>Current yield</dt>
+                <dd className="num text-gain-ink">{apy.toFixed(2)}%</dd>
               </div>
             )}
-          </div>
+          </dl>
 
           {done ? (
-            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1">
-              <p className="text-[13px] font-semibold text-gain-ink">Withdrawal submitted!</p>
-              {txHash && (
-                <p className="text-[11px] text-gain-ink font-mono break-all">
-                  Tx: {txHash.slice(0, 10)}…{txHash.slice(-8)}
-                </p>
-              )}
-              <Button size="sm" variant="outline" className="mt-2 h-8 rounded-lg text-[12px]"
-                onClick={() => { reset(); setOpen(false); }}>
+            <div className="note gain msg-note">
+              <LineIcon name="check" size={16} />
+              <div>
+                <strong>Withdrawal sent</strong>
+                {txHash && (
+                  <p className="num">
+                    {txHash.slice(0, 10)}…{txHash.slice(-8)}
+                  </p>
+                )}
+              </div>
+              <button type="button" className="btn btn--sm" onClick={close}>
                 Close
-              </Button>
+              </button>
             </div>
           ) : (
             <>
-              {/* Amount input */}
-              <div className="space-y-2">
-                <Label htmlFor={withdrawAmountId} className="text-[13px] font-medium text-foreground/80">
-                  Amount ({position.underlyingSymbol})
-                </Label>
-                <div className="relative">
-                  <Input
+              <div className="field">
+                <label htmlFor={withdrawAmountId}>Amount in {position.underlyingSymbol}</label>
+                <div className="input-wrap">
+                  <input
                     id={withdrawAmountId}
                     type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     placeholder="0.00"
-                    className="h-11 rounded-xl border-border/60 text-[15px] pr-14 placeholder:text-muted-foreground/50"
+                    className="input num-in"
                     value={amount}
+                    aria-invalid={amount.length > 0 && !amountValid}
                     onChange={(e) => setAmount(e.target.value)}
                     disabled={loading}
                   />
-                  <button
-                    type="button"
-                    aria-label="Use maximum balance"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary hover:text-primary/80 cursor-pointer"
-                    onClick={() => setAmount(maxAmount)}
-                  >
-                    MAX
+                  <button type="button" className="max" aria-label="Use maximum balance" onClick={() => setAmount(maxAmount)}>
+                    Max
                   </button>
                 </div>
-                {amount.length > 0 && !amountValid && (
-                  <p className="text-[12px] text-loss-ink">Enter a valid amount</p>
-                )}
+                {amount.length > 0 && !amountValid && <p className="err">Enter a valid amount</p>}
               </div>
 
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1 h-11 rounded-xl text-[13px] font-medium"
-                  disabled={loading || !amountValid || !walletReady}
-                  onClick={() => handleWithdraw(false)}
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Withdraw ${amount || ""}`}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 rounded-xl text-[13px] font-medium border-border/60"
-                  disabled={loading || !walletReady}
-                  onClick={() => handleWithdraw(true)}
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "All"}
-                </Button>
+              <div className="sheet-actions">
+                <button type="button" className="btn" disabled={loading || !walletReady} onClick={() => handleWithdraw(true)}>
+                  {loading ? <span className="spin" aria-hidden="true" /> : "Withdraw all"}
+                </button>
+                <button type="button" className="btn btn--primary" disabled={loading || !amountValid || !walletReady} onClick={() => handleWithdraw(false)}>
+                  {loading ? <span className="spin" aria-hidden="true" /> : `Withdraw ${amount || ""}`.trim()}
+                </button>
               </div>
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </Sheet>
+    </>
   );
 }
 
@@ -558,8 +498,8 @@ export default function EarnPage() {
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground text-[15px]">Please connect your wallet first.</p>
+      <div className="page">
+        <Empty icon="trending-up" title="Sign in first" text="Connect your wallet to lend on Fluid." />
       </div>
     );
   }
@@ -574,186 +514,116 @@ export default function EarnPage() {
     return market?.totalAprPercent;
   };
 
+  const visibleMarkets = markets
+    .filter((m) => activeChain === "all" || String(m.chainIndex) === activeChain)
+    .sort((a, b) => b.totalAprPercent - a.totalAprPercent);
+  const best = [...markets].sort((a, b) => b.totalAprPercent - a.totalAprPercent)[0];
+
   return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-eyebrow">Fluid · lending</p>
-        <h1 className="mt-1.5 text-display-lg text-foreground">Earn</h1>
-        <p className="text-muted-foreground text-[14px] mt-2">Supply assets to Fluid lending protocol and earn yield</p>
+    <div className="page">
+      <PageHead title="Earn" lede="Lend your tokens on Fluid and earn a variable yield, paid by the people who&nbsp;borrow." />
+
+      <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
+        <Metric
+          label="Best yield now"
+          value={isLoading ? "…" : best ? <span className="text-gain-ink">{best.totalAprPercent.toFixed(2)}%</span> : "n/a"}
+          sub={best ? `${best.underlyingSymbol} on ${best.chainName}` : undefined}
+        />
+        <Metric label="Markets" value={isLoading ? "…" : markets.length} sub={`on ${CHAIN_TABS.length - 1} chains`} />
+        <Metric label="Your positions" value={positionsLoading ? "…" : positions.length} sub={positionsLoading ? undefined : positions.length ? "earning now" : "nothing supplied yet"} />
       </div>
 
-      {/* ── Active Positions ── */}
-      {positionsLoading && (
-        <div className="flex items-center gap-2 text-muted-foreground text-[13px]">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span>Loading positions…</span>
-        </div>
+      {(positionsLoading || positions.length > 0) && (
+        <Panel flush index={2} title="Your positions" sub="Supplied to Fluid, earning yield">
+          {positionsLoading ? (
+            <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+              <Skeleton height={56} />
+            </div>
+          ) : (
+            <ul className="rows wal-pad">
+              {positions.map((pos) => {
+                const apy = getPositionApy(pos);
+                return (
+                  <li key={`${pos.chainIndex}-${pos.fTokenAddress}`}>
+                    <div className="row mkt-row">
+                      <TokenIcon symbol={pos.underlyingSymbol} size={36} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t">{pos.underlyingSymbol}</div>
+                        <div className="sub">{CHAIN_NAMES[pos.chainIndex] ?? `Chain ${pos.chainIndex}`}</div>
+                      </div>
+                      <div className="end">
+                        <div className="num">
+                          {parseFloat(pos.underlyingAssetsUi).toFixed(4)} {pos.underlyingSymbol}
+                        </div>
+                        {apy !== undefined && <div className="sub num text-gain-ink">{apy.toFixed(2)}% a year</div>}
+                      </div>
+                      <WithdrawDialog
+                        position={pos}
+                        walletAddress={walletAddress ?? ""}
+                        apy={apy}
+                        onSuccess={() => setTimeout(() => mutatePositions(), 5000)}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
       )}
 
-      {positions.length > 0 && (
-        <div className="space-y-4">
-          <div className="space-y-0.5">
-            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-              <Layers className="h-4.5 w-4.5 text-muted-foreground" />
-              Your Active Positions
-            </h2>
-            <p className="text-[13px] text-muted-foreground">Fluid lending positions earning yield</p>
+      <Panel
+        flush
+        index={3}
+        title="Fluid markets"
+        sub="Live rates from on-chain data, best first"
+        action={
+          <PillTabs
+            id="earn-chain"
+            label="Filter by chain"
+            value={activeChain}
+            onChange={setActiveChain}
+            options={CHAIN_TABS.map((t) => ({ value: t.id as string, label: t.label }))}
+          />
+        }
+      >
+        {isLoading ? (
+          <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} height={56} />
+            ))}
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {positions.map((pos) => {
-              const apy = getPositionApy(pos);
-              return (
-                <Card
-                  key={`${pos.chainIndex}-${pos.fTokenAddress}`}
-                  className="rounded-2xl border-border/60 shadow-sm hover-lift overflow-hidden"
-                >
-                  <CardContent className="pt-5 pb-5 space-y-4">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <TokenIcon symbol={pos.underlyingSymbol} size={32} />
-                        <div>
-                          <p className="font-semibold text-[15px] leading-tight">{pos.underlyingSymbol}</p>
-                          <p className="text-[11px] text-muted-foreground">{pos.symbol}</p>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="rounded-lg text-[11px] font-medium border-border/60 text-muted-foreground">
-                        {CHAIN_NAMES[pos.chainIndex] ?? `Chain ${pos.chainIndex}`}
-                      </Badge>
+        ) : visibleMarkets.length === 0 ? (
+          <Empty icon="trending-up" title="No markets here" text="Fluid has no market on this chain right now." />
+        ) : (
+          <>
+            <div className="mkt-head" aria-hidden="true">
+              <span>Asset</span>
+              <span>Supply</span>
+              <span>Rewards</span>
+              <span>Yield</span>
+              <span />
+            </div>
+            <ul className="rows wal-pad">
+              {visibleMarkets.map((market) => (
+                <li key={`${market.chainIndex}-${market.fTokenAddress}`}>
+                  <div className="row mkt-row mkt-row--full">
+                    <TokenIcon symbol={market.underlyingSymbol} size={36} />
+                    <div style={{ minWidth: 0 }}>
+                      <div className="t">{market.underlyingSymbol}</div>
+                      <div className="sub">{market.chainName}</div>
                     </div>
-
-                    {/* Stats */}
-                    <div className="space-y-2">
-                      {/* Supplied amount */}
-                      <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
-                        <span className="text-[12px] text-muted-foreground">Supplied</span>
-                        <span className="text-[14px] font-semibold tabular-nums">
-                          {parseFloat(pos.underlyingAssetsUi).toFixed(4)}{" "}
-                          <span className="text-[12px] font-normal text-muted-foreground">{pos.underlyingSymbol}</span>
-                        </span>
-                      </div>
-                      {/* APY */}
-                      {apy !== undefined && (
-                        <div className="flex items-center justify-between rounded-lg bg-gain-soft px-3 py-2">
-                          <span className="text-[12px] text-gain-ink/80 flex items-center gap-1">
-                            <TrendingUp className="h-3 w-3" /> APY
-                          </span>
-                          <span className="text-[14px] font-semibold text-gain-ink tabular-nums">
-                            {apy.toFixed(2)}%
-                          </span>
-                        </div>
-                      )}
-                      {/* Shares */}
-                      <div className="flex items-center justify-between px-1">
-                        <span className="text-[11px] text-muted-foreground/70">fToken shares</span>
-                        <span className="text-[11px] font-mono text-muted-foreground/70">
-                          {(parseFloat(pos.shares) / 10 ** pos.underlyingDecimals).toFixed(6)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Withdraw button */}
-                    <WithdrawDialog
-                      position={pos}
-                      walletAddress={walletAddress ?? ""}
-                      apy={apy}
-                      onSuccess={() => setTimeout(() => mutatePositions(), 5000)}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Fluid Lending Markets ── */}
-      <div className="space-y-5">
-        <div className="flex items-end justify-between">
-          <div className="space-y-0.5">
-            <h2 className="text-lg font-semibold tracking-tight">Fluid Lending Markets</h2>
-            <p className="text-[13px] text-muted-foreground">Live APY rates from on-chain data</p>
-          </div>
-        </div>
-
-        {/* Chain tabs */}
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/60 p-1 w-full overflow-x-auto scrollbar-none max-w-full">
-          {CHAIN_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveChain(tab.id)}
-              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 cursor-pointer ${
-                activeChain === tab.id ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <Card className="rounded-2xl border-border/60 shadow-sm">
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  <p className="text-[13px] text-muted-foreground">Loading markets</p>
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/40">
-                {markets
-                  .filter((m) => activeChain === "all" || String(m.chainIndex) === activeChain)
-                  .map((market) => (
-                    <div
-                      key={`${market.chainIndex}-${market.fTokenAddress}`}
-                      className="flex items-center justify-between px-5 py-4 hover:bg-accent/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3.5">
-                        <TokenIcon symbol={market.underlyingSymbol} size={36} />
-                        <div>
-                          <p className="text-[14px] font-semibold leading-tight">{market.underlyingSymbol}</p>
-                          <p className="text-[12px] text-muted-foreground mt-0.5">{market.chainName}</p>
-                        </div>
-                      </div>
-
-                      <div className="hidden sm:flex items-center gap-6 text-right">
-                        <div>
-                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Supply</p>
-                          <p className="text-[13px] font-medium tabular-nums mt-0.5">
-                            {market.supplyRatePercent.toFixed(2)}%
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Rewards</p>
-                          <p className="text-[13px] font-medium tabular-nums mt-0.5">
-                            {market.rewardsRatePercent.toFixed(2)}%
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-right mr-1">
-                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">APY</p>
-                          <p className="text-[15px] font-semibold tabular-nums text-gain-ink mt-0.5">
-                            {market.totalAprPercent.toFixed(2)}%
-                          </p>
-                        </div>
-                        <SupplyDialog market={market} walletAddress={walletAddress ?? ""} />
-                      </div>
-                    </div>
-                  ))}
-                {markets.filter((m) => activeChain === "all" || String(m.chainIndex) === activeChain).length === 0 &&
-                  !isLoading && (
-                    <div className="py-12 text-center text-[13px] text-muted-foreground">
-                      No markets available on this chain
-                    </div>
-                  )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                    <span className="num col-x">{market.supplyRatePercent.toFixed(2)}%</span>
+                    <span className="num col-x">{market.rewardsRatePercent.toFixed(2)}%</span>
+                    <span className="glp pos">{market.totalAprPercent.toFixed(2)}%</span>
+                    <SupplyDialog market={market} walletAddress={walletAddress ?? ""} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Panel>
     </div>
   );
 }
