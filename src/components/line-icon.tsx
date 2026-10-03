@@ -30,7 +30,16 @@ export type LineIconName =
   | "play"
   | "check"
   | "shield-check"
-  | "exit";
+  | "exit"
+  | "sparkle"
+  | "grid"
+  | "wallet"
+  | "bridge"
+  | "dots"
+  | "copy"
+  | "chevron-down"
+  | "signal"
+  | "refresh";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   swap: (
@@ -158,6 +167,60 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
       <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
       <path d="M10 16l-4-4 4-4" />
       <path d="M6 12h10" />
+    </>
+  ),
+  sparkle: (
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" />
+  ),
+  grid: (
+    <>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  wallet: (
+    <>
+      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" />
+      <rect x="4" y="8" width="16" height="11" rx="2.5" />
+      <path d="M16 13.5h.01" />
+    </>
+  ),
+  bridge: (
+    <>
+      <path d="M7 16V4m0 0L3.5 7.5M7 4l3.5 3.5" />
+      <path d="M17 8v12m0 0 3.5-3.5M17 20l-3.5-3.5" />
+    </>
+  ),
+  dots: (
+    <>
+      <path d="M5 12h.01" />
+      <path d="M12 12h.01" />
+      <path d="M19 12h.01" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="12" height="12" rx="2.5" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
+  signal: (
+    <>
+      <path d="M4 20v-3" />
+      <path d="M9 20v-7" />
+      <path d="M14 20V9" />
+      <path d="M19 20V5" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 11a8 8 0 0 0-14.6-4.5L4 8" />
+      <path d="M4 4v4h4" />
+      <path d="M4 13a8 8 0 0 0 14.6 4.5L20 16" />
+      <path d="M20 20v-4h-4" />
     </>
   ),
 };

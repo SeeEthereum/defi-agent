@@ -289,6 +289,9 @@
     background: var(--brand-soft);
     color: var(--foreground);
   }
+  html {
+    scrollbar-color: var(--surface-3) transparent;
+  }
 }
 
 /* Skip link: hidden above the viewport until it receives keyboard focus. */
