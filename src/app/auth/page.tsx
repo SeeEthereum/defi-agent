@@ -23,7 +23,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { typeset as t } from "@/lib/typeset";
-import { DISCLAIMER_KEY, RiskDisclaimerText } from "@/components/risk-disclaimer";
+import { DISCLAIMER_KEY, RiskCards } from "@/components/risk-disclaimer";
 
 // How often to ask the server whether the browser login landed. The route
 // reads in-memory state (no CLI spawn), so this stays cheap.
@@ -54,6 +54,9 @@ export default function AuthPage() {
   // the same tab, so the store alone wouldn't notice the acceptance.
   const [justAccepted, setJustAccepted] = useState(false);
   const [ticked, setTicked] = useState(false);
+  // Consent opens once every card has been on screen.
+  const [allSeen, setAllSeen] = useState(false);
+  const markAllSeen = useCallback(() => setAllSeen(true), []);
 
   const [step, setStep] = useState<"idle" | "awaiting">("idle");
   const [loginUrl, setLoginUrl] = useState("");
@@ -190,15 +193,15 @@ export default function AuthPage() {
 
             <div className="bezel auth-card">
               <div className="core">
-                <div className="risk-body" tabIndex={0} aria-label="Risk disclaimer">
-                  <RiskDisclaimerText />
-                </div>
+                <RiskCards onAllSeen={markAllSeen} />
 
-                <label htmlFor="auth-disclaimer-accept" className="consent">
+                <label htmlFor="auth-disclaimer-accept" className="consent" data-disabled={!allSeen}>
                   <input
                     id="auth-disclaimer-accept"
                     type="checkbox"
                     checked={ticked}
+                    disabled={!allSeen}
+                    aria-describedby="consent-hint"
                     onChange={(e) => setTicked(e.target.checked)}
                   />
                   <span>
@@ -206,7 +209,11 @@ export default function AuthPage() {
                   </span>
                 </label>
 
-                <button type="button" className="btn btn--primary btn--lg auth-cta" onClick={acceptDisclaimer} disabled={!ticked}>
+                <p id="consent-hint" className="auth-note" aria-live="polite">
+                  {allSeen ? "You have seen every card." : "Swipe through every card to continue."}
+                </p>
+
+                <button type="button" className="btn btn--primary btn--lg auth-cta" onClick={acceptDisclaimer} disabled={!ticked || !allSeen}>
                   Accept &amp; continue
                   <span className="well" aria-hidden="true">
                     <LineIcon name="arrow-right" size={18} />

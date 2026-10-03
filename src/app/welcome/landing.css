@@ -338,15 +338,45 @@
 /* ───────── sign in (/auth) ───────── */
 .lp.auth {
   & .auth-mast { grid-template-columns: 1fr auto; }
+  /* No scroll sentinel here: the veil behind the bar is always on. */
+  & .mast::before { opacity: 1; }
   & .auth-main { padding-block: clamp(32px, 7vw, 88px) 96px; }
   & .auth-col { max-width: 620px; margin-inline: auto; display: flex; flex-direction: column; }
   & .auth-col .h2 { font-size: clamp(40px, 5vw, 64px); }
   & .auth-card { margin-top: 36px; }
   & .auth-card .core { padding: var(--lp-pad); display: flex; flex-direction: column; gap: 18px; }
-  & .risk-body { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; font-size: 14px; line-height: 1.6; color: var(--text-2); display: flex; flex-direction: column; gap: 12px; border-radius: 12px; }
-  & .risk-body ul, & .risk-body ol { padding-left: 18px; display: grid; gap: 8px; }
+  /* Risk disclaimer: swipeable cards */
+  & .risk { display: flex; flex-direction: column; gap: 18px; }
+  & .risk-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+  & .risk-head .btn { width: 40px; height: 40px; min-height: 40px; padding: 0; justify-content: center; }
+  & .risk-head .btn:disabled { opacity: 0.35; cursor: default; }
+  & .risk-progress { margin-right: 8px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; }
+  & .risk-progress span { height: 3px; border-radius: 3px; background: var(--border-strong); transition: background-color 0.4s var(--spring); }
+  & .risk-progress span[data-state="done"] { background: color-mix(in srgb, var(--foreground) 55%, transparent); }
+  & .risk-progress span[data-state="on"] { background: var(--brand); }
+  & .risk-track {
+    display: flex; align-items: flex-start; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+    scrollbar-width: none; border-radius: 16px;
+  }
+  & .risk-track::-webkit-scrollbar { display: none; }
+  & .risk-track:focus-visible { outline-offset: 4px; }
+  /* Before the script measures the cards, the later ones take no height, so
+     the track does not start at the longest card's height and then shrink. */
+  & .risk:not([data-ready]) .risk-card:not(:first-child) { height: 0; overflow: hidden; }
+  & .risk-sentinel { position: absolute; top: 0; left: 0; width: 100%; height: 1px; pointer-events: none; }
+  & .risk-card { position: relative; flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding: 4px 2px 6px; }
+  & .risk-flag { align-self: flex-start; display: inline-flex; align-items: center; min-height: 26px; padding: 0 11px; border-radius: 999px; background: var(--warn-soft); color: var(--warn-ink); font-size: 12.5px; font-weight: 500; }
+  & .risk-title { font-size: clamp(24px, 2.6vw, 30px); letter-spacing: -0.035em; line-height: 1.08; }
+  & .risk-intro, & .risk-outro { font-size: 16px; line-height: 1.6; color: var(--text-2); max-width: 60ch; }
+  & .risk-outro { padding-top: 16px; border-top: 1px solid var(--border); color: var(--foreground); }
+  & .risk-clauses { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+  & .risk-clauses h3 { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 4px; }
+  & .risk-clauses p { font-size: 14.5px; line-height: 1.6; color: var(--text-2); max-width: 62ch; }
+  & .risk-clauses strong, & .risk-intro strong { color: var(--foreground); font-weight: 500; }
+  & .flip { transform: scaleX(-1); }
   & .consent { display: flex; align-items: flex-start; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border); cursor: pointer; font-size: 14px; line-height: 1.5; color: var(--foreground); }
   & .consent input { width: 20px; height: 20px; margin-top: 1px; flex: none; accent-color: var(--brand); }
+  & .consent[data-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
   & .auth-cta { justify-content: space-between; width: 100%; }
   & .auth-cta:disabled { opacity: 0.4; cursor: not-allowed; }
   & .auth-note { font-size: 13.5px; color: var(--muted-foreground); text-align: center; }

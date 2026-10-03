@@ -61,13 +61,13 @@ describe("addresses, titles and logo do not change", () => {
 });
 
 describe("design rules on the public pages", () => {
-  const files = ["src/app/welcome/page.tsx", "src/app/auth/page.tsx"];
+  const files = ["src/app/welcome/page.tsx", "src/app/auth/page.tsx", "src/components/risk-disclaimer.tsx"];
 
   it("has no em or en dashes in visible copy", () => {
     for (const f of files) {
       // Comments may use them; strip block and line comments first.
       const code = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-      expect(code, f).not.toMatch(/[—–]/);
+      expect(code, f).not.toMatch(/[—–]|&mdash;|&ndash;/);
     }
   });
 
