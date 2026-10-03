@@ -62,7 +62,7 @@ export function NumberDisplay({
   }
 
   if (isStatic) {
-    const formatted = num.toLocaleString(undefined, {
+    const formatted = num.toLocaleString("en-US", {
       minimumFractionDigits: minDecimals ?? decimals,
       maximumFractionDigits: decimals,
       useGrouping: grouped,
@@ -79,6 +79,7 @@ export function NumberDisplay({
   return (
     <NumberFlow
       value={num}
+      locales="en-US"
       format={{
         minimumFractionDigits: minDecimals ?? decimals,
         maximumFractionDigits: decimals,

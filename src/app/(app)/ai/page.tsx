@@ -224,7 +224,7 @@ function ActionCard({
     rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : MISSING });
     if (p.type) rows.push({ label: "Type", value: String(p.type).toUpperCase() });
     rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : MISSING });
-    if (p.currentPrice) rows.push({ label: "Mark price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString()}` });
+    if (p.currentPrice) rows.push({ label: "Mark price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString("en-US")}` });
     if (p.slPx) rows.push({ label: "Stop loss", value: `$${p.slPx}` });
     if (p.tpPx) rows.push({ label: "Take profit", value: `$${p.tpPx}` });
     rows.push({ label: "Settlement", value: "USDC on Hyperliquid L1" });

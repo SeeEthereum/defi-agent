@@ -268,7 +268,7 @@ function SignalsTab() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Price</span>
                       <span className="font-medium tabular-nums">
-                        ${Number(price) >= 1 ? Number(price).toLocaleString(undefined, { maximumFractionDigits: 2 }) : Number(price) >= 0.0001 ? Number(price).toFixed(6) : Number(price).toExponential(2)}
+                        ${Number(price) >= 1 ? Number(price).toLocaleString("en-US", { maximumFractionDigits: 2 }) : Number(price) >= 0.0001 ? Number(price).toFixed(6) : Number(price).toExponential(2)}
                       </span>
                     </div>
                   )}
@@ -287,7 +287,7 @@ function SignalsTab() {
                   {holders != null && Number(holders) > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Holders</span>
-                      <span className="font-medium">{Number(holders).toLocaleString()}</span>
+                      <span className="font-medium">{Number(holders).toLocaleString("en-US")}</span>
                     </div>
                   )}
                   {soldRatio != null && (

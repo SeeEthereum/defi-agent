@@ -1,17 +1,23 @@
 "use client";
 
+/**
+ * Swap: one ticket (pay, receive, quote) beside what is trending on the
+ * chain. Settings fold away behind the slippage chip; tokens are chosen in a
+ * searchable picker instead of an inline dropdown.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
 import { TokenIcon } from "@/components/token-icon";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
+import { Change, Empty, PageHead, Panel, Picker, PickRow, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
+
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -152,37 +158,37 @@ function friendlyError(raw: string): { title: string; message: string } {
   const lower = raw.toLowerCase();
 
   if (lower.includes("insufficient") || lower.includes("not enough") || lower.includes("balance"))
-    return { title: "Insufficient Balance", message: "You don't have enough funds to complete this swap. Try reducing the amount or adding funds to your wallet." };
+    return { title: "Insufficient balance", message: "You don't have enough funds to complete this swap. Try reducing the amount or adding funds to your wallet." };
 
   if (lower.includes("slippage") || lower.includes("price movement") || lower.includes("price change"))
-    return { title: "Price Changed", message: "The price moved too much while getting your quote. Try again or use a smaller amount." };
+    return { title: "Price changed", message: "The price moved too much while getting your quote. Try again or use a smaller amount." };
 
   if (lower.includes("liquidity") || lower.includes("no route") || lower.includes("no path"))
-    return { title: "No Liquidity", message: "There isn't enough liquidity for this trading pair. Try a smaller amount or a different token." };
+    return { title: "No liquidity", message: "There isn't enough liquidity for this trading pair. Try a smaller amount or a different token." };
 
   if (lower.includes("allowance") || lower.includes("approve") || lower.includes("approval"))
-    return { title: "Approval Required", message: "You need to approve this token before swapping. This is a one-time action per token." };
+    return { title: "Approval required", message: "You need to approve this token before swapping. This is a one-time action per token." };
 
   if (lower.includes("timeout") || lower.includes("timed out"))
-    return { title: "Request Timeout", message: "The request took too long. Please check your connection and try again." };
+    return { title: "Request timeout", message: "The request took too long. Please check your connection and try again." };
 
   if (lower.includes("rate limit") || lower.includes("too many"))
-    return { title: "Too Many Requests", message: "Please wait a few seconds and try again." };
+    return { title: "Too many requests", message: "Please wait a few seconds and try again." };
 
   if (lower.includes("82112") || lower.includes("value difference") || lower.includes("risk of loss"))
-    return { title: "Extreme Price Impact", message: "This swap would lose more than 90% of your value due to insufficient market liquidity. Try a much smaller amount." };
+    return { title: "Extreme price impact", message: "This swap would lose more than 90% of your value due to insufficient market liquidity. Try a much smaller amount." };
 
   if (lower.includes("simulation failed") || lower.includes("execution reverted") || lower.includes("contract call fail"))
-    return { title: "Transaction Failed", message: "The transaction was simulated and would fail on-chain. This usually means you don't have enough tokens to complete the swap. Check your wallet balance and try again." };
+    return { title: "Transaction failed", message: "The transaction was simulated and would fail on-chain. This usually means you don't have enough tokens to complete the swap. Check your wallet balance and try again." };
 
   if (lower.includes("region") || lower.includes("50125") || lower.includes("80001"))
-    return { title: "Region Restricted", message: "This service is not available in your region. Try using a VPN or switching to a supported region." };
+    return { title: "Region restricted", message: "This service is not available in your region. Try using a VPN or switching to a supported region." };
 
   if (lower.includes("network") || lower.includes("fetch failed"))
-    return { title: "Network Error", message: "Could not connect to the server. Please check your internet connection." };
+    return { title: "Network error", message: "Could not connect to the server. Please check your internet connection." };
 
   if (lower.includes("command execution failed"))
-    return { title: "Service Error", message: "The swap service returned an unexpected error. This may be caused by an unsupported amount, token pair, or a temporary issue. Please try again with different parameters." };
+    return { title: "Service error", message: "The swap service returned an unexpected error. This may be caused by an unsupported amount, token pair, or a temporary issue. Please try again with different parameters." };
 
   console.error(raw);
   return { title: "Swap failed", message: "Swap failed, please try again" };
@@ -199,32 +205,8 @@ function readQuoteId(payload: unknown): string {
   return typeof id === "string" ? id : "";
 }
 
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={`animate-spin-breathe ${className}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
-}
+
+const SEG_SPRING = { type: "spring" as const, stiffness: 420, damping: 36, mass: 0.8 };
 
 function TokenSelector({
   label,
@@ -233,7 +215,7 @@ function TokenSelector({
   chain,
   walletTokens,
 }: {
-  label: string;
+  label: "From" | "To";
   token: TokenInfo | null;
   onSelect: (t: TokenInfo) => void;
   chain: string;
@@ -241,10 +223,9 @@ function TokenSelector({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TokenSearchResult[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const search = useCallback(
     async (q: string) => {
@@ -288,169 +269,127 @@ function TokenSelector({
     };
   }, [query, search]);
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setShowDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
   }, []);
 
-  // Find balance of currently selected token — match by address only (unique)
-  const selectedBalance = token && walletTokens
-    ? walletTokens.find(
-        (w) => w.address.toLowerCase() === token.address.toLowerCase()
-      )
-    : null;
+  const pick = (t: TokenInfo) => {
+    onSelect(t);
+    close();
+  };
+
+  const isSelected = (address: string) => token != null && token.address.toLowerCase() === address.toLowerCase();
 
   return (
-    <div ref={containerRef}>
-      <p className="text-[13px] font-medium text-muted-foreground mb-2">
-        {label}
-      </p>
-      {token ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary px-4 h-11">
-          <TokenIcon symbol={token.symbol} size={24} />
-          <span className="font-semibold text-sm tracking-tight">
-            {token.symbol}
-          </span>
-          {selectedBalance && (
-            <span className="text-xs text-muted-foreground">
-              {parseFloat(selectedBalance.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
-            </span>
-          )}
-          <button
-            type="button"
-            className="ml-auto text-[13px] font-medium text-primary hover:text-primary transition-colors"
-            onClick={() => {
-              onSelect(null as unknown as TokenInfo);
-              setQuery("");
-            }}
-          >
-            Change
-          </button>
-        </div>
-      ) : (
-        <div className="relative">
-          <Input
-            placeholder="Search token or select from balance..."
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setShowDropdown(true);
-            }}
-            onFocus={() => setShowDropdown(true)}
-            className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-sm placeholder:text-muted-foreground/60 focus-visible:ring-primary/25 focus-visible:border-primary"
-          />
-          <AnimatePresence>
-            {showDropdown && (
-            <motion.div
-              className="absolute z-50 top-full left-0 right-0 mt-1.5 max-h-64 overflow-auto rounded-xl border border-border/60 bg-popover shadow-lg shadow-black/5 origin-top"
-              initial={{ opacity: 0, scaleY: 0.9, y: -4 }}
-              animate={{ opacity: 1, scaleY: 1, y: 0 }}
-              exit={{ opacity: 0, scaleY: 0.95, y: -2 }}
-              transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
-            >
-              {/* Show wallet tokens first when no search query */}
-              {query.length === 0 && walletTokens && walletTokens.length > 0 && (
-                <>
-                  <div className="px-4 py-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/80">
-                    Your Tokens
-                  </div>
-                  {walletTokens.map((wt, i) => (
-                    <button
-                      key={`wallet-${wt.address}-${i}`}
-                      type="button"
-                      className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors"
-                      onClick={() => {
-                        onSelect({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals });
-                        setQuery("");
-                        setShowDropdown(false);
-                      }}
-                    >
-                      <TokenIcon symbol={wt.symbol} size={28} />
-                      <div className="flex-1 min-w-0">
-                        <span className="font-semibold tracking-tight">{wt.symbol}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[13px] font-medium tabular-nums">
-                          {parseFloat(wt.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                        </div>
-                        {parseFloat(wt.balanceUsd) > 0 && (
-                          <div className="text-[11px] text-muted-foreground">
-                            ${parseFloat(wt.balanceUsd).toFixed(2)}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                  <div className="px-4 py-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/80 border-t border-border/40">
-                    Search Other Tokens
-                  </div>
-                  <div className="px-4 py-2 text-[12px] text-muted-foreground">
-                    Type to search any token...
-                  </div>
-                </>
-              )}
-              {/* Search results */}
-              {query.length > 0 && searching && (
-                <div className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
-                  <Spinner className="text-primary" />
-                  Searching...
-                </div>
-              )}
-              {query.length > 0 && !searching && results.length === 0 && (
-                <div className="px-4 py-3 text-[13px] text-muted-foreground">
-                  No tokens found
-                </div>
-              )}
-              {query.length > 0 && results.map((t, i) => {
-                const parsed = parseTokenResult(t);
-                const bal = walletTokens?.find(
-                  (w) => w.address.toLowerCase() === parsed.address.toLowerCase()
-                );
-                return (
-                  <button
-                    key={`${parsed.address}-${i}`}
-                    type="button"
-                    className="w-full text-left px-4 py-2.5 hover:bg-primary/12 active:bg-primary/15 flex items-center gap-3 text-sm transition-colors first:rounded-t-xl last:rounded-b-xl"
-                    onClick={() => {
-                      onSelect(parsed);
-                      setQuery("");
-                      setShowDropdown(false);
-                    }}
-                  >
-                    <TokenIcon symbol={parsed.symbol} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-semibold tracking-tight">
-                        {parsed.symbol}
-                      </span>
-                      <span className="text-muted-foreground text-xs truncate ml-2">
-                        {getTokenName(t)}
-                      </span>
-                    </div>
-                    {bal ? (
-                      <span className="text-[12px] font-medium tabular-nums">
-                        {parseFloat(bal.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-[11px] font-mono">
-                        {abbreviateAddress(parsed.address)}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </motion.div>
+    <>
+      <button
+        type="button"
+        className={`tok-btn${token ? "" : " empty"}`}
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-label={token ? `${label === "From" ? "Paying with" : "Receiving"} ${token.symbol}. Change token` : label === "From" ? "Choose the token to pay with" : "Choose the token to receive"}
+      >
+        {token ? (
+          <>
+            <TokenIcon symbol={token.symbol} size={26} />
+            <span>{token.symbol}</span>
+          </>
+        ) : (
+          <span>Select token</span>
+        )}
+        <LineIcon name="chevron-down" size={15} />
+      </button>
+
+      <Picker
+        open={open}
+        onClose={close}
+        title={label === "From" ? "Pay with" : "Receive"}
+        query={query}
+        onQuery={setQuery}
+        placeholder="Search a name or paste an address"
+      >
+        {query.length === 0 && (
+          <>
+            {walletTokens && walletTokens.length > 0 ? (
+              <>
+                <p className="picker-group">In your wallet</p>
+                {walletTokens.map((wt, i) => (
+                  <PickRow
+                    key={`wallet-${wt.address}-${i}`}
+                    icon={<TokenIcon symbol={wt.symbol} size={34} />}
+                    title={wt.symbol}
+                    sub={<span className="num">{parseFloat(wt.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span>}
+                    end={parseFloat(wt.balanceUsd) > 0 ? <span className="num">${parseFloat(wt.balanceUsd).toFixed(2)}</span> : undefined}
+                    selected={isSelected(wt.address)}
+                    onPick={() => pick({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals })}
+                  />
+                ))}
+              </>
+            ) : (
+              <p className="picker-hint">Type a token name, a symbol or a contract address.</p>
             )}
-          </AnimatePresence>
-        </div>
-      )}
+          </>
+        )}
+        {query.length > 0 && searching && (
+          <p className="picker-hint">
+            <span className="spin" aria-hidden="true" /> Searching…
+          </p>
+        )}
+        {query.length > 0 && !searching && results.length === 0 && <p className="picker-hint">No tokens found on this network.</p>}
+        {query.length > 0 &&
+          !searching &&
+          results.map((t, i) => {
+            const parsed = parseTokenResult(t);
+            const bal = walletTokens?.find((w) => w.address.toLowerCase() === parsed.address.toLowerCase());
+            return (
+              <PickRow
+                key={`${parsed.address}-${i}`}
+                icon={<TokenIcon symbol={parsed.symbol} size={34} />}
+                title={parsed.symbol}
+                sub={getTokenName(t)}
+                end={
+                  bal ? (
+                    <span className="num">{parseFloat(bal.balance).toLocaleString("en-US", { maximumFractionDigits: 4 })}</span>
+                  ) : (
+                    <span className="num muted">{abbreviateAddress(parsed.address)}</span>
+                  )
+                }
+                selected={isSelected(parsed.address)}
+                onPick={() => pick(parsed)}
+              />
+            );
+          })}
+      </Picker>
+    </>
+  );
+}
+
+/** Segmented choice with a sliding light pill. */
+function Segmented<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: T | null;
+  options: Array<{ value: T; label: string }>;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button key={o.value} type="button" role="radio" aria-checked={on} onClick={() => onChange(o.value)}>
+            {on && <motion.span layoutId={`${id}-seg`} className="seg-bg" transition={SEG_SPRING} />}
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -477,7 +416,6 @@ export default function SwapPage() {
   const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [slippage, setSlippage] = useState("0.5");
   const [autoSlippage, setAutoSlippage] = useState(false);
-  const [showSlippage, setShowSlippage] = useState(false);
   const [gasLevel, setGasLevel] = useState<"slow" | "average" | "fast">("average");
   const [mevProtection, setMevProtection] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -664,7 +602,7 @@ export default function SwapPage() {
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      setError({ type: "quote", title: "Network Error", message: "Could not connect to the server. Please check your internet connection." });
+      setError({ type: "quote", title: "Network error", message: "Could not connect to the server. Please check your internet connection." });
     } finally {
       if (quoteAbortRef.current === ac) setQuoteLoading(false);
     }
@@ -684,10 +622,8 @@ export default function SwapPage() {
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground text-[15px]">
-          Please connect your wallet first.
-        </p>
+      <div className="page">
+        <Empty icon="swap" title="Sign in first" text="Connect your wallet to swap tokens." />
       </div>
     );
   }
@@ -768,8 +704,8 @@ export default function SwapPage() {
         setQuote(null);
         setError({
           type: "swap",
-          title: "Quote expired or price moved, refreshing...",
-          message: "Quote expired or price moved, refreshing...",
+          title: "The price moved",
+          message: "The quote expired or the price changed. Getting a fresh one…",
         });
         void handleQuote();
         return;
@@ -783,7 +719,7 @@ export default function SwapPage() {
           status,
           message: txHash
             ? (status === "confirming"
-              ? "Transaction signed and broadcast. Waiting for confirmation..."
+              ? "Signed and sent. Waiting for the network to confirm…"
               : "Transaction broadcast successfully!")
             : "Transaction submitted. It may take a moment to appear on-chain.",
           txHash: txHash ?? undefined,
@@ -864,11 +800,57 @@ export default function SwapPage() {
       })()
     : null;
 
+
+  const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
+  const fromBal = fromToken
+    ? walletTokens.find((w) => w.address.toLowerCase() === fromToken.address.toLowerCase())
+    : undefined;
+  const toBal = toToken
+    ? walletTokens.find((w) => w.address.toLowerCase() === toToken.address.toLowerCase())
+    : undefined;
+  const fromUnitUsd =
+    fromBal && parseFloat(fromBal.balance) > 0 ? parseFloat(fromBal.balanceUsd) / parseFloat(fromBal.balance) : null;
+  const payUsd = fromUnitUsd && amountWei ? parseFloat(amount) * fromUnitUsd : null;
+  const receiveUsd =
+    quoteDetails?.toUnitPrice && quoteReceiveAmount
+      ? parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)
+      : null;
+  const isNativeFrom = fromToken?.address.toLowerCase() === NATIVE_TOKEN.toLowerCase();
+  const usdFmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const setMax = () => {
+    if (!fromToken || !fromBal) return;
+    if (!isNativeFrom) {
+      setAmount(fromBal.balance);
+      return;
+    }
+    // Keep a little of the native coin for gas.
+    const reserve = chain === "ethereum" ? "0.002" : "0.0005";
+    const balWei = toWei(fromBal.balance, fromToken.decimals);
+    const resWei = toWei(reserve, fromToken.decimals);
+    if (!balWei || !resWei) {
+      setAmount("0");
+      return;
+    }
+    const remaining = BigInt(balWei) - BigInt(resWei);
+    setAmount(remaining > 0n ? fromWei(remaining.toString(), fromToken.decimals) : "0");
+  };
+
+  const flip = () => {
+    if (!toToken) return;
+    setFromToken(toToken);
+    setToToken(fromToken);
+    setAmount("");
+    setError(null);
+  };
+
+  const trendingVisible = trendingLoading || trendingTokens.length > 0;
+
   return (
-    <div className="max-w-md mx-auto space-y-5 py-2">
+    <div className="page">
       <GasStationModal
         open={gasStation !== null}
-        chain={String(Object.values(CHAINS).find((c) => c.swapName === chain)?.chainIndex ?? "")}
+        chain={String(chainConfig?.chainIndex ?? "")}
         payload={gasStation}
         onClose={() => setGasStation(null)}
         onResolved={() => {
@@ -876,328 +858,253 @@ export default function SwapPage() {
           void handleSwap();
         }}
       />
-      {/* Page header */}
-      <div>
-        <p className="text-eyebrow">DEX aggregator</p>
-        <h1 className="mt-1.5 text-display-lg text-foreground">
-          Swap
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-2">
-          Trade tokens across 500+ DEX sources
-        </p>
-      </div>
 
-      {/* Main card */}
-      <div className="voxr-card">
-        <div className="p-5 space-y-5">
-          {/* Chain selector */}
-          <div>
-            <p className="text-[13px] font-medium text-muted-foreground mb-2">
-              Network
-            </p>
-            <select
-              className="flex h-11 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%239ca3af' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 14px center",
-              }}
-              value={chain}
-              onChange={(e) => handleChainChange(e.target.value)}
-            >
-              {Object.values(CHAINS).map((c) => (
-                <option key={c.swapName} value={c.swapName}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+      <PageHead title="Swap" lede="The best route across 500+ exchanges. albicocca adds no&nbsp;commission." />
 
-          {/* Slippage settings */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[13px] font-medium text-muted-foreground">Slippage Tolerance</p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setAutoSlippage(!autoSlippage); if (!autoSlippage) setShowSlippage(false); }}
-                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${autoSlippage ? "bg-gain-soft text-gain-ink" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
-                >
-                  Auto
-                </button>
-                {!autoSlippage && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSlippage(!showSlippage)}
-                    className="text-[12px] font-medium text-primary hover:text-primary transition-colors flex items-center gap-1"
-                  >
-                    {slippage}%
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showSlippage ? "rotate-180 transition-transform" : "transition-transform"}>
-                      <path d="M6 9l6 6 6-6"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-            {showSlippage && !autoSlippage && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-secondary/80 border border-border/40">
-                {["0.1", "0.5", "1.0", "2.0"].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => { setSlippage(s); setShowSlippage(false); }}
-                    className={`flex-1 h-8 rounded-lg text-[12px] font-semibold transition-colors ${slippage === s ? "bg-primary text-primary-foreground" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
-                  >
-                    {s}%
-                  </button>
+      <div className={trendingVisible ? "bento" : "solo"}>
+        <Panel className={trendingVisible ? "span-7 ticket" : "ticket"} index={1}>
+          {/* network + settings */}
+          <div className="ticket-head">
+            <div className="select select--chip">
+              <label htmlFor="swap-chain" className="sr-only">
+                Network
+              </label>
+              <select id="swap-chain" className="input" value={chain} onChange={(e) => handleChainChange(e.target.value)}>
+                {Object.values(CHAINS).map((c) => (
+                  <option key={c.swapName} value={c.swapName}>
+                    {c.name}
+                  </option>
                 ))}
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Custom"
-                    className="w-full h-8 rounded-lg border border-border/60 bg-secondary px-2 text-[12px] font-semibold text-center outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
-                    onBlur={(e) => {
-                      const raw = e.target.value.trim();
-                      if (!raw) return;
-                      setSlippage(clampSlippage(raw));
-                      setShowSlippage(false);
-                    }}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Advanced settings (gas level + MEV) */}
-          <div>
+              </select>
+            </div>
             <button
               type="button"
+              className="chip"
+              aria-expanded={showAdvanced}
+              aria-controls="swap-settings"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              <span>Advanced Settings</span>
-              <span className="flex items-center gap-2">
-                {gasLevel !== "average" && (
-                  <span className="text-[11px] font-semibold text-primary capitalize">{gasLevel}</span>
-                )}
-                {mevProtection && mevAvailable && (
-                  <span className="text-[11px] font-semibold text-gain-ink">MEV Protected</span>
-                )}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showAdvanced ? "rotate-180 transition-transform" : "transition-transform"}>
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </span>
+              <LineIcon name="sliders" size={14} />
+              {autoSlippage ? "Auto slippage" : `${slippage}% slippage`}
+              {mevProtection && mevAvailable && <span className="dot-on" aria-label="MEV protection on" />}
             </button>
+          </div>
+
+          <AnimatePresence initial={false}>
             {showAdvanced && (
-              <div className="mt-2 p-3 rounded-xl bg-secondary/80 border border-border/40 space-y-3">
-                {/* Gas Level */}
-                <div>
-                  <p className="text-[12px] font-medium text-muted-foreground mb-1.5">Gas Priority</p>
-                  <div className="flex gap-2">
-                    {(["slow", "average", "fast"] as const).map((level) => (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => setGasLevel(level)}
-                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-primary text-primary-foreground" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
-                      >
-                        {level === "slow" ? "Slow" : level === "average" ? "Average" : "Fast"}
-                      </button>
-                    ))}
+              <motion.div
+                id="swap-settings"
+                className="swap-settings"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="set-block">
+                  <div className="set-label">
+                    <span>Slippage</span>
+                    <span className="muted">How far the price may move before the swap is cancelled</span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/60 mt-1">
-                    {gasLevel === "slow" ? "Lower fee, slower confirmation (~5 min)" : gasLevel === "fast" ? "Higher fee, faster confirmation (~15 sec)" : "Balanced fee and speed (~1 min)"}
-                  </p>
+                  <div className="set-line">
+                    <Segmented
+                      id="slip"
+                      label="Slippage"
+                      value={autoSlippage ? "auto" : ["0.1", "0.5", "1.0", "2.0"].includes(slippage) ? slippage : null}
+                      options={[
+                        { value: "auto", label: "Auto" },
+                        { value: "0.1", label: "0.1%" },
+                        { value: "0.5", label: "0.5%" },
+                        { value: "1.0", label: "1%" },
+                        { value: "2.0", label: "2%" },
+                      ]}
+                      onChange={(v) => {
+                        if (v === "auto") {
+                          setAutoSlippage(true);
+                          return;
+                        }
+                        setAutoSlippage(false);
+                        setSlippage(v);
+                      }}
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Custom %"
+                      aria-label="Custom slippage in percent"
+                      className={`input seg-input${!autoSlippage && !["0.1", "0.5", "1.0", "2.0"].includes(slippage) ? " on" : ""}`}
+                      defaultValue={!["0.1", "0.5", "1.0", "2.0"].includes(slippage) ? slippage : ""}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        if (!raw) return;
+                        setAutoSlippage(false);
+                        setSlippage(clampSlippage(raw));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  </div>
                 </div>
-                {/* MEV Protection */}
-                <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                  <div>
-                    <p className="text-[12px] font-medium text-foreground">MEV Protection</p>
-                    <p className="text-[11px] text-muted-foreground/70">
+
+                <div className="set-block">
+                  <div className="set-label">
+                    <span>Gas priority</span>
+                    <span className="muted">
+                      {gasLevel === "slow"
+                        ? "Lower fee, slower (about 5 minutes)"
+                        : gasLevel === "fast"
+                          ? "Higher fee, faster (about 15 seconds)"
+                          : "Balanced fee and speed (about 1 minute)"}
+                    </span>
+                  </div>
+                  <Segmented
+                    id="gas"
+                    label="Gas priority"
+                    value={gasLevel}
+                    options={[
+                      { value: "slow", label: "Slow" },
+                      { value: "average", label: "Average" },
+                      { value: "fast", label: "Fast" },
+                    ]}
+                    onChange={setGasLevel}
+                  />
+                </div>
+
+                <div className="set-block set-row">
+                  <div className="set-label">
+                    <span>MEV protection</span>
+                    <span className="muted">
                       {mevAvailable
-                        ? "Prevents front-running and sandwich attacks on high-value swaps"
-                        : `Not available on ${chain.charAt(0).toUpperCase() + chain.slice(1)} (supported: Ethereum, BSC, Base)`}
-                    </p>
+                        ? "Shields large swaps from front-running bots"
+                        : `Not available on ${chainConfig?.name ?? chain}. Works on Ethereum, BNB Chain and Base.`}
+                    </span>
                   </div>
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={mevProtection && mevAvailable}
+                    aria-label="MEV protection"
+                    className="switch"
                     disabled={!mevAvailable}
                     onClick={() => setMevProtection(!mevProtection)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-gain" : "bg-black/15"}`}
                   >
-                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
+                    <span />
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
 
-          {/* From token section */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4 space-y-3">
-            <TokenSelector
-              label="From"
-              token={fromToken}
-              onSelect={setFromToken}
-              chain={chain}
-              walletTokens={walletTokens}
-            />
-
-            {/* Amount input */}
-            <div>
-              <p className="text-[13px] font-medium text-muted-foreground mb-2">
-                Amount
-              </p>
-              <Input
-                placeholder="0.00"
+          {/* pay */}
+          <div className="leg">
+            <div className="leg-top">
+              <label htmlFor="swap-amount">You pay</label>
+              {fromToken && (
+                <span className="leg-bal">
+                  {fromBal ? (
+                    <>
+                      <span className="num">{parseFloat(fromBal.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                      {parseFloat(fromBal.balance) > 0 && (
+                        <button type="button" className="max" onClick={setMax}>
+                          Max
+                        </button>
+                      )}
+                    </>
+                  ) : balanceLoading ? (
+                    "Checking balance…"
+                  ) : (
+                    "None in wallet"
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="leg-main">
+              <input
+                id="swap-amount"
+                className="amount-in"
+                placeholder="0"
                 type="text"
                 inputMode="decimal"
+                autoComplete="off"
                 value={amount}
+                aria-invalid={amountInvalid}
                 onChange={(e) => {
                   setAmount(e.target.value);
                   setError(null);
                 }}
-                className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums placeholder:text-muted-foreground/40 focus-visible:ring-primary/25 focus-visible:border-primary"
               />
-              {fromToken && (() => {
-                const bal = walletTokens.find(
-                  (w) => w.address.toLowerCase() === fromToken.address.toLowerCase()
-                );
-                return (
-                  <div className="flex items-center justify-between mt-1.5 px-1">
-                    <p className="text-[11px] text-muted-foreground/70">
-                      Balance: {bal ? parseFloat(bal.balance).toLocaleString(undefined, { maximumFractionDigits: 6 }) : balanceLoading ? "..." : "--"} {fromToken.symbol}
-                    </p>
-                    {bal && parseFloat(bal.balance) > 0 && (
-                      <button
-                        type="button"
-                        className="text-[11px] font-semibold text-primary hover:text-primary transition-colors"
-                        onClick={() => {
-                          const isNative =
-                            fromToken.address.toLowerCase() === NATIVE_TOKEN.toLowerCase();
-                          if (!isNative) {
-                            setAmount(bal.balance);
-                            return;
-                          }
-                          const reserve = chain === "ethereum" ? "0.002" : "0.0005";
-                          const balWei = toWei(bal.balance, fromToken.decimals);
-                          const resWei = toWei(reserve, fromToken.decimals);
-                          if (!balWei || !resWei) {
-                            setAmount("0");
-                            return;
-                          }
-                          const remaining = BigInt(balWei) - BigInt(resWei);
-                          setAmount(
-                            remaining > 0n
-                              ? fromWei(remaining.toString(), fromToken.decimals)
-                              : "0"
-                          );
-                        }}
-                      >
-                        MAX
-                      </button>
-                    )}
-                  </div>
-                );
-              })()}
-              {amountInvalid && (
-                <p className="text-[12px] text-loss-ink mt-1.5 px-1" role="alert">
+              <TokenSelector label="From" token={fromToken} onSelect={setFromToken} chain={chain} walletTokens={walletTokens} />
+            </div>
+            <div className="leg-foot">
+              {amountInvalid ? (
+                <span className="err" role="alert">
                   Enter a valid amount
-                </p>
+                </span>
+              ) : (
+                <span className="num">{payUsd != null ? usdFmt(payUsd) : " "}</span>
               )}
             </div>
           </div>
 
-          {/* Swap direction arrow */}
-          <div className="flex justify-center -my-2 relative z-10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary text-muted-foreground">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 5v14" />
-                <path d="m19 12-7 7-7-7" />
-              </svg>
+          <div className="flip-wrap">
+            <button type="button" className="flip" onClick={flip} disabled={!toToken} aria-label="Swap pay and receive tokens">
+              <LineIcon name="arrow-down" size={18} />
+            </button>
+          </div>
+
+          {/* receive */}
+          <div className="leg">
+            <div className="leg-top">
+              <span>You receive</span>
+              {toBal && (
+                <span className="leg-bal">
+                  <span className="num">{parseFloat(toBal.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> held
+                </span>
+              )}
+            </div>
+            <div className="leg-main">
+              <output className={`amount-out${quoteReceiveAmount ? "" : " muted"}`} aria-live="polite">
+                {quoteReceiveAmount ? <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} /> : "0"}
+                {quoteLoading && <span className="spin" aria-label="Getting a quote" />}
+              </output>
+              <TokenSelector label="To" token={toToken} onSelect={setToToken} chain={chain} walletTokens={walletTokens} />
+            </div>
+            <div className="leg-foot">
+              <span className="num">{receiveUsd != null ? usdFmt(receiveUsd) : " "}</span>
             </div>
           </div>
 
-          {/* To token section */}
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-4">
-            <TokenSelector
-              label="To"
-              token={toToken}
-              onSelect={setToToken}
-              chain={chain}
-              walletTokens={walletTokens}
-            />
-          </div>
-
-          {/* Quote result card */}
-          {quoteDisplay && quoteDetails && (
-            <div className="rounded-xl bg-gradient-to-br from-primary/12 via-primary/8 to-primary/12 border border-primary/20 overflow-hidden">
-              {/* Main receive amount — digits morph on quote refresh */}
-              <div className="p-4 pb-3">
-                <p className="text-[11px] font-medium text-primary/80 uppercase tracking-wide mb-1">
-                  You will receive
-                </p>
-                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
-                  <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} />{" "}
-                  <span className="text-base font-semibold text-primary">
-                    {toToken?.symbol}
-                  </span>
-                </p>
-                {quoteDetails.toUnitPrice && quoteReceiveAmount && (
-                  <p className="text-[12px] text-primary/80 mt-0.5 tabular-nums">
-                    ≈ <NumberDisplay
-                        value={parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)}
-                        decimals={2}
-                        prefix="$"
-                        suffix=" USD"
-                      />
-                  </p>
-                )}
-              </div>
-
-              {/* Details grid */}
-              <div className="border-t border-primary/20 bg-card/60 px-4 py-3 space-y-2.5">
-                {minReceivedAmount && toToken && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Minimum received</span>
-                    <span className="text-[12px] font-medium text-foreground tabular-nums">
-                      {minReceivedAmount} {toToken.symbol}
-                    </span>
-                  </div>
-                )}
-                {/* Slippage */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-muted-foreground">Slippage</span>
-                  <span className="text-[12px] font-medium text-foreground">
-                    {autoSlippage ? "Auto" : `${liveSlippage}%`}
-                  </span>
-                </div>
-                {/* Exchange rate */}
+          {/* quote */}
+          <AnimatePresence initial={false}>
+            {quoteDisplay && quoteDetails && (
+              <motion.dl
+                className="sum quote-sum"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              >
                 {quoteDetails.rate && fromToken && toToken && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Rate</span>
-                    <span className="text-[12px] font-medium text-foreground">
+                  <div>
+                    <dt>Rate</dt>
+                    <dd className="num">
                       1 {fromToken.symbol} = {quoteDetails.rate} {toToken.symbol}
-                    </span>
+                    </dd>
                   </div>
                 )}
-
-                {/* Price impact */}
+                {minReceivedAmount && toToken && (
+                  <div>
+                    <dt>Minimum received</dt>
+                    <dd className="num">
+                      {minReceivedAmount} {toToken.symbol}
+                    </dd>
+                  </div>
+                )}
                 {quoteDetails.priceImpact != null && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Price Impact</span>
-                    <span
-                      className={`text-[12px] font-medium ${
+                  <div>
+                    <dt>Price impact</dt>
+                    <dd
+                      className={`num ${
                         Number(quoteDetails.priceImpact) > 3
                           ? "text-loss-ink"
                           : Number(quoteDetails.priceImpact) > 1
@@ -1206,307 +1113,234 @@ export default function SwapPage() {
                       }`}
                     >
                       {Number(quoteDetails.priceImpact).toFixed(2)}%
-                    </span>
+                    </dd>
                   </div>
                 )}
-
-                {/* Estimated gas */}
-                {quoteDetails.estimatedGas && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Estimated Gas</span>
-                    <span className="text-[12px] font-medium text-foreground">
-                      {Number(quoteDetails.estimatedGas).toLocaleString()} units
-                    </span>
-                  </div>
-                )}
-
-                {/* Trade fee */}
-                {quoteDetails.tradeFee != null && Number(quoteDetails.tradeFee) > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Fee</span>
-                    <span className="text-[12px] font-medium text-foreground">
-                      ${Number(quoteDetails.tradeFee).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {/* DEX router */}
-                {quoteDetails.dexName && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">Route</span>
-                    <span className="text-[12px] font-medium text-primary">
-                      {String(quoteDetails.dexName)}
-                    </span>
-                  </div>
-                )}
-              {/* Zero commission notice */}
-                <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-gain/60">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gain-ink shrink-0">
-                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span className="text-[11px] font-medium text-gain-ink">
-                    Zero commission — albicocca does not charge any fees on swaps
-                  </span>
+                <div>
+                  <dt>Slippage</dt>
+                  <dd>{autoSlippage ? "Auto" : `${liveSlippage}%`}</dd>
                 </div>
-              </div>
-            </div>
-          )}
+                {quoteDetails.estimatedGas && (
+                  <div>
+                    <dt>Gas limit</dt>
+                    <dd className="num">{Number(quoteDetails.estimatedGas).toLocaleString("en-US")} units</dd>
+                  </div>
+                )}
+                {quoteDetails.tradeFee != null && Number(quoteDetails.tradeFee) > 0 && (
+                  <div>
+                    <dt>Network fee</dt>
+                    <dd className="num">${Number(quoteDetails.tradeFee).toFixed(2)}</dd>
+                  </div>
+                )}
+                {quoteDetails.dexName && (
+                  <div>
+                    <dt>Route</dt>
+                    <dd>{String(quoteDetails.dexName)}</dd>
+                  </div>
+                )}
+              </motion.dl>
+            )}
+          </AnimatePresence>
 
-          {/* Error display */}
+          {/* messages */}
           <Fade in={!!error}>
             {error && (
-            <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-loss-soft">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-loss-ink">
-                  <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+              <div className="note loss msg-note" role="alert">
+                <LineIcon name="alert" size={16} />
+                <div>
+                  <strong>{error.title}</strong>
+                  <p>{error.message}</p>
+                </div>
+                <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setError(null)}>
+                  <LineIcon name="x" size={15} />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-loss-ink mb-0.5">
-                  {error.title}
-                </p>
-                <p className="text-[12px] text-loss-ink leading-relaxed">
-                  {error.message}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="shrink-0 text-loss-ink hover:text-loss-ink transition-colors p-0.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
             )}
           </Fade>
 
-          {/* Swap result display */}
           <Fade in={!!swapResult}>
             {swapResult && (
-            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gain-soft">
-                {swapResult.status === "confirming" ? (
-                  <Spinner className="text-gain-ink" />
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-gain-ink">
-                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
+              <div className="note gain msg-note" role="status">
+                {swapResult.status === "confirming" ? <span className="spin" aria-hidden="true" /> : <LineIcon name="check" size={16} />}
+                <div>
+                  <strong>{swapResult.status === "confirming" ? "Transaction pending" : "Transaction sent"}</strong>
+                  <p>{swapResult.message}</p>
+                  {swapResult.mevProtected && <p>MEV protection was on.</p>}
+                  {swapResult.securityWarning && <p className="text-warn-ink">{swapResult.securityWarning}</p>}
+                  {swapResult.txHash && (
+                    <a
+                      className="tx-link"
+                      href={`${chainConfig?.explorer ?? "https://etherscan.io"}/tx/${swapResult.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on the explorer <LineIcon name="arrow-up-right" size={13} />
+                    </a>
+                  )}
+                </div>
+                <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setSwapResult(null)}>
+                  <LineIcon name="x" size={15} />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-gain-ink mb-0.5">
-                  {swapResult.status === "confirming" ? "Transaction Pending" : "Transaction Sent"}
-                </p>
-                <p className="text-[12px] text-gain-ink leading-relaxed">
-                  {swapResult.message}
-                </p>
-                {swapResult.mevProtected && (
-                  <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-gain-ink">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    MEV Protected
-                  </span>
-                )}
-                {swapResult.securityWarning && (
-                  <p className="mt-1 flex items-start gap-1.5 text-[11px] text-warn-ink leading-snug">
-                    <LineIcon name="alert" size={13} className="mt-px shrink-0" />
-                    <span>{swapResult.securityWarning}</span>
-                  </p>
-                )}
-                {swapResult.txHash && (
-                  <a
-                    href={`${Object.values(CHAINS).find(c => c.swapName === chain)?.explorer ?? "https://etherscan.io"}/tx/${swapResult.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-gain-ink hover:text-gain-ink underline underline-offset-2 transition-colors"
-                  >
-                    View on Explorer
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-                    </svg>
-                  </a>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setSwapResult(null)}
-                className="shrink-0 text-gain-ink hover:text-gain-ink transition-colors p-0.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
             )}
           </Fade>
 
           {priceImpactTooHigh && (
-            <div className="rounded-xl bg-loss-soft border border-loss/30 p-3 text-[13px] font-medium text-loss-ink" role="alert">
-              Price impact too high
+            <div className="note loss" role="alert">
+              <LineIcon name="alert" size={16} />
+              <span>The price impact is above 10%. Try a smaller amount.</span>
             </div>
           )}
           {priceImpactNeedsAck && !priceImpactAck && !priceImpactTooHigh && (
-            <button
-              type="button"
-              onClick={() => setPriceImpactAck(true)}
-              className="w-full rounded-xl bg-warn-soft border border-warn/30 p-3 text-[13px] font-medium text-warn-ink text-left"
-            >
-              Price impact is {livePriceImpact!.toFixed(2)}%. Click to acknowledge and continue.
+            <button type="button" onClick={() => setPriceImpactAck(true)} className="note warn ack">
+              <LineIcon name="alert" size={16} />
+              <span>
+                This swap moves the price by {livePriceImpact!.toFixed(2)}%. You get noticeably less than the market rate. Tap to accept and&nbsp;continue.
+              </span>
             </button>
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-1">
-            <Button
+          <div className="ticket-actions">
+            <button
+              type="button"
+              className="btn"
               onClick={handleQuote}
-              disabled={
-                quoteLoading || !toToken || !amount || !fromToken || !amountWei || amountInvalid
-              }
-              variant="outline"
-              className="flex-1 h-11 rounded-xl shadow-sm border-border/60 text-[13px] font-semibold hover:bg-secondary active:bg-secondary transition-all"
+              disabled={quoteLoading || !toToken || !amount || !fromToken || !amountWei || amountInvalid}
             >
               {quoteLoading ? (
-                <span className="flex items-center gap-2">
-                  <Spinner />
-                  Getting quote...
-                </span>
+                <>
+                  <span className="spin" aria-hidden="true" />
+                  Getting quote…
+                </>
+              ) : liveQuote ? (
+                "Refresh quote"
               ) : (
-                "Get Quote"
+                "Get quote"
               )}
-            </Button>
+            </button>
             {quoteExpired && liveQuote ? (
-              <Button
-                onClick={handleQuote}
-                disabled={quoteLoading}
-                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
-              >
+              <button type="button" className="btn btn--primary" onClick={handleQuote} disabled={quoteLoading}>
                 {quoteLoading ? (
-                  <span className="flex items-center gap-2">
-                    <Spinner />
-                    Getting quote...
-                  </span>
+                  <>
+                    <span className="spin" aria-hidden="true" />
+                    Getting quote…
+                  </>
                 ) : (
                   "Quote expired, refresh"
                 )}
-              </Button>
+              </button>
             ) : (
-            <Button
-              onClick={handleSwap}
-              disabled={
-                swapLoading ||
-                !liveQuote ||
-                amountInvalid ||
-                !amountWei ||
-                priceImpactTooHigh ||
-                (priceImpactNeedsAck && !priceImpactAck)
-              }
-              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
-            >
-              {swapLoading ? (
-                <span className="flex items-center gap-2">
-                  <Spinner />
-                  {swapStep === "approving"
-                    ? "Approving..."
-                    : swapStep === "waiting_approve"
-                    ? "Confirming approval..."
-                    : "Swapping..."}
-                </span>
-              ) : (
-                fromToken?.address.toLowerCase() === NATIVE_TOKEN.toLowerCase()
-                  ? "Swap"
-                  : "Approve & Swap"
-              )}
-            </Button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handleSwap}
+                disabled={
+                  swapLoading ||
+                  !liveQuote ||
+                  amountInvalid ||
+                  !amountWei ||
+                  priceImpactTooHigh ||
+                  (priceImpactNeedsAck && !priceImpactAck)
+                }
+              >
+                {swapLoading ? (
+                  <>
+                    <span className="spin" aria-hidden="true" />
+                    {swapStep === "approving"
+                      ? "Approving…"
+                      : swapStep === "waiting_approve"
+                        ? "Confirming approval…"
+                        : "Swapping…"}
+                  </>
+                ) : isNativeFrom ? (
+                  "Swap"
+                ) : (
+                  "Approve and swap"
+                )}
+              </button>
             )}
           </div>
+        </Panel>
 
-        </div>
+        {trendingVisible && (
+          <Panel
+            className="span-5"
+            flush
+            index={2}
+            title={`Trending on ${chainConfig?.name ?? chain}`}
+            sub="Tap one to receive it"
+          >
+            {trendingLoading ? (
+              <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} height={48} />
+                ))}
+              </div>
+            ) : (
+              <ul className="rows wal-pad">
+                {trendingTokens.slice(0, 10).map((t, i) => {
+                  const price = parseFloat(t.price);
+                  const change = parseFloat(t.change24h);
+                  const mcap = parseFloat(t.marketCap);
+                  return (
+                    <li key={`${t.address}-${i}`}>
+                      <button
+                        type="button"
+                        className="row"
+                        onClick={() => {
+                          const raw = t.decimals ?? t.decimal;
+                          const decimals = raw !== undefined && raw !== null && raw !== "" ? Number(raw) : NaN;
+                          if (!Number.isFinite(decimals) || decimals < 0) {
+                            toast.error("Token decimals unavailable");
+                            return;
+                          }
+                          setToToken({
+                            symbol: t.symbol,
+                            address: t.address,
+                            decimals,
+                          });
+                          if (!fromToken) setFromToken(getNativeToken(chain));
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                      >
+                        {t.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- remote logos from many hosts
+                          <img
+                            src={t.logo}
+                            alt=""
+                            width={34}
+                            height={34}
+                            className="tok-logo"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.visibility = "hidden";
+                            }}
+                          />
+                        ) : (
+                          <TokenIcon symbol={t.symbol} size={34} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div className="t">{t.symbol}</div>
+                          <div className="sub trunc">
+                            {mcap > 0
+                              ? `${mcap >= 1e9 ? (mcap / 1e9).toFixed(1) + "B" : mcap >= 1e6 ? (mcap / 1e6).toFixed(1) + "M" : mcap >= 1e3 ? (mcap / 1e3).toFixed(0) + "K" : mcap.toFixed(0)} market cap`
+                              : t.name}
+                          </div>
+                        </div>
+                        <div className="end">
+                          <div className="num">
+                            ${price >= 1 ? price.toLocaleString("en-US", { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}
+                          </div>
+                          <Change value={change} />
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        )}
       </div>
-
-      {/* ── Trending Tokens ───────────────────────────────────────── */}
-      {trendingTokens.length > 0 && (
-        <div className="mt-6 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm shadow-sm shadow-black/[0.03] overflow-hidden">
-          <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-primary"><LineIcon name="flame" size={16} /></span>
-              <h3 className="text-[13px] font-semibold">Trending Tokens</h3>
-            </div>
-            <span className="text-[11px] text-muted-foreground/60">24h · {Object.values(CHAINS).find(c => c.swapName === chain)?.name ?? chain}</span>
-          </div>
-          {trendingLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner className="text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30">
-              {trendingTokens.slice(0, 10).map((t, i) => {
-                const price = parseFloat(t.price);
-                const change = parseFloat(t.change24h);
-                const mcap = parseFloat(t.marketCap);
-                const isUp = change >= 0;
-                return (
-                  <button
-                    key={`${t.address}-${i}`}
-                    type="button"
-                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-primary/8 active:bg-primary/15 transition-colors text-left"
-                    onClick={() => {
-                      const raw = t.decimals ?? t.decimal;
-                      const decimals = raw !== undefined && raw !== null && raw !== ""
-                        ? Number(raw)
-                        : NaN;
-                      if (!Number.isFinite(decimals) || decimals < 0) {
-                        toast.error("Token decimals unavailable");
-                        return;
-                      }
-                      setToToken({
-                        symbol: t.symbol,
-                        address: t.address,
-                        decimals,
-                      });
-                      if (!fromToken) setFromToken(getNativeToken(chain));
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                  >
-                    <span className="text-[11px] font-medium text-muted-foreground/50 w-5 text-right tabular-nums">{i + 1}</span>
-                    {t.logo ? (
-                      <img
-                        src={t.logo}
-                        alt={t.symbol}
-                        width={28}
-                        height={28}
-                        className="rounded-full shrink-0"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                    ) : (
-                      <TokenIcon symbol={t.symbol} size={28} />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-semibold tracking-tight">{t.symbol}</span>
-                        {t.name && <span className="text-[11px] text-muted-foreground/60 truncate">{t.name.length > 16 ? t.name.slice(0, 14) + "..." : t.name}</span>}
-                      </div>
-                      {mcap > 0 && (
-                        <span className="text-[10px] text-muted-foreground/50">
-                          MCap: ${mcap >= 1e9 ? (mcap / 1e9).toFixed(1) + "B" : mcap >= 1e6 ? (mcap / 1e6).toFixed(1) + "M" : mcap >= 1e3 ? (mcap / 1e3).toFixed(0) + "K" : mcap.toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[12px] font-medium tabular-nums">
-                        ${price >= 1 ? price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}
-                      </div>
-                      <div className={`text-[11px] font-semibold tabular-nums ${isUp ? "text-gain-ink" : "text-loss-ink"}`}>
-                        {isUp ? "+" : ""}{change.toFixed(2)}%
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

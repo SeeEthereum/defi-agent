@@ -43,7 +43,10 @@ export type LineIconName =
   | "arrow-up"
   | "arrow-down"
   | "plus"
-  | "file";
+  | "file"
+  | "sliders"
+  | "search"
+  | "x";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   swap: (
@@ -243,6 +246,28 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
     <>
       <path d="M12 5v14" />
       <path d="M5 12h14" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 7h10" />
+      <path d="M18 7h2" />
+      <circle cx="16" cy="7" r="2" />
+      <path d="M4 17h2" />
+      <path d="M10 17h10" />
+      <circle cx="8" cy="17" r="2" />
+    </>
+  ),
+  x: (
+    <>
+      <path d="M6 6l12 12" />
+      <path d="M18 6 6 18" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4.2-4.2" />
     </>
   ),
   file: (

@@ -382,7 +382,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
                     {holders != null && Number(holders) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Holders</span>
-                        <span>{Number(holders).toLocaleString()}</span>
+                        <span>{Number(holders).toLocaleString("en-US")}</span>
                       </div>
                     )}
                   </div>
@@ -661,7 +661,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                       {isUnlimited
                         ? "Unlimited"
                         : item.remainAmtPrecise
-                          ? `${parseFloat(item.remainAmtPrecise).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${symbol}`
+                          ? `${parseFloat(item.remainAmtPrecise).toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
                           : allowance || "—"}
                     </span>
                     {isUnlimited && !isRevoked && (
