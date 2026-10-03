@@ -223,9 +223,9 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
 
         <div className="space-y-5 px-6 pb-6 pt-4">
           {/* APY card */}
-          <div className="rounded-xl bg-emerald-50 p-4">
-            <p className="text-[13px] text-emerald-600/80 font-medium">Estimated APY</p>
-            <p className="text-2xl font-semibold tracking-tight text-emerald-600 mt-0.5">
+          <div className="rounded-xl bg-gain-soft p-4">
+            <p className="text-[13px] text-gain-ink/80 font-medium">Estimated APY</p>
+            <p className="text-2xl font-semibold tracking-tight text-gain-ink mt-0.5">
               {market.totalAprPercent.toFixed(2)}%
             </p>
           </div>
@@ -245,14 +245,14 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
               disabled={step !== "idle"}
             />
             {amount.length > 0 && !amountValid && (
-              <p className="text-[12px] text-red-600">Enter a valid amount</p>
+              <p className="text-[12px] text-loss-ink">Enter a valid amount</p>
             )}
           </div>
 
           {/* 2-step progress */}
           <div className="flex items-center gap-3">
             <div className={`flex items-center gap-1.5 text-[12px] font-medium ${
-              approveComplete ? "text-emerald-600" : isWaiting && !approveFailed ? "text-amber-700" : "text-foreground/60"
+              approveComplete ? "text-gain-ink" : isWaiting && !approveFailed ? "text-warn-ink" : "text-foreground/60"
             }`}>
               {approveComplete
                 ? <CheckCircle2 className="h-3.5 w-3.5" />
@@ -264,7 +264,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
             </div>
             <div className="h-px flex-1 bg-border/50" />
             <div className={`flex items-center gap-1.5 text-[12px] font-medium ${
-              step === "done" ? "text-emerald-600" : "text-foreground/60"
+              step === "done" ? "text-gain-ink" : "text-foreground/60"
             }`}>
               {step === "done"
                 ? <CheckCircle2 className="h-3.5 w-3.5" />
@@ -276,9 +276,9 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
 
           {/* Waiting for approval confirmation */}
           {isWaiting && !approveFailed && (
-            <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-              <Loader2 className="h-3.5 w-3.5 text-amber-700 animate-spin shrink-0" />
-              <p className="text-[12px] text-amber-700">
+            <div className="flex items-center gap-2 rounded-lg bg-warn-soft border border-warn/30 px-3 py-2">
+              <Loader2 className="h-3.5 w-3.5 text-warn-ink animate-spin shrink-0" />
+              <p className="text-[12px] text-warn-ink">
                 Waiting for approval to confirm on-chain
                 {approveTxHash && (
                   <span className="ml-1 font-mono">({approveTxHash.slice(0, 8)}…)</span>
@@ -287,17 +287,17 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
             </div>
           )}
           {isWaiting && approveFailed && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-              <p className="text-[12px] text-red-600">Approval not confirmed, try again</p>
+            <div className="rounded-lg bg-loss-soft border border-loss/30 px-3 py-2">
+              <p className="text-[12px] text-loss-ink">Approval not confirmed, try again</p>
             </div>
           )}
 
           {/* Done state */}
           {step === "done" ? (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 space-y-1">
-              <p className="text-[13px] font-semibold text-emerald-600">Supply complete!</p>
+            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1">
+              <p className="text-[13px] font-semibold text-gain-ink">Supply complete!</p>
               {depositTxHash && (
-                <p className="text-[11px] text-emerald-600 font-mono break-all">
+                <p className="text-[11px] text-gain-ink font-mono break-all">
                   Tx: {depositTxHash.slice(0, 10)}…{depositTxHash.slice(-8)}
                 </p>
               )}
@@ -337,9 +337,9 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
           ) : (
             <div className="space-y-3">
               {approveTxHash && (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <p className="text-[12px] text-emerald-600">
+                <div className="flex items-center gap-2 rounded-lg bg-gain-soft px-3 py-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-gain-ink shrink-0" />
+                  <p className="text-[12px] text-gain-ink">
                     Approved — tx{" "}
                     <span className="font-mono">
                       {approveTxHash.slice(0, 8)}…{approveTxHash.slice(-6)}
@@ -474,16 +474,16 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
             {apy !== undefined && (
               <div className="flex items-center justify-between">
                 <span className="text-[12px] text-muted-foreground">Current APY</span>
-                <span className="text-[13px] font-semibold text-emerald-600">{apy.toFixed(2)}%</span>
+                <span className="text-[13px] font-semibold text-gain-ink">{apy.toFixed(2)}%</span>
               </div>
             )}
           </div>
 
           {done ? (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 space-y-1">
-              <p className="text-[13px] font-semibold text-emerald-600">Withdrawal submitted!</p>
+            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1">
+              <p className="text-[13px] font-semibold text-gain-ink">Withdrawal submitted!</p>
               {txHash && (
-                <p className="text-[11px] text-emerald-600 font-mono break-all">
+                <p className="text-[11px] text-gain-ink font-mono break-all">
                   Tx: {txHash.slice(0, 10)}…{txHash.slice(-8)}
                 </p>
               )}
@@ -519,7 +519,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
                   </button>
                 </div>
                 {amount.length > 0 && !amountValid && (
-                  <p className="text-[12px] text-red-600">Enter a valid amount</p>
+                  <p className="text-[12px] text-loss-ink">Enter a valid amount</p>
                 )}
               </div>
 
@@ -577,7 +577,7 @@ export default function EarnPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-eyebrow">FLUID · LENDING</p>
+        <p className="text-eyebrow">Fluid · lending</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">Earn</h1>
         <p className="text-muted-foreground text-[14px] mt-2">Supply assets to Fluid lending protocol and earn yield</p>
       </div>
@@ -634,11 +634,11 @@ export default function EarnPage() {
                       </div>
                       {/* APY */}
                       {apy !== undefined && (
-                        <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2">
-                          <span className="text-[12px] text-emerald-600/80 flex items-center gap-1">
+                        <div className="flex items-center justify-between rounded-lg bg-gain-soft px-3 py-2">
+                          <span className="text-[12px] text-gain-ink/80 flex items-center gap-1">
                             <TrendingUp className="h-3 w-3" /> APY
                           </span>
-                          <span className="text-[14px] font-semibold text-emerald-600 tabular-nums">
+                          <span className="text-[14px] font-semibold text-gain-ink tabular-nums">
                             {apy.toFixed(2)}%
                           </span>
                         </div>
@@ -735,7 +735,7 @@ export default function EarnPage() {
                       <div className="flex items-center gap-3">
                         <div className="text-right mr-1">
                           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">APY</p>
-                          <p className="text-[15px] font-semibold tabular-nums text-emerald-600 mt-0.5">
+                          <p className="text-[15px] font-semibold tabular-nums text-gain-ink mt-0.5">
                             {market.totalAprPercent.toFixed(2)}%
                           </p>
                         </div>

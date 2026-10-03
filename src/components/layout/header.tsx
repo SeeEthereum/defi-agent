@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { ThemeSwitch } from "@/components/theme-switch";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -35,9 +36,10 @@ export function Header({ onMenuClick }: HeaderProps) {
       <div className="hidden md:block" />
 
       <div className="flex items-center gap-3">
+        <ThemeSwitch />
         {authenticated ? (
-          <div className="flex items-center gap-2 rounded-full bg-accent/60 pl-3 pr-1 py-1">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+          <div className="flex items-center gap-2 rounded-full border border-border bg-shell pl-3 pr-1 py-1">
+            <div className="h-2 w-2 rounded-full bg-gain shrink-0" />
             <span className="text-xs font-medium text-foreground/80 truncate max-w-[80px] sm:max-w-none">
               {accountName || "Wallet"}
             </span>

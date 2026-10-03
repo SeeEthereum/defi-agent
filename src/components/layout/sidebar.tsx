@@ -94,7 +94,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-[260px] flex-col border-r border-border/60 bg-sidebar">
+    <aside className="flex h-dvh w-[260px] flex-col border-r border-border/60 bg-sidebar">
       <div className="flex h-16 items-center gap-3 px-6">
         <div className="flex-1 min-w-0">
           <BrandMark size={22} />
@@ -114,45 +114,30 @@ export function Sidebar({ onClose }: SidebarProps) {
       </div>
 
       <nav className="flex-1 px-3 pt-4 space-y-0.5">
-        {/* AI Assistant — primary entry point */}
+        {/* AI Assistant: the primary entry point, set apart by position and an
+            apricot icon well, not by looping effects. */}
         <Link
           href={primaryItem.href}
           onClick={onClose}
           className={cn(
-            "relative flex items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-semibold transition-all duration-200 mb-3 overflow-hidden",
+            "flex items-center gap-3 rounded-2xl px-3 py-3 mb-4 text-[13.5px] font-medium transition-colors duration-300 border",
             pathname === primaryItem.href
-              ? "bg-gradient-to-r from-violet-600 to-pink-500 text-white shadow-[0_4px_14px_rgba(138,92,255,0.35)]"
-              : "ai-shimmer-bg animate-ai-glow text-violet-700 border border-violet-400/30 hover:border-violet-400/50"
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-shell border-border text-foreground hover:border-border-strong"
           )}
         >
-          {pathname !== primaryItem.href && (
-            <span className="pointer-events-none absolute inset-x-0 top-0 h-px animate-ai-scan bg-gradient-to-r from-transparent via-pink-400/80 to-transparent" />
-          )}
-          <span className={cn(
-            "relative flex h-7 w-7 items-center justify-center rounded-lg shrink-0 overflow-visible",
-            pathname === primaryItem.href ? "bg-white/20" : "bg-violet-500/15"
-          )}>
-            {pathname !== primaryItem.href && (
-              <>
-                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_5px_2px_rgba(138,92,255,0.7)] animate-ai-orbit-sm-1" />
-                <span className="pointer-events-none absolute top-1/2 left-1/2 h-1 w-1 rounded-full bg-pink-500 shadow-[0_0_5px_2px_rgba(255,45,117,0.6)] animate-ai-orbit-sm-2" />
-              </>
+          <span
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full shrink-0",
+              pathname === primaryItem.href ? "bg-primary-foreground/10" : "bg-brand-soft text-brand"
             )}
-            <span className={cn(pathname !== primaryItem.href && "animate-ai-pulse-icon")}>
-              {icons[primaryItem.icon]}
-            </span>
+          >
+            {icons[primaryItem.icon]}
           </span>
-          <span className={cn("flex-1", pathname !== primaryItem.href && "ai-gradient-text")}>
-            {primaryItem.label}
-          </span>
-          {pathname !== primaryItem.href && (
-            <span className="text-[10px] font-bold tracking-wide uppercase bg-violet-500/15 text-violet-600 px-1.5 py-0.5 rounded-md animate-pulse">
-              Start
-            </span>
-          )}
+          <span className="flex-1">{primaryItem.label}</span>
         </Link>
 
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 px-3 pb-2">
+        <p className="text-[12px] font-medium text-muted-foreground px-3 pb-2">
           Manual
         </p>
         {navItems.map((item) => (

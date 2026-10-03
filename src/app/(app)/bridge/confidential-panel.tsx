@@ -443,10 +443,10 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 className="h-11 rounded-xl border-border/60 bg-secondary px-4 text-base font-medium tabular-nums"
               />
               {amount.trim() !== "" && amountBase === null && (
-                <p className="text-[12px] text-red-600 mt-1.5">Enter a valid amount</p>
+                <p className="text-[12px] text-loss-ink mt-1.5">Enter a valid amount</p>
               )}
               {insufficient && (
-                <p className="text-[12px] text-red-600 mt-1.5">
+                <p className="text-[12px] text-loss-ink mt-1.5">
                   Not enough {fromToken?.symbol} on {chainName(fromChain)}.
                 </p>
               )}
@@ -490,7 +490,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
               </Field>
             </div>
             {sameAsset && (
-              <p className="text-[12px] text-amber-700">Pick a different token or network to receive.</p>
+              <p className="text-[12px] text-warn-ink">Pick a different token or network to receive.</p>
             )}
             <Field label="Recipient address">
               <Input
@@ -505,7 +505,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 className="h-11 rounded-xl border-border/60 bg-secondary px-4 font-mono text-[13px]"
               />
               {recipientCheck && !recipientCheck.ok && (
-                <p className="text-[12px] text-red-600 mt-1.5">{recipientCheck.error}</p>
+                <p className="text-[12px] text-loss-ink mt-1.5">{recipientCheck.error}</p>
               )}
               <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
                 Use an address that has never received funds from this wallet. Anything you later send back here links the two again.
@@ -587,10 +587,10 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
           {/* Error */}
           <Fade in={!!error}>
             {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3 items-start">
-                <LineIcon name="alert" size={16} className="text-red-600 shrink-0 mt-0.5" />
-                <p className="flex-1 text-[12px] text-red-700 leading-relaxed">{error}</p>
-                <button type="button" onClick={() => setError(null)} className="text-red-600 p-0.5" aria-label="Dismiss">
+              <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 flex gap-3 items-start">
+                <LineIcon name="alert" size={16} className="text-loss-ink shrink-0 mt-0.5" />
+                <p className="flex-1 text-[12px] text-loss-ink leading-relaxed">{error}</p>
+                <button type="button" onClick={() => setError(null)} className="text-loss-ink p-0.5" aria-label="Dismiss">
                   <LineIcon name="close" size={14} />
                 </button>
               </div>
@@ -600,11 +600,11 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
           {/* Progress */}
           <Fade in={!!execution}>
             {execution && (
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 space-y-1.5">
-                <p className="text-[13px] font-semibold text-emerald-800">
+              <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 space-y-1.5">
+                <p className="text-[13px] font-semibold text-gain-ink">
                   {STATUS_TEXT[status?.status ?? "PENDING_DEPOSIT"].title}
                 </p>
-                <p className="text-[12px] text-emerald-700 leading-relaxed">
+                <p className="text-[12px] text-gain-ink leading-relaxed">
                   {STATUS_TEXT[status?.status ?? "PENDING_DEPOSIT"].body}
                   {status?.status === "SUCCESS" && status.amountOutFormatted &&
                     ` ${status.amountOutFormatted} ${execution.toSymbol} on ${chainName(execution.toChain)}.`}
@@ -613,30 +613,30 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[12px] font-medium">
                   {execution.txHash && (
-                    <a className="text-emerald-700 underline underline-offset-2" target="_blank" rel="noopener noreferrer"
+                    <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
                       href={`${explorer(execution.fromChain)}/tx/${execution.txHash}`}>
                       Your deposit
                     </a>
                   )}
                   {status?.destinationTxHash && (
-                    <a className="text-emerald-700 underline underline-offset-2" target="_blank" rel="noopener noreferrer"
+                    <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
                       href={`${explorer(execution.toChain)}/tx/${status.destinationTxHash}`}>
                       Payout on {chainName(execution.toChain)}
                     </a>
                   )}
-                  <a className="text-emerald-700 underline underline-offset-2" target="_blank" rel="noopener noreferrer"
+                  <a className="text-gain-ink underline underline-offset-2" target="_blank" rel="noopener noreferrer"
                     href="https://explorer.near-intents.org">
                     NEAR Intents explorer
                   </a>
                 </div>
-                <p className="text-[11px] text-emerald-700/80 pt-1">
+                <p className="text-[11px] text-gain-ink/80 pt-1">
                   Deposit address (search it on the explorer):{" "}
                   <span className="font-mono break-all">{execution.depositAddress}</span>
                 </p>
                 {finished && (
                   <button
                     type="button"
-                    className="text-[12px] text-emerald-700 pt-1"
+                    className="text-[12px] text-gain-ink pt-1"
                     onClick={() => {
                       setExecution(null);
                       setStatus(null);
@@ -662,7 +662,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
             <Button
               onClick={execute}
               disabled={executing || !activeQuote || quoteExpired || !confirmed || insufficient}
-              className="flex-1 h-11 rounded-xl bg-primary text-white text-[13px] font-semibold"
+              className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-[13px] font-semibold"
             >
               {executing ? "Sending…" : "Swap privately"}
             </Button>

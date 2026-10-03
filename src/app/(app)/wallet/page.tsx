@@ -293,7 +293,7 @@ export default function WalletPage() {
         </DialogContent>
       </Dialog>
       <div>
-        <p className="text-eyebrow">MULTI-CHAIN</p>
+        <p className="text-eyebrow">Multi-chain</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">Wallet</h1>
         <p className="text-[13px] text-muted-foreground mt-2">Manage your assets across all chains</p>
       </div>
@@ -331,7 +331,7 @@ export default function WalletPage() {
             <button
               onClick={handleAddAccount}
               disabled={addingAccount}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-white text-[12px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-[12px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {addingAccount ? (
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -475,7 +475,7 @@ export default function WalletPage() {
                     const isReceive = tx.direction === "IN";
                     const isSuccess = tx.txStatus === "SUCCESS";
                     const isError = tx.txStatus === "ERROR";
-                    const stateColor = isSuccess ? "text-emerald-600" : isError ? "text-red-600" : "text-amber-700";
+                    const stateColor = isSuccess ? "text-gain-ink" : isError ? "text-loss-ink" : "text-warn-ink";
                     const stateLabel = isSuccess ? "Success" : isError ? "Failed" : "Pending";
                     const dateStr = tx.txTime
                       ? new Date(parseInt(tx.txTime)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
@@ -508,8 +508,8 @@ export default function WalletPage() {
 
                     const explorerBase = getChainByIndex(Number(tx.chainIndex))?.explorer;
 
-                    const iconBg = iconType === "in" ? "bg-emerald-50" : iconType === "approve" ? "bg-amber-50" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
-                    const iconColor = iconType === "in" ? "text-emerald-600" : iconType === "approve" ? "text-amber-700" : iconType === "contract" ? "text-violet-600" : "text-primary";
+                    const iconBg = iconType === "in" ? "bg-gain-soft" : iconType === "approve" ? "bg-warn-soft" : iconType === "contract" ? "bg-secondary" : "bg-primary/15";
+                    const iconColor = iconType === "in" ? "text-gain-ink" : iconType === "approve" ? "text-warn-ink" : iconType === "contract" ? "text-brand" : "text-primary";
 
                     return (
                       <div key={`${tx.txHash}-${i}`} className="flex items-center gap-3 py-3 border-b border-border/40 last:border-0">
@@ -546,7 +546,7 @@ export default function WalletPage() {
                             {tx.failReason && (
                               <>
                                 <span className="text-[11px] text-muted-foreground">·</span>
-                                <span className="text-[11px] text-red-600 truncate max-w-[100px]">{tx.failReason}</span>
+                                <span className="text-[11px] text-loss-ink truncate max-w-[100px]">{tx.failReason}</span>
                               </>
                             )}
                           </div>
@@ -747,7 +747,7 @@ export default function WalletPage() {
                     </button>
                   </div>
                   {sendForm.amount.length > 0 && !amountValid && (
-                    <p className="text-[12px] text-red-600">Enter a valid amount</p>
+                    <p className="text-[12px] text-loss-ink">Enter a valid amount</p>
                   )}
                 </div>
 
@@ -767,7 +767,7 @@ export default function WalletPage() {
                     required
                   />
                   {sendForm.recipient.length > 0 && !recipientValid && (
-                    <p className="text-[12px] text-red-600">Invalid address</p>
+                    <p className="text-[12px] text-loss-ink">Invalid address</p>
                   )}
                 </div>
 

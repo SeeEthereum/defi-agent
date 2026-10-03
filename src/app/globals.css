@@ -12,6 +12,23 @@
 
 @theme inline {
   --color-background: var(--background);
+  /* Semantic data colours and the brand light (see the palette below). */
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-gain: var(--gain);
+  --color-gain-ink: var(--gain-ink);
+  --color-gain-soft: var(--gain-soft);
+  --color-loss: var(--loss);
+  --color-loss-ink: var(--loss-ink);
+  --color-loss-soft: var(--loss-soft);
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-soft: var(--warn-soft);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-shell: var(--shell);
+  --color-text-2: var(--text-2);
+  --color-border-strong: var(--border-strong);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist), var(--font-system);
   --font-mono: var(--font-geist-mono), var(--font-system-mono);
@@ -112,6 +129,9 @@
   --loss: #d75d3f;
   --loss-ink: #f19a82;
   --loss-soft: rgba(215, 93, 63, 0.16);
+  --warn: #c98500;
+  --warn-ink: #f0c36b;
+  --warn-soft: rgba(201, 133, 0, 0.15);
   --destructive: #d75d3f;
   --success: #2a93b0;
 
@@ -172,6 +192,9 @@
   --loss: #c9472c;
   --loss-ink: #ad3a22;
   --loss-soft: rgba(201, 71, 44, 0.11);
+  --warn: #9a6700;
+  --warn-ink: #7f5500;
+  --warn-soft: rgba(154, 103, 0, 0.1);
   --destructive: #c9472c;
   --success: #0a8aa3;
   --border: rgba(26, 26, 24, 0.09);
@@ -227,6 +250,9 @@
     --loss: #c9472c;
     --loss-ink: #ad3a22;
     --loss-soft: rgba(201, 71, 44, 0.11);
+    --warn: #9a6700;
+    --warn-ink: #7f5500;
+    --warn-soft: rgba(154, 103, 0, 0.1);
     --destructive: #c9472c;
     --success: #0a8aa3;
     --border: rgba(26, 26, 24, 0.09);
@@ -635,14 +661,10 @@
   /* Kinetic display — entrance-only stretch then settle.
      Pair with an animation-delay if you want stagger. */
   @keyframes voxr-kinetic-in {
-    0%   { transform: scaleY(1.6) translateY(8%); opacity: 0; filter: blur(12px); letter-spacing: -0.06em; }
-    60%  { opacity: 1; filter: blur(0); }
-    100% { transform: scaleY(1) translateY(0); letter-spacing: -0.045em; }
+    from { transform: translateY(0.3em); opacity: 0.001; }
   }
   .animate-kinetic-in {
-    animation: voxr-kinetic-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-    transform-origin: 50% 100%;
-    will-change: transform, opacity, filter;
+    animation: voxr-kinetic-in 0.9s var(--ease-out) both;
   }
 
   /* Stagger helpers — apply on children of a kinetic container. */
@@ -668,3 +690,19 @@
 }
 .theme-switch button:hover { color: var(--foreground); }
 .theme-switch button[aria-checked="true"] { background: var(--primary); color: var(--primary-foreground); }
+
+/* Entrance for the AI empty state; ends on the visible state. */
+.ai-in { animation: ai-fade-up 0.7s var(--ease-out) both; }
+
+/* Reduce motion: every animation and transition in the app jumps to its end
+   state. The public pages also stop their own loops in landing.css. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

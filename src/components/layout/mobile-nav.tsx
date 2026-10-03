@@ -97,8 +97,8 @@ export function MobileNav() {
               "flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl transition-all duration-200 min-w-0",
               item.primary
                 ? isActive
-                  ? "text-white"
-                  : "text-violet-600"
+                  ? "text-foreground"
+                  : "text-brand"
                 : isActive
                 ? "text-primary"
                 : "text-muted-foreground"
@@ -108,8 +108,8 @@ export function MobileNav() {
               <span className={cn(
                 "flex h-10 w-10 items-center justify-center rounded-xl mb-0.5",
                 isActive
-                  ? "bg-gradient-to-br from-violet-600 to-pink-500 shadow-lg"
-                  : "bg-violet-500/10"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-brand-soft"
               )}>
                 {item.icon}
               </span>

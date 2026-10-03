@@ -18,7 +18,6 @@
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
-import QRCode from "qrcode";
 import "../welcome/landing.css";
 import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
@@ -87,7 +86,9 @@ export default function AuthPage() {
       // Best-effort: popup blockers may swallow this, which is why the link
       // and QR stay on screen regardless.
       window.open(url, "_blank", "noopener,noreferrer");
-      QRCode.toDataURL(url, { width: 320, margin: 1 })
+      // The QR library loads only when a code is needed.
+      import("qrcode")
+        .then(({ default: QRCode }) => QRCode.toDataURL(url, { width: 320, margin: 1 }))
         .then(setQrDataUrl)
         .catch(() => setQrDataUrl(""));
     } catch {

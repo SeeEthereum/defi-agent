@@ -179,7 +179,7 @@ function SignalsTab() {
       <Button
         onClick={handleFetch}
         disabled={loading}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2"><Spinner /> Loading signals...</span>
@@ -189,14 +189,14 @@ function SignalsTab() {
       </Button>
 
       {/* Disclaimer */}
-      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-        <p className="text-[11px] text-amber-700 leading-relaxed">
+      <div className="rounded-lg bg-warn-soft border border-warn/30 px-3 py-2">
+        <p className="text-[11px] text-warn-ink leading-relaxed">
           Signals are for informational purposes only and are <strong>NOT investment advice</strong>. Past performance does not guarantee future results.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-[13px] text-red-600">{error}</div>
+        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">{error}</div>
       )}
 
       {fetched && signals.length === 0 && !error && (
@@ -244,7 +244,7 @@ function SignalsTab() {
                     <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
                   </div>
                   {change != null && (
-                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-gain-ink" : "text-loss-ink"}`}>
                       {Number(change) >= 0 ? "+" : ""}{Number(change).toFixed(2)}%
                     </span>
                   )}
@@ -293,7 +293,7 @@ function SignalsTab() {
                   {soldRatio != null && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Sold Ratio</span>
-                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-red-600" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
+                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-loss-ink" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
@@ -398,7 +398,7 @@ function LeaderboardTab() {
                 onClick={() => setTimeFrame(k)}
                 className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
                   timeFrame === k
-                    ? "bg-primary text-white"
+                    ? "bg-primary text-primary-foreground"
                     : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
                 }`}
               >
@@ -417,7 +417,7 @@ function LeaderboardTab() {
                 onClick={() => setSortBy(k)}
                 className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
                   sortBy === k
-                    ? "bg-primary text-white"
+                    ? "bg-primary text-primary-foreground"
                     : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
                 }`}
               >
@@ -431,7 +431,7 @@ function LeaderboardTab() {
       <Button
         onClick={handleFetch}
         disabled={loading}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-[13px] font-semibold"
+        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
       >
         {loading ? (
           <span className="flex items-center gap-2"><Spinner /> Loading...</span>
@@ -441,7 +441,7 @@ function LeaderboardTab() {
       </Button>
 
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-[13px] text-red-600">{error}</div>
+        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">{error}</div>
       )}
 
       {fetched && entries.length === 0 && !error && (
@@ -480,7 +480,7 @@ function LeaderboardTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] font-semibold font-mono">{abbreviate(addr)}</span>
                       {wType && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-violet-600">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-brand">
                           {WALLET_TYPE_LABELS[wType] ?? wType}
                         </span>
                       )}
@@ -488,7 +488,7 @@ function LeaderboardTab() {
                     {/* Stats row */}
                     <div className="flex gap-3 mt-1 text-[11px]">
                       {pnl != null && (
-                        <span className={Number(pnl) >= 0 ? "text-emerald-600" : "text-red-600"}>
+                        <span className={Number(pnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>
                           PnL: {formatUsd(pnl)}
                         </span>
                       )}
@@ -508,7 +508,7 @@ function LeaderboardTab() {
                         </span>
                       )}
                       {roi != null && (
-                        <span className={Number(roi) >= 0 ? "text-emerald-600" : "text-red-600"}>
+                        <span className={Number(roi) >= 0 ? "text-gain-ink" : "text-loss-ink"}>
                           ROI: {formatPct(roi)}
                         </span>
                       )}
@@ -544,7 +544,7 @@ export default function SignalsPage() {
     <div className="max-w-lg mx-auto space-y-5 py-2">
       {/* Header */}
       <div>
-        <p className="text-eyebrow">SMART MONEY · LEADERBOARD</p>
+        <p className="text-eyebrow">Smart money · leaderboard</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">
           Intelligence
         </h1>

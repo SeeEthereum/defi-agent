@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -137,7 +137,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-dvh">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
@@ -145,7 +145,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext value={authState}>
-      <div className="flex h-screen bg-background overflow-hidden">
+      <MotionConfig reducedMotion="user">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <div className="flex h-dvh bg-background overflow-hidden">
         {/* Desktop sidebar — always visible on md+ */}
         <div className="hidden md:flex">
           <Sidebar />
@@ -154,7 +158,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Mobile sidebar overlay */}
         {mobileMenuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
@@ -176,7 +180,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
-          <main className="flex-1 overflow-y-auto">
+          <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto outline-none">
             <div className="mx-auto max-w-5xl px-4 py-4 md:px-6 md:py-8 pb-24 md:pb-8">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
@@ -195,6 +199,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <MobileNav />
         </div>
       </div>
+      </MotionConfig>
     </AuthContext>
   );
 }

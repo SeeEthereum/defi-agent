@@ -878,7 +878,7 @@ export default function SwapPage() {
       />
       {/* Page header */}
       <div>
-        <p className="text-eyebrow">DEX AGGREGATOR</p>
+        <p className="text-eyebrow">DEX aggregator</p>
         <h1 className="mt-1.5 text-display-lg text-foreground">
           Swap
         </h1>
@@ -921,7 +921,7 @@ export default function SwapPage() {
                 <button
                   type="button"
                   onClick={() => { setAutoSlippage(!autoSlippage); if (!autoSlippage) setShowSlippage(false); }}
-                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${autoSlippage ? "bg-emerald-50 text-emerald-600" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${autoSlippage ? "bg-gain-soft text-gain-ink" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
                 >
                   Auto
                 </button>
@@ -946,7 +946,7 @@ export default function SwapPage() {
                     key={s}
                     type="button"
                     onClick={() => { setSlippage(s); setShowSlippage(false); }}
-                    className={`flex-1 h-8 rounded-lg text-[12px] font-semibold transition-colors ${slippage === s ? "bg-primary text-white" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
+                    className={`flex-1 h-8 rounded-lg text-[12px] font-semibold transition-colors ${slippage === s ? "bg-primary text-primary-foreground" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
                   >
                     {s}%
                   </button>
@@ -982,7 +982,7 @@ export default function SwapPage() {
                   <span className="text-[11px] font-semibold text-primary capitalize">{gasLevel}</span>
                 )}
                 {mevProtection && mevAvailable && (
-                  <span className="text-[11px] font-semibold text-emerald-600">MEV Protected</span>
+                  <span className="text-[11px] font-semibold text-gain-ink">MEV Protected</span>
                 )}
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={showAdvanced ? "rotate-180 transition-transform" : "transition-transform"}>
                   <path d="M6 9l6 6 6-6"/>
@@ -1000,7 +1000,7 @@ export default function SwapPage() {
                         key={level}
                         type="button"
                         onClick={() => setGasLevel(level)}
-                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-primary text-white" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
+                        className={`flex-1 h-8 rounded-lg text-[12px] font-semibold capitalize transition-colors ${gasLevel === level ? "bg-primary text-primary-foreground" : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"}`}
                       >
                         {level === "slow" ? "Slow" : level === "average" ? "Average" : "Fast"}
                       </button>
@@ -1024,7 +1024,7 @@ export default function SwapPage() {
                     type="button"
                     disabled={!mevAvailable}
                     onClick={() => setMevProtection(!mevProtection)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-emerald-500" : "bg-black/15"}`}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 disabled:cursor-not-allowed ${mevProtection && mevAvailable ? "bg-gain" : "bg-black/15"}`}
                   >
                     <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${mevProtection && mevAvailable ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
@@ -1101,7 +1101,7 @@ export default function SwapPage() {
                 );
               })()}
               {amountInvalid && (
-                <p className="text-[12px] text-red-600 mt-1.5 px-1" role="alert">
+                <p className="text-[12px] text-loss-ink mt-1.5 px-1" role="alert">
                   Enter a valid amount
                 </p>
               )}
@@ -1199,10 +1199,10 @@ export default function SwapPage() {
                     <span
                       className={`text-[12px] font-medium ${
                         Number(quoteDetails.priceImpact) > 3
-                          ? "text-red-600"
+                          ? "text-loss-ink"
                           : Number(quoteDetails.priceImpact) > 1
-                            ? "text-amber-700"
-                            : "text-emerald-600"
+                            ? "text-warn-ink"
+                            : "text-gain-ink"
                       }`}
                     >
                       {Number(quoteDetails.priceImpact).toFixed(2)}%
@@ -1240,11 +1240,11 @@ export default function SwapPage() {
                   </div>
                 )}
               {/* Zero commission notice */}
-                <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-emerald-100/60">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-600 shrink-0">
+                <div className="flex items-center gap-2 pt-1 mt-0.5 border-t border-gain/60">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gain-ink shrink-0">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span className="text-[11px] font-medium text-emerald-600">
+                  <span className="text-[11px] font-medium text-gain-ink">
                     Zero commission — albicocca does not charge any fees on swaps
                   </span>
                 </div>
@@ -1255,24 +1255,24 @@ export default function SwapPage() {
           {/* Error display */}
           <Fade in={!!error}>
             {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-red-600">
+            <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-loss-soft">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-loss-ink">
                   <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-red-800 mb-0.5">
+                <p className="text-[13px] font-semibold text-loss-ink mb-0.5">
                   {error.title}
                 </p>
-                <p className="text-[12px] text-red-600 leading-relaxed">
+                <p className="text-[12px] text-loss-ink leading-relaxed">
                   {error.message}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className="shrink-0 text-red-600 hover:text-red-600 transition-colors p-0.5"
+                className="shrink-0 text-loss-ink hover:text-loss-ink transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -1285,31 +1285,31 @@ export default function SwapPage() {
           {/* Swap result display */}
           <Fade in={!!swapResult}>
             {swapResult && (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex gap-3 items-start">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50">
+            <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 flex gap-3 items-start">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gain-soft">
                 {swapResult.status === "confirming" ? (
-                  <Spinner className="text-emerald-600" />
+                  <Spinner className="text-gain-ink" />
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-emerald-600">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-gain-ink">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-emerald-800 mb-0.5">
+                <p className="text-[13px] font-semibold text-gain-ink mb-0.5">
                   {swapResult.status === "confirming" ? "Transaction Pending" : "Transaction Sent"}
                 </p>
-                <p className="text-[12px] text-emerald-600 leading-relaxed">
+                <p className="text-[12px] text-gain-ink leading-relaxed">
                   {swapResult.message}
                 </p>
                 {swapResult.mevProtected && (
-                  <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-emerald-600">
+                  <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-gain-ink">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     MEV Protected
                   </span>
                 )}
                 {swapResult.securityWarning && (
-                  <p className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 leading-snug">
+                  <p className="mt-1 flex items-start gap-1.5 text-[11px] text-warn-ink leading-snug">
                     <LineIcon name="alert" size={13} className="mt-px shrink-0" />
                     <span>{swapResult.securityWarning}</span>
                   </p>
@@ -1319,7 +1319,7 @@ export default function SwapPage() {
                     href={`${Object.values(CHAINS).find(c => c.swapName === chain)?.explorer ?? "https://etherscan.io"}/tx/${swapResult.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-emerald-600 hover:text-emerald-900 underline underline-offset-2 transition-colors"
+                    className="inline-flex items-center gap-1 mt-1.5 text-[12px] font-medium text-gain-ink hover:text-gain-ink underline underline-offset-2 transition-colors"
                   >
                     View on Explorer
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1331,7 +1331,7 @@ export default function SwapPage() {
               <button
                 type="button"
                 onClick={() => setSwapResult(null)}
-                className="shrink-0 text-emerald-600 hover:text-emerald-600 transition-colors p-0.5"
+                className="shrink-0 text-gain-ink hover:text-gain-ink transition-colors p-0.5"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -1342,7 +1342,7 @@ export default function SwapPage() {
           </Fade>
 
           {priceImpactTooHigh && (
-            <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-[13px] font-medium text-red-800" role="alert">
+            <div className="rounded-xl bg-loss-soft border border-loss/30 p-3 text-[13px] font-medium text-loss-ink" role="alert">
               Price impact too high
             </div>
           )}
@@ -1350,7 +1350,7 @@ export default function SwapPage() {
             <button
               type="button"
               onClick={() => setPriceImpactAck(true)}
-              className="w-full rounded-xl bg-amber-50 border border-amber-200 p-3 text-[13px] font-medium text-amber-800 text-left"
+              className="w-full rounded-xl bg-warn-soft border border-warn/30 p-3 text-[13px] font-medium text-warn-ink text-left"
             >
               Price impact is {livePriceImpact!.toFixed(2)}%. Click to acknowledge and continue.
             </button>
@@ -1379,7 +1379,7 @@ export default function SwapPage() {
               <Button
                 onClick={handleQuote}
                 disabled={quoteLoading}
-                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
+                className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
               >
                 {quoteLoading ? (
                   <span className="flex items-center gap-2">
@@ -1401,7 +1401,7 @@ export default function SwapPage() {
                 priceImpactTooHigh ||
                 (priceImpactNeedsAck && !priceImpactAck)
               }
-              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-white text-[13px] font-semibold transition-all"
+              className="flex-1 h-11 rounded-xl shadow-sm bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-[13px] font-semibold transition-all"
             >
               {swapLoading ? (
                 <span className="flex items-center gap-2">
@@ -1496,7 +1496,7 @@ export default function SwapPage() {
                       <div className="text-[12px] font-medium tabular-nums">
                         ${price >= 1 ? price.toLocaleString(undefined, { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}
                       </div>
-                      <div className={`text-[11px] font-semibold tabular-nums ${isUp ? "text-emerald-600" : "text-red-600"}`}>
+                      <div className={`text-[11px] font-semibold tabular-nums ${isUp ? "text-gain-ink" : "text-loss-ink"}`}>
                         {isUp ? "+" : ""}{change.toFixed(2)}%
                       </div>
                     </div>

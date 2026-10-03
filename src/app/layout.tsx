@@ -12,15 +12,20 @@ const geist = localFont({
   weight: "100 900",
   variable: "--font-geist",
   display: "swap",
+  preload: false,
 });
 const geistMono = localFont({
   src: "./fonts/geist-mono.woff2",
   weight: "100 900",
   variable: "--font-geist-mono",
   display: "swap",
+  // Figures only: not worth a high-priority download on the critical path.
+  preload: false,
 });
 
 export const metadata: Metadata = {
+  // Absolute base for the share image; Render sets RENDER_EXTERNAL_URL.
+  metadataBase: new URL(process.env.RENDER_EXTERNAL_URL ?? "http://localhost:3000"),
   title: "albicocca — ask your wallet",
   description:
     "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it — sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase.",

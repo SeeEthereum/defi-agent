@@ -214,7 +214,7 @@ function ActionCard({
   }
 
   return (
-    <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-violet-500/5 p-4 space-y-3 shadow-sm">
+    <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-brand/5 p-4 space-y-3 shadow-sm">
       <div className="flex items-center gap-2">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <LineIcon name={icon} size={16} />
@@ -645,27 +645,18 @@ export default function AiPage() {
   const hasContent = messages.length > 0 || proposedActions.length > 0;
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-4rem-56px)] md:h-[calc(100vh-4rem)] overflow-hidden">
-
-      {/* ── Aurora background blobs ─────────────────────────────────────── */}
-      <div className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
-        <div className="absolute -top-24 left-1/4 h-[480px] w-[480px] rounded-full bg-violet-500/7 blur-3xl animate-ai-aurora-1" />
-        <div className="absolute bottom-0 right-0 h-[380px] w-[380px] rounded-full bg-pink-500/7 blur-3xl animate-ai-aurora-2" />
-        <div className="absolute top-1/2 -left-16 h-[300px] w-[300px] rounded-full bg-pink-500/5 blur-3xl animate-ai-aurora-1 [animation-delay:4.5s]" />
-      </div>
+    <div className="relative flex flex-col h-[calc(100dvh-4rem-56px)] md:h-[calc(100dvh-4rem)] overflow-hidden">
 
       {/* ── Header — only visible when conversation has started ────────── */}
       <div className={cn("relative shrink-0 px-6 pt-6 pb-4 border-b border-border/60 z-10 transition-all duration-300", !hasContent && "hidden")}>
         <div className="relative flex items-center gap-3">
-          <div className="relative h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center shadow-[0_4px_14px_rgba(138,92,255,0.35)]">
-            {/* Glow ring on header icon */}
-            <span className="absolute inset-0 rounded-xl animate-ai-ring border border-violet-300/50" />
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-ai-spin-slow relative z-10">
+          <div className="h-10 w-10 rounded-full bg-brand-soft text-brand flex items-center justify-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-[15px] font-semibold tracking-tight ai-gradient-text">AI Assistant</h1>
+            <h1 className="text-[15px] font-medium tracking-tight">AI Assistant</h1>
             <p className="text-[11px] text-muted-foreground">Powered by Claude · Zero fees</p>
           </div>
         </div>
@@ -690,31 +681,15 @@ export default function AiPage() {
         {!hasContent && (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-6 py-12">
 
-            {/* Floating icon with orbit system */}
-            <div className="relative flex h-28 w-28 items-center justify-center animate-ai-float">
-              {/* Expanding rings */}
-              <span className="absolute h-16 w-16 rounded-2xl border border-violet-400/30 animate-ai-ring" />
-              <span className="absolute h-16 w-16 rounded-2xl border border-primary/20 animate-ai-ring-delay" />
-
-              {/* Orbit dot 1 — violet */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2.5 w-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_3px_rgba(138,92,255,0.7)] animate-ai-orbit-lg-1" />
-              {/* Orbit dot 2 — cyan */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-2 w-2 rounded-full bg-pink-500 shadow-[0_0_7px_3px_rgba(255,45,117,0.55)] animate-ai-orbit-lg-2" />
-              {/* Orbit dot 3 — indigo */}
-              <span className="pointer-events-none absolute top-1/2 left-1/2 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_2px_rgba(255,122,26,0.55)] animate-ai-orbit-lg-3" />
-
-              {/* Main icon */}
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 via-pink-500/15 to-pink-500/15 border border-violet-400/25 flex items-center justify-center animate-ai-glow">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600 animate-ai-spin-slow">
+            <div className="ai-in flex flex-col items-center">
+              <div className="h-14 w-14 rounded-full bg-brand-soft text-brand flex items-center justify-center mb-6">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
                 </svg>
               </div>
-            </div>
-
-            <div style={{ animation: "ai-fade-up 0.5s ease both 0.15s", opacity: 0 }}>
-              <p className="font-semibold text-[16px] mb-1.5 ai-gradient-text">How can I help you?</p>
-              <p className="text-sm text-muted-foreground max-w-xs">
-                Ask me about your portfolio, yields, or tell me what transaction to prepare.
+              <h2 className="text-[clamp(32px,4vw,48px)] font-medium tracking-[-0.045em] leading-none text-balance">How can I help you?</h2>
+              <p className="mt-4 text-[15px] text-muted-foreground max-w-sm text-pretty">
+                Ask me about your portfolio, yields, or tell me what transaction to&nbsp;prepare.
               </p>
             </div>
 
@@ -722,8 +697,8 @@ export default function AiPage() {
               {SUGGESTIONS.map((s, i) => (
                 <button
                   key={s}
-                  style={{ animation: `ai-fade-up 0.45s ease both ${0.25 + i * 0.07}s`, opacity: 0 }}
-                  className="rounded-xl border border-primary/25 bg-secondary px-3 py-2 text-[12px] text-foreground/70 hover:bg-primary/15 hover:text-foreground hover:border-primary/40 transition-colors text-left shadow-sm"
+                  style={{ animation: `ai-fade-up 0.6s var(--ease-out) both ${0.2 + i * 0.06}s` }}
+                  className="rounded-full border border-border bg-shell px-4 py-2 text-[13px] text-text-2 hover:text-foreground hover:border-border-strong active:scale-[0.97] transition-[color,border-color,transform] duration-300 text-left"
                   onClick={() => sendMessage(s)}
                 >
                   {s}
@@ -740,8 +715,8 @@ export default function AiPage() {
             className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
           >
             {msg.role === "assistant" && (
-              <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-primary to-violet-500 flex items-center justify-center mr-2 mt-1 shrink-0">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
                 </svg>
               </div>
@@ -768,8 +743,8 @@ export default function AiPage() {
         {/* Proposed action cards */}
         {proposedActions.map((action, i) => (
           <div key={i} className="flex justify-start">
-            <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-primary to-violet-500 flex items-center justify-center mr-2 mt-1 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
               </svg>
             </div>
@@ -787,8 +762,8 @@ export default function AiPage() {
         {/* Loading indicator */}
         {loading && (
           <div className="flex justify-start">
-            <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-primary to-violet-500 flex items-center justify-center mr-2 mt-1 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
               </svg>
             </div>
@@ -806,8 +781,7 @@ export default function AiPage() {
       </div>
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
-      <div className="relative shrink-0 border-t border-violet-200/40 px-3 py-3 md:px-6 md:py-4 bg-background/80 backdrop-blur z-10">
-        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/4 via-transparent to-pink-500/4 pointer-events-none" />
+      <div className="relative shrink-0 border-t border-border px-3 py-3 md:px-6 md:py-4 bg-background/80 backdrop-blur z-10">
         <form onSubmit={handleSubmit} className="flex gap-3 items-end">
           <div className="flex-1 relative">
             <label htmlFor="ai-chat-input" className="sr-only">
@@ -831,7 +805,7 @@ export default function AiPage() {
                 }
               }}
               disabled={loading}
-              className="w-full resize-none rounded-2xl border border-primary/20 bg-secondary/60 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary disabled:opacity-60 overflow-hidden animate-ai-input"
+              className="w-full resize-none rounded-2xl border border-border bg-shell px-4 py-3 text-[15px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-60 overflow-hidden"
               style={{ minHeight: "44px" }}
             />
           </div>
@@ -839,7 +813,7 @@ export default function AiPage() {
             type="submit"
             size="icon"
             aria-label="Send message"
-            className="h-11 w-11 rounded-2xl shrink-0 shadow-[0_4px_12px_rgba(138,92,255,0.3)] bg-gradient-to-br from-violet-600 to-pink-500 border-0 hover:from-violet-500 hover:to-pink-400"
+            className="h-11 w-11 rounded-full shrink-0 bg-primary text-primary-foreground border-0 hover:bg-primary/90 active:scale-95 transition-transform"
             disabled={loading || !input.trim()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

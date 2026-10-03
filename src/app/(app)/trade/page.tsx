@@ -7,8 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Modal, Fade, Swap } from "@/components/motion";
 import { FEATURED_MARKETS } from "@/lib/hyperliquid/markets";
 
-// ── Hyperliquid brand colors ──────────────────────────────────────────────────
+// ── Hyperliquid brand colour: its logo only. The UI uses the app theme. ─────
 const HL_GREEN = "#97FCE4";
+
+// Long/short use the data colours (gain/loss) as soft tints, readable in both
+// themes; the accent and primary carry selection and actions.
+const SIDE_TINT = {
+  buy: { background: "var(--gain-soft)", color: "var(--gain-ink)", borderColor: "var(--gain)" },
+  sell: { background: "var(--loss-soft)", color: "var(--loss-ink)", borderColor: "var(--loss)" },
+} as const;
 
 function HyperliquidLogo({ size = 32 }: { size?: number }) {
   return (
@@ -133,7 +140,7 @@ function PnlBadge({ value }: { value: string }) {
   const n = parseFloat(value);
   const pos = n >= 0;
   return (
-    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pos ? "bg-green-500/15 text-green-600" : "bg-red-500/15 text-red-600"}`}>
+    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pos ? "bg-gain/15 text-gain-ink" : "bg-loss/15 text-loss-ink"}`}>
       {pos ? "+" : ""}{n.toFixed(2)} USDC
     </span>
   );
@@ -633,7 +640,7 @@ export default function TradePage() {
     return (
       <div className="voxr-halo flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
         <HyperliquidLogo size={48} />
-        <p className="text-eyebrow mt-6 animate-kinetic-in">PERPETUAL DEX · 50× LEVERAGE</p>
+        <p className="text-eyebrow mt-6 animate-kinetic-in">Perpetual DEX · 50× leverage</p>
         <h1 className="mt-4 text-display-xl text-foreground animate-kinetic-in stagger-1">
           Hyperliquid <span className="text-iridescent">Perps</span>
         </h1>
@@ -650,7 +657,7 @@ export default function TradePage() {
       <div className="flex items-center gap-3 mb-6">
         <HyperliquidLogo size={36} />
         <div className="flex-1 min-w-0">
-          <p className="text-eyebrow">HYPERLIQUID · USDC</p>
+          <p className="text-eyebrow">Hyperliquid · USDC</p>
           <h1 className="text-display-lg text-foreground">Trade</h1>
         </div>
         <Button
@@ -749,8 +756,8 @@ export default function TradePage() {
                 if (!previewOpen) setCoinAndClamp(p.coin);
                 setTab("trade");
               }}
-              className={`text-left bg-card border rounded-lg px-2 py-1.5 hover:border-[${HL_GREEN}] transition-colors`}
-              style={orderCoin === p.coin ? { borderColor: HL_GREEN } : {}}
+              className={`text-left bg-card border rounded-lg px-2 py-1.5 hover:border-brand transition-colors`}
+              style={orderCoin === p.coin ? { borderColor: "var(--brand)" } : {}}
             >
               <div className="text-[10px] text-muted-foreground">{p.coin}</div>
               <div className="text-sm font-mono font-semibold">{fmtPrice(p.price)}</div>
@@ -766,12 +773,12 @@ export default function TradePage() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "text-foreground" : "text-muted-foreground border-transparent"}`}
-            style={tab === t ? { borderColor: HL_GREEN, color: HL_GREEN } : {}}
+            style={tab === t ? { borderColor: "var(--brand)", color: "var(--foreground)" } : {}}
           >
             {t === "positions" && (
               <>Posizioni
                 {positions && positions.positions.length > 0 && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: HL_GREEN + "22", color: HL_GREEN }}>
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
                     {positions.positions.length}
                   </span>
                 )}
@@ -781,7 +788,7 @@ export default function TradePage() {
             {t === "orders" && (
               <>Aperti
                 {orders.length > 0 && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: HL_GREEN + "22", color: HL_GREEN }}>
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
                     {orders.length}
                   </span>
                 )}
@@ -888,9 +895,9 @@ function Banner({
   children: React.ReactNode;
 }) {
   const colors = {
-    red: "bg-red-500/10 border-red-500/30 text-red-900 dark:text-red-200",
-    amber: "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200",
-    blue: "bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-200",
+    red: "bg-loss/10 border-loss/30 text-loss-ink dark:text-loss-ink",
+    amber: "bg-warn/10 border-warn/30 text-warn-ink dark:text-warn-ink",
+    blue: "bg-secondary border-border text-foreground dark:text-foreground",
   };
   return (
     <div className={`border rounded-lg p-3 mb-4 text-sm ${colors[tone]}`}>
@@ -931,7 +938,7 @@ function PositionsTab({
   return (
     <div className="space-y-2">
       <Fade in={!!closeError}>
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
+        <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
           {closeError}
         </div>
       </Fade>
@@ -948,14 +955,14 @@ function PositionsTab({
           <div
             key={p.coin}
             className="bg-card border rounded-lg p-3"
-            style={{ borderColor: (isLong ? HL_GREEN : "#f87171") + "40" }}
+            style={{ borderColor: `color-mix(in srgb, ${isLong ? "var(--gain)" : "var(--loss)"} 30%, transparent)` }}
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-base">{p.coin}</span>
                 <span
                   className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
-                  style={{ background: isLong ? HL_GREEN : "#f87171", color: isLong ? "#000" : "#fff" }}
+                  style={isLong ? SIDE_TINT.buy : SIDE_TINT.sell}
                 >
                   {isLong ? "LONG" : "SHORT"} {p.leverage?.value ?? 1}×
                 </span>
@@ -1105,11 +1112,7 @@ function TradeTab(props: {
             className="py-2 rounded-lg text-sm font-semibold border disabled:opacity-50"
             style={
               props.side === side
-                ? {
-                    background: side === "buy" ? HL_GREEN : "#ef4444",
-                    color: side === "buy" ? "#000" : "#fff",
-                    borderColor: "transparent",
-                  }
+                ? SIDE_TINT[side]
                 : {}
             }
           >
@@ -1161,12 +1164,12 @@ function TradeTab(props: {
           <span>Notional: {fmtUsd(notional)}</span>
         </div>
         {props.size.trim() !== "" && !sizeOk && (
-          <div className="text-[11px] text-red-600 mt-0.5">
+          <div className="text-[11px] text-loss-ink mt-0.5">
             Size deve essere un decimale positivo (es. 0.01).
           </div>
         )}
         {notional > 0 && notional < 10 && (
-          <div className="text-[11px] text-amber-700 mt-0.5">
+          <div className="text-[11px] text-warn-ink mt-0.5">
             Minimo $10 notional. Aumenta la size.
           </div>
         )}
@@ -1186,7 +1189,7 @@ function TradeTab(props: {
             className="font-mono"
           />
           {props.price.trim() !== "" && !priceOk && (
-            <div className="text-[11px] text-red-600 mt-0.5">
+            <div className="text-[11px] text-loss-ink mt-0.5">
               Prezzo deve essere un decimale positivo.
             </div>
           )}
@@ -1197,7 +1200,7 @@ function TradeTab(props: {
       <div>
         <div className="flex items-center justify-between text-xs">
           <label className="text-muted-foreground">Leva</label>
-          <span className="font-bold" style={{ color: HL_GREEN }}>
+          <span className="font-bold text-brand">
             {props.leverage}× <span className="font-medium text-muted-foreground">/ max {props.maxLeverage}×</span>
           </span>
         </div>
@@ -1209,7 +1212,7 @@ function TradeTab(props: {
           value={Math.min(props.leverage, props.maxLeverage)}
           onChange={(e) => props.setLeverage(Number(e.target.value))}
           className="w-full disabled:opacity-50"
-          style={{ accentColor: HL_GREEN }}
+          style={{ accentColor: "var(--brand)" }}
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>1×</span><span>Max {props.maxLeverage}×</span>
@@ -1255,12 +1258,12 @@ function TradeTab(props: {
         </div>
       </div>
       {(!slFormatOk || !tpFormatOk) && (
-        <div className="text-[11px] text-red-600">
+        <div className="text-[11px] text-loss-ink">
           TP/SL devono essere decimali positivi (es. 64000.5).
         </div>
       )}
       {tpslErr && slFormatOk && tpFormatOk && (
-        <div className="text-[11px] text-red-600">{tpslErr}</div>
+        <div className="text-[11px] text-loss-ink">{tpslErr}</div>
       )}
 
       {/* Submit / Preview */}
@@ -1269,10 +1272,6 @@ function TradeTab(props: {
           onClick={props.onPreview}
           disabled={!canPreview}
           className="w-full h-11"
-          style={{
-            background: props.side === "buy" ? HL_GREEN : "#ef4444",
-            color: props.side === "buy" ? "#000" : "#fff",
-          }}
         >
           {props.loading ? <Spinner /> : `Anteprima ${props.side === "buy" ? "LONG" : "SHORT"}`}
         </Button>
@@ -1310,10 +1309,6 @@ function TradeTab(props: {
               size="sm"
               onClick={props.onConfirm}
               disabled={props.confirming}
-              style={{
-                background: props.preview.params.side === "buy" ? HL_GREEN : "#ef4444",
-                color: props.preview.params.side === "buy" ? "#000" : "#fff",
-              }}
             >
               {props.confirming ? <Spinner /> : "Conferma"}
             </Button>
@@ -1322,12 +1317,12 @@ function TradeTab(props: {
       )}
 
       <Fade in={!!props.error}>
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
+        <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
           {props.error}
         </div>
       </Fade>
       <Fade in={!!props.success}>
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-600">
+        <div className="bg-gain/10 border border-gain/30 rounded-lg p-2 text-xs text-gain-ink">
           {props.success}
         </div>
       </Fade>
@@ -1357,7 +1352,7 @@ function OrdersTab({
             <div className="flex items-center gap-2">
               <span className="font-bold">{o.coin}</span>
               <span className="text-[10px] uppercase text-muted-foreground">{o.type ?? "limit"}</span>
-              <span className={`text-[10px] font-bold ${o.side === "buy" ? "text-green-600" : "text-red-600"}`}>
+              <span className={`text-[10px] font-bold ${o.side === "buy" ? "text-gain-ink" : "text-loss-ink"}`}>
                 {o.side === "buy" ? "BUY" : "SELL"}
               </span>
             </div>
@@ -1408,7 +1403,7 @@ function FundModal(props: {
               key={m}
               onClick={() => { props.setMode(m); props.setAmount(""); }}
               className="py-2 rounded-md text-sm font-medium transition-colors"
-              style={props.mode === m ? { background: HL_GREEN, color: "#000" } : {}}
+              style={props.mode === m ? { background: "var(--primary)", color: "var(--primary-foreground)" } : {}}
             >
               {m === "deposit" ? "Deposita" : "Preleva"}
             </button>
@@ -1465,7 +1460,7 @@ function FundModal(props: {
         <Swap tokenKey={props.success ? "success" : props.preview ? "preview" : "idle"}>
           {props.success ? (
             <>
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-600 mb-3">
+              <div className="bg-gain/10 border border-gain/30 rounded-lg p-2 text-xs text-gain-ink mb-3">
                 {props.success}
               </div>
               <Button variant="outline" className="w-full" onClick={props.onClose}>Chiudi</Button>
@@ -1480,7 +1475,6 @@ function FundModal(props: {
                 <Button
                   onClick={props.onConfirm}
                   disabled={props.loading}
-                  style={{ background: HL_GREEN, color: "#000" }}
                 >
                   {props.loading ? <Spinner /> : "Conferma"}
                 </Button>
@@ -1492,7 +1486,6 @@ function FundModal(props: {
               <Button
                 onClick={props.onPreview}
                 disabled={props.loading || !amountOk}
-                style={{ background: HL_GREEN, color: "#000" }}
               >
                 {props.loading ? <Spinner /> : "Anteprima"}
               </Button>
@@ -1501,7 +1494,7 @@ function FundModal(props: {
         </Swap>
 
         <Fade in={!!props.error} className="mt-3">
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs text-red-600">
+          <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
             {props.error}
           </div>
         </Fade>

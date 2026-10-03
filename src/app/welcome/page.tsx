@@ -68,7 +68,7 @@ export default function WelcomePage() {
           <section className="hero" aria-labelledby="hero-title">
             <div className="hero-core">
               <div className="hero-art" aria-hidden="true">
-                <Image src={lightRoom} alt="" fill priority sizes="(max-width: 1080px) 100vw, 75vw" placeholder="blur" />
+                <Image src={lightRoom} alt="" fill priority quality={60} sizes="(max-width: 760px) 60vw, (max-width: 1080px) 90vw, 75vw" />
               </div>
 
               <div className="hero-copy">
@@ -292,7 +292,7 @@ export default function WelcomePage() {
                   </ul>
                 </div>
                 <div className="vault-art" aria-hidden="true">
-                  <Image src={engraving} alt="" fill sizes="(max-width: 1080px) 100vw, 45vw" placeholder="blur" />
+                  <Image src={engraving} alt="" fill quality={70} sizes="(max-width: 1080px) 100vw, 45vw" />
                 </div>
               </div>
             </div>
