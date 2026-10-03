@@ -98,3 +98,48 @@ describe("design rules on the public pages", () => {
     expect(read("src/app/(app)/layout.tsx")).not.toMatch(/h-screen|100vh/);
   });
 });
+
+describe("design rules inside the app", () => {
+  const appDir = join(ROOT, "src", "app", "(app)");
+  const tsx = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const full = join(dir, n);
+      return statSync(full).isDirectory() ? tsx(full) : n.endsWith(".tsx") ? [relative(ROOT, full)] : [];
+    });
+  const files = [
+    ...tsx(appDir),
+    ...tsx(join(ROOT, "src", "components", "premium")),
+    ...tsx(join(ROOT, "src", "components", "shell")),
+  ];
+
+  it("has no em or en dashes in visible copy", () => {
+    for (const f of files) {
+      const code = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect(code, f).not.toMatch(/[—–]|&mdash;|&ndash;/);
+    }
+  });
+
+  it("follows the user's reduced-motion setting", () => {
+    expect(read("src/app/(app)/layout.tsx")).toContain('<MotionConfig reducedMotion="user">');
+    // block entrances only run when motion is welcome, and end visible
+    const css = read("src/app/(app)/app.css");
+    expect(css).toMatch(/prefers-reduced-motion: no-preference\)\s*\{\s*& \.in \{ animation: app-in/);
+    expect(css).toMatch(/@keyframes app-in \{ from \{ transform: translateY\(10px\); opacity: 0\.001; \} \}/);
+  });
+
+  it("uses no hand-written scroll listeners and no vh heights", () => {
+    for (const f of files) expect(read(f), f).not.toMatch(/addEventListener\(\s*["']scroll["']/);
+    expect(read("src/app/(app)/app.css")).not.toMatch(/\b100vh\b/);
+  });
+
+  it("keeps every section reachable from the navigation", () => {
+    const nav = read("src/components/shell/nav.ts");
+    for (const href of ["/ai", "/", "/wallet", "/swap", "/bridge", "/earn", "/trade", "/signals", "/security"]) {
+      expect(nav).toContain(`href: "${href}"`);
+    }
+  });
+
+  it("keeps the chat history key", () => {
+    expect(read("src/app/(app)/ai/page.tsx")).toContain('const CHAT_STORAGE_KEY = "defi-agent-chat-history";');
+  });
+});
