@@ -1,25 +1,24 @@
 "use client";
 
+/**
+ * Trade: Hyperliquid perpetuals. Account figures, then a ticker of markets,
+ * then positions and open orders beside an order ticket that is always in
+ * view. Funding opens as a sheet.
+ */
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Modal, Fade, Swap } from "@/components/motion";
+import { Fade } from "@/components/motion";
+import { LineIcon } from "@/components/line-icon";
+import { Empty, Metric, PageHead, Panel, PillTabs, Segmented, Sheet, Skeleton } from "@/components/premium";
 import { FEATURED_MARKETS } from "@/lib/hyperliquid/markets";
 
-// ── Hyperliquid brand colour: its logo only. The UI uses the app theme. ─────
+// Hyperliquid brand colour: its logo only. The UI uses the app theme.
 const HL_GREEN = "#97FCE4";
-
-// Long/short use the data colours (gain/loss) as soft tints, readable in both
-// themes; the accent and primary carry selection and actions.
-const SIDE_TINT = {
-  buy: { background: "var(--gain-soft)", color: "var(--gain-ink)", borderColor: "var(--gain)" },
-  sell: { background: "var(--loss-soft)", color: "var(--loss-ink)", borderColor: "var(--loss)" },
-} as const;
 
 function HyperliquidLogo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 144 144" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width={size} height={size} viewBox="0 0 144 144" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path
         d="M144 71.6991C144 119.306 114.866 134.582 99.5156 120.98C86.8804 109.889 83.1211 86.4521 64.116 84.0456C39.9942 81.0113 37.9057 113.133 22.0334 113.133C3.5504 113.133 0 86.2428 0 72.4315C0 58.3063 3.96809 39.0542 19.736 39.0542C38.1146 39.0542 39.1588 66.5722 62.132 65.1073C85.0007 63.5379 85.4184 34.8689 100.247 22.6271C113.195 12.0593 144 23.4641 144 71.6991Z"
         fill={HL_GREEN}
@@ -128,22 +127,10 @@ type ApiResult<T> =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <svg className={`animate-spin-breathe ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="60" strokeDashoffset="15" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function PnlBadge({ value }: { value: string }) {
   const n = parseFloat(value);
   const pos = n >= 0;
-  return (
-    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pos ? "bg-gain/15 text-gain-ink" : "bg-loss/15 text-loss-ink"}`}>
-      {pos ? "+" : ""}{n.toFixed(2)} USDC
-    </span>
-  );
+  return <span className={`glp ${pos ? "pos" : "neg"}`}>{`${pos ? "+" : "−"}${Math.abs(n).toFixed(2)} USDC`}</span>;
 }
 
 function fmtUsd(v: string | number | undefined, digits = 2): string {
@@ -154,7 +141,7 @@ function fmtUsd(v: string | number | undefined, digits = 2): string {
 
 function fmtPrice(v: string | number | undefined): string {
   const n = typeof v === "string" ? parseFloat(v) : v;
-  if (n === undefined || !Number.isFinite(n)) return "—";
+  if (n === undefined || !Number.isFinite(n)) return "n/a";
   if (n >= 1000) return n.toFixed(2);
   if (n >= 1) return n.toFixed(3);
   if (n >= 0.01) return n.toFixed(4);
@@ -167,19 +154,19 @@ const GENERIC_ORDER_ERROR = "Order failed, please try again";
 
 const ORDER_ERROR_MESSAGES: Record<string, string> = {
   INSUFFICIENT_BALANCE:
-    "Saldo USDC su Arbitrum insufficiente. Deposita USDC sul tuo indirizzo Arbitrum prima di riprovare.",
+    "Not enough USDC on Arbitrum. Send USDC to your Arbitrum address, then try again.",
   INSUFFICIENT_MARGIN:
-    "Margine insufficiente per questa posizione. Riduci la size o aumenta il deposito HL.",
+    "Not enough margin for this position. Reduce the size or deposit more to Hyperliquid.",
   SIGNING_FAILED:
-    "La firma del wallet è fallita. Verifica che onchainos sia autenticato (aggiorna se necessario).",
+    "The wallet could not sign. Check that you are still signed in, then refresh.",
   NOT_REGISTERED:
-    "Hyperliquid non è stato ancora configurato. Esegui prima la registrazione del wallet.",
+    "Hyperliquid is not set up yet. Register the wallet first.",
   MIN_NOTIONAL:
-    "L'ordine è sotto il minimo notional di $10 USDC. Aumenta la size.",
+    "The order is below Hyperliquid's $10 minimum. Increase the size.",
   PRICE_OUT_OF_BAND:
-    "Prezzo limite troppo lontano dal mid. Usa un prezzo più vicino al market.",
+    "The limit price is too far from the market. Use a price closer to the mark.",
   REDUCE_ONLY_VIOLATION:
-    "L'ordine reduce-only non può aprire o aumentare una posizione esistente.",
+    "A reduce-only order cannot open or grow a position.",
 };
 
 /** Normalize a user decimal (comma → dot) and accept only /^\d+(\.\d+)?$/. */
@@ -238,7 +225,7 @@ function tpslDirectionError(
   if (!hasSl && !hasTp) return null;
   const markN = mark ? Number(mark) : NaN;
   if (!Number.isFinite(markN) || markN <= 0) {
-    return "Mark non disponibile: impossibile validare TP/SL.";
+    return "The mark price is unavailable, so take-profit and stop-loss cannot be checked.";
   }
   const sl = hasSl ? normalizeDecimal(slPx) : null;
   const tp = hasTp ? normalizeDecimal(tpPx) : null;
@@ -247,17 +234,17 @@ function tpslDirectionError(
   if (hasTp && !tp) return null;
   if (side === "buy") {
     if (sl && !(Number(sl) < markN)) {
-      return "Per un LONG lo stop-loss deve essere sotto il mark e il take-profit sopra.";
+      return "For a long, the stop-loss goes below the mark and the take-profit above it.";
     }
     if (tp && !(Number(tp) > markN)) {
-      return "Per un LONG lo stop-loss deve essere sotto il mark e il take-profit sopra.";
+      return "For a long, the stop-loss goes below the mark and the take-profit above it.";
     }
   } else {
     if (sl && !(Number(sl) > markN)) {
-      return "Per un SHORT lo stop-loss deve essere sopra il mark e il take-profit sotto.";
+      return "For a short, the stop-loss goes above the mark and the take-profit below it.";
     }
     if (tp && !(Number(tp) < markN)) {
-      return "Per un SHORT lo stop-loss deve essere sopra il mark e il take-profit sotto.";
+      return "For a short, the stop-loss goes above the mark and the take-profit below it.";
     }
   }
   return null;
@@ -266,7 +253,7 @@ function tpslDirectionError(
 function mapOrderError(res: { error: string; errorCode?: string; suggestion?: string }): string {
   if (res.errorCode && ORDER_ERROR_MESSAGES[res.errorCode]) {
     const mapped = ORDER_ERROR_MESSAGES[res.errorCode];
-    return res.suggestion ? `${mapped} — ${res.suggestion}` : mapped;
+    return res.suggestion ? `${mapped} ${res.suggestion}` : mapped;
   }
   console.error("Order failed", res);
   return GENERIC_ORDER_ERROR;
@@ -465,31 +452,31 @@ export default function TradePage() {
     setOrderPreview(null);
 
     if (!COIN_RE.test(orderCoin)) {
-      setOrderError("Coin non valida");
+      setOrderError("Choose a valid market");
       return;
     }
     const size = normalizeDecimal(orderSize);
     if (!size || Number(size) <= 0) {
-      setOrderError("Inserisci la size");
+      setOrderError("Enter a size");
       return;
     }
     let price: string | undefined;
     if (orderType === "limit") {
       const p = normalizeDecimal(orderPrice);
       if (!p || Number(p) <= 0) {
-        setOrderError("I limit order richiedono un prezzo");
+        setOrderError("A limit order needs a price");
         return;
       }
       price = p;
     }
     const sl = orderSlPx.trim() ? normalizeDecimal(orderSlPx) : null;
     if (orderSlPx.trim() && (!sl || Number(sl) <= 0)) {
-      setOrderError("Stop-loss non valido");
+      setOrderError("The stop-loss is not a valid price");
       return;
     }
     const tp = orderTpPx.trim() ? normalizeDecimal(orderTpPx) : null;
     if (orderTpPx.trim() && (!tp || Number(tp) <= 0)) {
-      setOrderError("Take-profit non valido");
+      setOrderError("The take-profit is not a valid price");
       return;
     }
     const dirErr = tpslDirectionError(orderSide, currentMark, orderSlPx, orderTpPx);
@@ -537,7 +524,7 @@ export default function TradePage() {
     setOrderConfirming(false);
     if (res.success) {
       setOrderSuccess(
-        `Ordine ${params.side === "buy" ? "LONG" : "SHORT"} ${params.size} ${params.coin} inviato`
+        `${params.side === "buy" ? "Long" : "Short"} order for ${params.size} ${params.coin} sent`
       );
       setOrderPreview(null);
       setOrderSize("");
@@ -559,7 +546,7 @@ export default function TradePage() {
     if (!pendingClose) return;
     const coin = pendingClose.coin;
     if (!COIN_RE.test(coin)) {
-      setCloseError("Coin non valida");
+      setCloseError("Choose a valid market");
       return;
     }
     setCloseError(null);
@@ -593,7 +580,7 @@ export default function TradePage() {
     setFundSuccess(null);
     const amount = normalizeDecimal(fundAmount);
     if (!amount || Number(amount) <= 0) {
-      setFundError("Importo non valido");
+      setFundError("Enter a valid amount");
       return;
     }
     setFundLoading(true);
@@ -605,7 +592,7 @@ export default function TradePage() {
     if (res.success) {
       setFundPreview(res.data);
     } else {
-      setFundError(res.suggestion ? `${res.error} — ${res.suggestion}` : res.error);
+      setFundError(res.suggestion ? `${res.error}. ${res.suggestion}` : res.error);
     }
   }
 
@@ -613,7 +600,7 @@ export default function TradePage() {
     setFundError(null);
     const amount = normalizeDecimal(fundAmount);
     if (!amount || Number(amount) <= 0) {
-      setFundError("Importo non valido");
+      setFundError("Enter a valid amount");
       return;
     }
     setFundLoading(true);
@@ -625,193 +612,178 @@ export default function TradePage() {
     if (res.success) {
       setFundSuccess(
         fundMode === "deposit"
-          ? `Deposito di ${fundAmount} USDC inviato. Arrivo in 2–5 minuti.`
-          : `Prelievo di ${fundAmount} USDC inviato. Arrivo in 2–5 minuti (fee $1).`
+          ? `Deposit of ${fundAmount} USDC sent. It arrives in 2 to 5 minutes.`
+          : `Withdrawal of ${fundAmount} USDC sent. It arrives in 2 to 5 minutes, less the $1 fee.`
       );
       setFundPreview(null);
       bootstrap();
     } else {
-      setFundError(res.suggestion ? `${res.error} — ${res.suggestion}` : res.error);
+      setFundError(res.suggestion ? `${res.error}. ${res.suggestion}` : res.error);
     }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (!authenticated) {
     return (
-      <div className="voxr-halo flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
-        <HyperliquidLogo size={48} />
-        <p className="text-eyebrow mt-6 animate-kinetic-in">Perpetual DEX · 50× leverage</p>
-        <h1 className="mt-4 text-display-xl text-foreground animate-kinetic-in stagger-1">
-          Hyperliquid <span className="text-iridescent">Perps</span>
-        </h1>
-        <p className="text-muted-foreground mt-4 max-w-sm animate-kinetic-in stagger-2">
-          Sign in to trade perpetuals with leverage up to 50×.
-        </p>
+      <div className="page">
+        <Empty icon="bar-chart" title="Sign in first" text="Connect your wallet to trade perpetuals on Hyperliquid." />
       </div>
     );
   }
 
+  const openFund = (mode: "deposit" | "withdraw", amount = "") => {
+    setFundMode(mode);
+    setFundAmount(amount);
+    setFundPreview(null);
+    setFundError(null);
+    setFundSuccess(null);
+    setShowFund(true);
+  };
+
+  const positionCount = positions?.positions.length ?? 0;
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 pb-28 md:pb-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <HyperliquidLogo size={36} />
-        <div className="flex-1 min-w-0">
-          <p className="text-eyebrow">Hyperliquid · USDC</p>
-          <h1 className="text-display-lg text-foreground">Trade</h1>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setShowFund(true); setFundMode("deposit"); setFundPreview(null); setFundError(null); setFundSuccess(null); }}
-        >
-          Deposita / Preleva
-        </Button>
-      </div>
-
-      {/* Account summary strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
-        <Stat
-          label="Account value"
-          value={fmtUsd(quickstart?.assets.hl_account_value_usd ?? positions?.accountValue)}
-        />
-        <Stat
-          label="Withdrawable"
-          value={fmtUsd(quickstart?.assets.hl_withdrawable_usd ?? positions?.withdrawable)}
-        />
-        <Stat
-          label="Margin used"
-          value={fmtUsd(positions?.totalMarginUsed)}
-        />
-        <Stat
-          label="USDC su Arbitrum"
-          value={fmtUsd(quickstart?.assets.arb_usdc_balance)}
-          hint="Disponibile per depositi"
-        />
-      </div>
-
-      {/* State-machine banner — crossfades when the stage changes */}
-      <Swap tokenKey={stage}>
-        {stage === "register_error" ? (
-          <Banner tone="red" title="Setup Hyperliquid fallito">
-            {registerErr ?? "Impossibile configurare HL"}
-            <button
-              className="ml-2 underline text-xs"
-              onClick={async () => {
-                setRegisterErr(null);
-                const r = await apiGet<RegisterData>("/api/perp/register?force=true");
-                if (r.success) setRegister(r.data);
-                else setRegisterErr(r.error);
-              }}
-            >
-              Riprova
-            </button>
-          </Banner>
-        ) : stage === "needs_agent" && register ? (
-          <Banner tone="amber" title="Completa setup Hyperliquid">
-            {register.message ?? "È necessaria la registrazione del signing agent."}
-          </Banner>
-        ) : stage === "needs_arb_funds" && quickstart ? (
-          <Banner tone="amber" title="Fondi il tuo wallet Arbitrum">
-            <p className="mb-2">
-              Per iniziare a tradare servono almeno <strong>$5 USDC</strong> sul tuo wallet Arbitrum.
-              Attualmente hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong>.
-            </p>
-            <p className="text-xs">
-              Invia USDC a questo indirizzo su Arbitrum:
-            </p>
-            <code className="mt-1 block text-xs bg-background/40 px-2 py-1 rounded break-all select-all">
-              {quickstart.wallet}
-            </code>
-          </Banner>
-        ) : stage === "needs_hl_deposit" && quickstart ? (
-          <Banner tone="blue" title="Deposita USDC su Hyperliquid">
-            <p className="mb-2">
-              Hai <strong>{fmtUsd(quickstart.assets.arb_usdc_balance)}</strong> USDC su Arbitrum.
-              Depositali su HL per iniziare a tradare (minimo $5, arrivo in 2–5 min).
-            </p>
-            <Button
-              size="sm"
-              onClick={() => {
-                setFundMode("deposit");
-                setFundAmount(String(Math.floor(quickstart.assets.arb_usdc_balance)));
-                setShowFund(true);
-              }}
-            >
-              Deposita ora
-            </Button>
-          </Banner>
-        ) : null}
-      </Swap>
-
-      {/* Live prices strip */}
-      <div className="mb-5">
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Mercati popolari</p>
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
-          {prices.length === 0 && <Spinner />}
-          {prices.slice(0, 12).map((p) => (
-            <button
-              key={p.coin}
-              onClick={() => {
-                if (!previewOpen) setCoinAndClamp(p.coin);
-                setTab("trade");
-              }}
-              className={`text-left bg-card border rounded-lg px-2 py-1.5 hover:border-brand transition-colors`}
-              style={orderCoin === p.coin ? { borderColor: "var(--brand)" } : {}}
-            >
-              <div className="text-[10px] text-muted-foreground">{p.coin}</div>
-              <div className="text-sm font-mono font-semibold">{fmtPrice(p.price)}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b mb-4">
-        {(["positions", "trade", "orders"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "text-foreground" : "text-muted-foreground border-transparent"}`}
-            style={tab === t ? { borderColor: "var(--brand)", color: "var(--foreground)" } : {}}
-          >
-            {t === "positions" && (
-              <>Posizioni
-                {positions && positions.positions.length > 0 && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
-                    {positions.positions.length}
-                  </span>
-                )}
-              </>
-            )}
-            {t === "trade" && "Nuovo ordine"}
-            {t === "orders" && (
-              <>Aperti
-                {orders.length > 0 && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
-                    {orders.length}
-                  </span>
-                )}
-              </>
-            )}
+    <div className="page">
+      <PageHead
+        title="Trade"
+        lede={
+          <span className="hl-lede">
+            <HyperliquidLogo size={18} />
+            Perpetual futures on Hyperliquid, settled in&nbsp;USDC.
+          </span>
+        }
+        actions={
+          <button type="button" className="btn" onClick={() => openFund("deposit")}>
+            <LineIcon name="swap" size={16} />
+            Deposit or withdraw
           </button>
-        ))}
+        }
+      />
+
+      <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
+        <Metric label="Account value" value={fmtUsd(quickstart?.assets.hl_account_value_usd ?? positions?.accountValue)} />
+        <Metric label="Withdrawable" value={fmtUsd(quickstart?.assets.hl_withdrawable_usd ?? positions?.withdrawable)} />
+        <Metric label="Margin used" value={fmtUsd(positions?.totalMarginUsed)} />
+        <Metric label="USDC on Arbitrum" value={fmtUsd(quickstart?.assets.arb_usdc_balance)} sub="Ready to deposit" />
       </div>
 
-      {/* Tab content — <Swap> crossfades between tabs */}
-      <Swap tokenKey={tab}>
-        {tab === "positions" ? (
-          <PositionsTab
-            positions={positions}
-            pendingClose={pendingClose}
-            closingCoin={closingCoin}
-            closeError={closeError}
-            markForCoin={markForCoin}
-            onRequestClose={requestClose}
-            onCancelClose={() => { setPendingClose(null); setCloseError(null); }}
-            onConfirmClose={confirmClose}
-          />
-        ) : tab === "trade" ? (
+      {/* Setup state, one message at a time */}
+      {stage === "register_error" ? (
+        <div className="note loss msg-note in" role="alert">
+          <LineIcon name="alert" size={16} />
+          <div>
+            <strong>Hyperliquid setup failed</strong>
+            <p>{registerErr ?? "Hyperliquid could not be set up."}</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={async () => {
+              setRegisterErr(null);
+              const r = await apiGet<RegisterData>("/api/perp/register?force=true");
+              if (r.success) setRegister(r.data);
+              else setRegisterErr(r.error);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : stage === "needs_agent" && register ? (
+        <div className="note warn msg-note in">
+          <LineIcon name="alert" size={16} />
+          <div>
+            <strong>Finish the Hyperliquid setup</strong>
+            <p>{register.message ?? "The signing agent still needs to be registered."}</p>
+          </div>
+        </div>
+      ) : stage === "needs_arb_funds" && quickstart ? (
+        <div className="note warn msg-note in">
+          <LineIcon name="wallet" size={16} />
+          <div>
+            <strong>Fund your Arbitrum wallet</strong>
+            <p>
+              You need at least $5 USDC on Arbitrum to start. You have {fmtUsd(quickstart.assets.arb_usdc_balance)}. Send USDC on Arbitrum&nbsp;to:
+            </p>
+            <p className="num conf-recipient">{quickstart.wallet}</p>
+          </div>
+        </div>
+      ) : stage === "needs_hl_deposit" && quickstart ? (
+        <div className="note msg-note in">
+          <HyperliquidLogo size={16} />
+          <div>
+            <strong>Deposit USDC to Hyperliquid</strong>
+            <p>
+              You have {fmtUsd(quickstart.assets.arb_usdc_balance)} on Arbitrum. Deposit it to start trading: minimum $5, it arrives in 2 to 5&nbsp;minutes.
+            </p>
+          </div>
+          <button type="button" className="btn btn--sm btn--primary" onClick={() => openFund("deposit", String(Math.floor(quickstart.assets.arb_usdc_balance)))}>
+            Deposit now
+          </button>
+        </div>
+      ) : null}
+
+      {/* Markets ticker */}
+      <div className="ticker in" style={{ "--i": 2 } as React.CSSProperties} role="group" aria-label="Markets">
+        {prices.length === 0
+          ? [0, 1, 2, 3, 4, 5].map((i) => (
+              <span key={i} className="tick">
+                <Skeleton height={36} width={92} />
+              </span>
+            ))
+          : prices.slice(0, 12).map((p) => (
+              <button
+                key={p.coin}
+                type="button"
+                className="tick"
+                aria-pressed={orderCoin === p.coin}
+                disabled={previewOpen}
+                onClick={() => setCoinAndClamp(p.coin)}
+              >
+                <span className="c">{p.coin}</span>
+                <span className="num">{fmtPrice(p.price)}</span>
+              </button>
+            ))}
+      </div>
+
+      <div className="bento">
+        <Panel
+          className="span-7"
+          flush
+          index={3}
+          title="Your trades"
+          action={
+            <PillTabs
+              id="trade-tabs"
+              label="Your trading"
+              value={tab === "trade" ? "positions" : tab}
+              onChange={(v) => setTab(v)}
+              options={[
+                { value: "positions", label: "Positions", count: positionCount || undefined },
+                { value: "orders", label: "Open orders", count: orders.length || undefined },
+              ]}
+            />
+          }
+        >
+          {tab === "orders" ? (
+            <OrdersTab orders={orders} onCancel={cancelOrder} />
+          ) : (
+            <PositionsTab
+              positions={positions}
+              pendingClose={pendingClose}
+              closingCoin={closingCoin}
+              closeError={closeError}
+              markForCoin={markForCoin}
+              onRequestClose={requestClose}
+              onCancelClose={() => {
+                setPendingClose(null);
+                setCloseError(null);
+              }}
+              onConfirmClose={confirmClose}
+            />
+          )}
+        </Panel>
+
+        <Panel className="span-5 ticket" index={4} title="New order">
           <TradeTab
             stage={stage}
             side={orderSide}
@@ -841,12 +813,9 @@ export default function TradePage() {
             onConfirm={submitOrderConfirm}
             onModify={() => setOrderPreview(null)}
           />
-        ) : (
-          <OrdersTab orders={orders} onCancel={cancelOrder} />
-        )}
-      </Swap>
+        </Panel>
+      </div>
 
-      {/* Funding modal — always mounted so <Modal> can play exit animation */}
       <FundModal
         open={showFund}
         mode={fundMode}
@@ -875,35 +844,16 @@ export default function TradePage() {
 
 // ── Components ────────────────────────────────────────────────────────────────
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Facts({ items }: { items: Array<[string, string]> }) {
   return (
-    <div className="bg-card border rounded-lg px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="text-base font-mono font-semibold mt-0.5">{value}</div>
-      {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
-    </div>
-  );
-}
-
-function Banner({
-  tone,
-  title,
-  children,
-}: {
-  tone: "red" | "amber" | "blue";
-  title: string;
-  children: React.ReactNode;
-}) {
-  const colors = {
-    red: "bg-loss/10 border-loss/30 text-loss-ink dark:text-loss-ink",
-    amber: "bg-warn/10 border-warn/30 text-warn-ink dark:text-warn-ink",
-    blue: "bg-secondary border-border text-foreground dark:text-foreground",
-  };
-  return (
-    <div className={`border rounded-lg p-3 mb-4 text-sm ${colors[tone]}`}>
-      <div className="font-semibold mb-1">{title}</div>
-      <div className="text-[13px]">{children}</div>
-    </div>
+    <dl className="facts">
+      {items.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k}</dt>
+          <dd className="num">{v}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -926,21 +876,26 @@ function PositionsTab({
   onCancelClose: () => void;
   onConfirmClose: () => void;
 }) {
-  if (!positions) return <div className="flex justify-center py-8"><Spinner /></div>;
-  if (positions.positions.length === 0) {
+  if (!positions) {
     return (
-      <div className="text-center py-10 text-muted-foreground">
-        <p className="text-sm">Nessuna posizione aperta.</p>
-        <p className="text-xs mt-1">Apri una posizione dal tab &ldquo;Nuovo ordine&rdquo;.</p>
+      <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+        <Skeleton height={64} />
+        <Skeleton height={64} />
       </div>
     );
   }
+  if (positions.positions.length === 0) {
+    return <Empty icon="bar-chart" title="No open positions" text="Pick a market and open one from the order ticket." />;
+  }
   return (
-    <div className="space-y-2">
+    <div className="wal-pad pos-list">
       <Fade in={!!closeError}>
-        <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
-          {closeError}
-        </div>
+        {closeError && (
+          <p className="note loss">
+            <LineIcon name="alert" size={16} />
+            <span>{closeError}</span>
+          </p>
+        )}
       </Fade>
       {positions.positions.map((p) => {
         const isLong = p.side === "long";
@@ -949,93 +904,57 @@ function PositionsTab({
         const mark = p.markPrice ?? markForCoin(p.coin);
         const sizeN = Math.abs(Number(p.size));
         const markN = mark ? Number(mark) : NaN;
-        const proceeds =
-          Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : null;
+        const proceeds = Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : null;
         return (
-          <div
-            key={p.coin}
-            className="bg-card border rounded-lg p-3"
-            style={{ borderColor: `color-mix(in srgb, ${isLong ? "var(--gain)" : "var(--loss)"} 30%, transparent)` }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base">{p.coin}</span>
-                <span
-                  className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
-                  style={isLong ? SIDE_TINT.buy : SIDE_TINT.sell}
-                >
-                  {isLong ? "LONG" : "SHORT"} {p.leverage?.value ?? 1}×
-                </span>
-                <span className="text-[10px] text-muted-foreground">{p.leverage?.type}</span>
-              </div>
+          <article key={p.coin} className="pos" data-side={isLong ? "long" : "short"}>
+            <header className="pos-head">
+              <span className="pos-coin">{p.coin}</span>
+              <span className={`side-tag ${isLong ? "long" : "short"}`}>
+                {isLong ? "Long" : "Short"} {p.leverage?.value ?? 1}×
+              </span>
+              <span className="muted pos-type">{p.leverage?.type}</span>
               <PnlBadge value={p.unrealizedPnl} />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs mb-2">
-              <Field label="Size" value={`${p.size} ${p.coin}`} />
-              <Field label="Entry" value={fmtPrice(p.entryPrice)} />
-              <Field label="Liq" value={fmtPrice(p.liquidationPrice)} />
-              <Field label="Value" value={fmtUsd(p.positionValue)} />
-              <Field label="Margin" value={fmtUsd(p.marginUsed)} />
-              <Field label="ROE" value={`${parseFloat(p.returnOnEquity).toFixed(2)}%`} />
-            </div>
+            </header>
+            <Facts
+              items={[
+                ["Size", `${p.size} ${p.coin}`],
+                ["Entry", fmtPrice(p.entryPrice)],
+                ["Liquidation", fmtPrice(p.liquidationPrice)],
+                ["Value", fmtUsd(p.positionValue)],
+                ["Margin", fmtUsd(p.marginUsed)],
+                ["Return", `${parseFloat(p.returnOnEquity).toFixed(2)}%`],
+              ]}
+            />
             {confirmingThis ? (
-              <div className="border rounded-lg p-2 space-y-2">
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  Conferma chiusura
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <Field label="Coin" value={p.coin} />
-                  <Field label="Position size" value={`${p.size} ${p.coin}`} />
-                  <Field label="Current mark" value={fmtPrice(mark)} />
-                  <Field
-                    label="Estimated proceeds"
-                    value={proceeds === null ? "—" : fmtUsd(proceeds)}
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Estimate only — ignores fees and funding.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onCancelClose}
-                    disabled={inFlight}
-                  >
-                    Annulla
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={onConfirmClose}
-                    disabled={inFlight}
-                  >
-                    {inFlight ? <Spinner /> : "Conferma chiusura"}
-                  </Button>
+              <div className="close-confirm">
+                <dl className="sum">
+                  <div>
+                    <dt>Mark price</dt>
+                    <dd className="num">{fmtPrice(mark)}</dd>
+                  </div>
+                  <div>
+                    <dt>Estimated proceeds</dt>
+                    <dd className="num">{proceeds === null ? "n/a" : fmtUsd(proceeds)}</dd>
+                  </div>
+                </dl>
+                <p className="hint">An estimate, without fees and funding.</p>
+                <div className="sheet-actions">
+                  <button type="button" className="btn btn--sm" onClick={onCancelClose} disabled={inFlight}>
+                    Keep it open
+                  </button>
+                  <button type="button" className="btn btn--sm btn--primary" onClick={onConfirmClose} disabled={inFlight}>
+                    {inFlight ? <span className="spin" aria-hidden="true" /> : `Close ${p.coin}`}
+                  </button>
                 </div>
               </div>
             ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-8 text-xs"
-                disabled={closingCoin !== null}
-                onClick={() => onRequestClose(p)}
-              >
-                Chiudi posizione
-              </Button>
+              <button type="button" className="btn btn--sm pos-close" disabled={closingCoin !== null} onClick={() => onRequestClose(p)}>
+                Close position
+              </button>
             )}
-          </div>
+          </article>
         );
       })}
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] text-muted-foreground uppercase">{label}</div>
-      <div className="font-mono font-medium">{value}</div>
     </div>
   );
 }
@@ -1077,295 +996,227 @@ function TradeTab(props: {
   const tpFormatOk = !props.tpPx.trim() || isPositiveDecimal(props.tpPx);
   const tpslErr = tpslDirectionError(props.side, props.mark, props.slPx, props.tpPx);
   const coinOk = COIN_RE.test(props.coin);
-  const canPreview =
-    !locked &&
-    !props.loading &&
-    sizeOk &&
-    priceOk &&
-    slFormatOk &&
-    tpFormatOk &&
-    !tpslErr &&
-    coinOk;
+  const canPreview = !locked && !props.loading && sizeOk && priceOk && slFormatOk && tpFormatOk && !tpslErr && coinOk;
 
   const sizeN = sizeOk ? Number(normalizeDecimal(props.size)) : NaN;
   const markN = props.mark ? Number(props.mark) : NaN;
-  const notional =
-    Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : 0;
+  const notional = Number.isFinite(sizeN) && Number.isFinite(markN) ? sizeN * markN : 0;
   const entry = entryPrice(props.type, props.price, props.mark);
   const liq = entry ? estimatedLiqPrice(entry, props.leverage, props.side) : null;
+  const sideWord = props.side === "buy" ? "long" : "short";
+  const levPct = props.maxLeverage > 1 ? ((props.leverage - 1) / (props.maxLeverage - 1)) * 100 : 100;
 
   return (
-    <div className="space-y-3">
+    <div className="form order">
       {disabled && (
-        <div className="bg-muted/40 border rounded-lg p-3 text-xs text-muted-foreground">
-          Completa il deposito per abilitare gli ordini.
-        </div>
+        <p className="note">
+          <LineIcon name="lock" size={16} />
+          <span>Finish the deposit above to place orders.</span>
+        </p>
       )}
 
-      {/* Long/Short */}
-      <div className="grid grid-cols-2 gap-2">
-        {(["buy", "sell"] as const).map((side) => (
-          <button
-            key={side}
-            disabled={locked}
-            onClick={() => props.setSide(side)}
-            className="py-2 rounded-lg text-sm font-semibold border disabled:opacity-50"
-            style={
-              props.side === side
-                ? SIDE_TINT[side]
-                : {}
-            }
-          >
-            {side === "buy" ? "LONG" : "SHORT"}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        id="trade-side"
+        label="Direction"
+        className="side-seg"
+        value={props.side}
+        disabled={locked}
+        onChange={props.setSide}
+        options={[
+          { value: "buy", label: "Long" },
+          { value: "sell", label: "Short" },
+        ]}
+      />
 
-      {/* Coin + type */}
-      <div className="grid grid-cols-2 gap-2">
-        <select
-          disabled={locked}
-          value={props.coin}
-          onChange={(e) => props.setCoin(e.target.value)}
-          className="h-10 rounded-lg border bg-background px-3 text-sm font-semibold disabled:opacity-50"
-        >
-          {FEATURED_MARKETS.map((m) => (
-            <option key={m.coin} value={m.coin}>{m.coin} — {m.label}</option>
-          ))}
-        </select>
-        <div className="grid grid-cols-2 gap-1">
-          {(["market", "limit"] as const).map((t) => (
-            <button
-              key={t}
-              disabled={locked}
-              onClick={() => props.setType(t)}
-              className={`rounded-lg text-xs font-medium border ${props.type === t ? "bg-foreground text-background" : "bg-background"} disabled:opacity-50`}
-            >
-              {t === "market" ? "Market" : "Limit"}
-            </button>
-          ))}
+      <div className="order-row">
+        <div className="select select--chip">
+          <label htmlFor="trade-coin" className="sr-only">
+            Market
+          </label>
+          <select id="trade-coin" className="input" disabled={locked} value={props.coin} onChange={(e) => props.setCoin(e.target.value)}>
+            {FEATURED_MARKETS.map((m) => (
+              <option key={m.coin} value={m.coin}>
+                {m.coin} · {m.label}
+              </option>
+            ))}
+          </select>
         </div>
+        <Segmented
+          id="trade-type"
+          label="Order type"
+          value={props.type}
+          disabled={locked}
+          onChange={props.setType}
+          options={[
+            { value: "market", label: "Market" },
+            { value: "limit", label: "Limit" },
+          ]}
+        />
       </div>
 
-      {/* Size */}
-      <div>
-        <label className="text-xs text-muted-foreground">Size ({props.coin})</label>
-        <Input
+      <div className="field">
+        <div className="lbl">
+          <label htmlFor="trade-size">Size in {props.coin}</label>
+          <span className="num muted">Mark {fmtPrice(props.mark)}</span>
+        </div>
+        <input
+          id="trade-size"
           type="text"
           inputMode="decimal"
+          autoComplete="off"
+          className="input num-in"
           disabled={locked}
           value={props.size}
+          aria-invalid={props.size.trim() !== "" && !sizeOk}
           onChange={(e) => props.setSize(e.target.value)}
           placeholder="0.01"
-          className="font-mono"
         />
-        <div className="flex items-center justify-between mt-1 text-[11px] text-muted-foreground">
-          <span>Mark: {fmtPrice(props.mark)}</span>
-          <span>Notional: {fmtUsd(notional)}</span>
-        </div>
-        {props.size.trim() !== "" && !sizeOk && (
-          <div className="text-[11px] text-loss-ink mt-0.5">
-            Size deve essere un decimale positivo (es. 0.01).
-          </div>
-        )}
-        {notional > 0 && notional < 10 && (
-          <div className="text-[11px] text-warn-ink mt-0.5">
-            Minimo $10 notional. Aumenta la size.
-          </div>
+        {props.size.trim() !== "" && !sizeOk ? (
+          <p className="err">The size must be a positive number, for example 0.01.</p>
+        ) : notional > 0 && notional < 10 ? (
+          <p className="err">Hyperliquid&rsquo;s minimum is $10. Increase the size.</p>
+        ) : (
+          <p className="hint">
+            Worth <span className="num">{fmtUsd(notional)}</span>
+          </p>
         )}
       </div>
 
-      {/* Price (limit only) */}
       {props.type === "limit" && (
-        <div>
-          <label className="text-xs text-muted-foreground">Limit price (USDC)</label>
-          <Input
+        <div className="field">
+          <label htmlFor="trade-price">Limit price in USDC</label>
+          <input
+            id="trade-price"
             type="text"
             inputMode="decimal"
+            autoComplete="off"
+            className="input num-in"
             disabled={locked}
             value={props.price}
+            aria-invalid={props.price.trim() !== "" && !priceOk}
             onChange={(e) => props.setPrice(e.target.value)}
             placeholder={fmtPrice(props.mark)}
-            className="font-mono"
           />
-          {props.price.trim() !== "" && !priceOk && (
-            <div className="text-[11px] text-loss-ink mt-0.5">
-              Prezzo deve essere un decimale positivo.
-            </div>
-          )}
+          {props.price.trim() !== "" && !priceOk && <p className="err">The price must be a positive number.</p>}
         </div>
       )}
 
-      {/* Leverage */}
-      <div>
-        <div className="flex items-center justify-between text-xs">
-          <label className="text-muted-foreground">Leva</label>
-          <span className="font-bold text-brand">
-            {props.leverage}× <span className="font-medium text-muted-foreground">/ max {props.maxLeverage}×</span>
+      <div className="field">
+        <div className="lbl">
+          <label htmlFor="trade-lev">Leverage</label>
+          <span>
+            <span className="num lev-v">{props.leverage}×</span> <span className="muted">of {props.maxLeverage}× max</span>
           </span>
         </div>
         <input
+          id="trade-lev"
           type="range"
           min="1"
           max={props.maxLeverage}
           disabled={locked}
           value={Math.min(props.leverage, props.maxLeverage)}
           onChange={(e) => props.setLeverage(Number(e.target.value))}
-          className="w-full disabled:opacity-50"
-          style={{ accentColor: "var(--brand)" }}
+          className="lev"
+          style={{ "--p": `${levPct}%` } as React.CSSProperties}
         />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>1×</span><span>Max {props.maxLeverage}×</span>
-        </div>
       </div>
 
-      {/* Est. liquidation */}
-      <div className="bg-muted/30 border rounded-lg px-3 py-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Est. liquidation</span>
-          <span className="font-mono font-semibold">{fmtPrice(liq ?? undefined)}</span>
+      <div className="order-row two">
+        <div className="field">
+          <label htmlFor="trade-sl">Stop-loss, optional</label>
+          <input id="trade-sl" type="text" inputMode="decimal" autoComplete="off" className="input mono" disabled={locked} value={props.slPx} onChange={(e) => props.setSlPx(e.target.value)} placeholder="Price" />
         </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          Estimate only — ignores fees and funding.
-        </p>
+        <div className="field">
+          <label htmlFor="trade-tp">Take-profit, optional</label>
+          <input id="trade-tp" type="text" inputMode="decimal" autoComplete="off" className="input mono" disabled={locked} value={props.tpPx} onChange={(e) => props.setTpPx(e.target.value)} placeholder="Price" />
+        </div>
       </div>
+      {(!slFormatOk || !tpFormatOk) && <p className="err">Take-profit and stop-loss must be positive numbers, for example 64000.5.</p>}
+      {tpslErr && slFormatOk && tpFormatOk && <p className="err">{tpslErr}</p>}
 
-      {/* SL/TP */}
-      <div className="grid grid-cols-2 gap-2">
+      <dl className="sum">
         <div>
-          <label className="text-xs text-muted-foreground">Stop-loss (opt.)</label>
-          <Input
-            type="text"
-            inputMode="decimal"
-            disabled={locked}
-            value={props.slPx}
-            onChange={(e) => props.setSlPx(e.target.value)}
-            placeholder="—"
-            className="font-mono"
-          />
+          <dt>Estimated liquidation</dt>
+          <dd className="num">{fmtPrice(liq ?? undefined)}</dd>
         </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Take-profit (opt.)</label>
-          <Input
-            type="text"
-            inputMode="decimal"
-            disabled={locked}
-            value={props.tpPx}
-            onChange={(e) => props.setTpPx(e.target.value)}
-            placeholder="—"
-            className="font-mono"
-          />
-        </div>
-      </div>
-      {(!slFormatOk || !tpFormatOk) && (
-        <div className="text-[11px] text-loss-ink">
-          TP/SL devono essere decimali positivi (es. 64000.5).
-        </div>
-      )}
-      {tpslErr && slFormatOk && tpFormatOk && (
-        <div className="text-[11px] text-loss-ink">{tpslErr}</div>
-      )}
+      </dl>
 
-      {/* Submit / Preview */}
       {!props.preview ? (
-        <Button
-          onClick={props.onPreview}
-          disabled={!canPreview}
-          className="w-full h-11"
-        >
-          {props.loading ? <Spinner /> : `Anteprima ${props.side === "buy" ? "LONG" : "SHORT"}`}
-        </Button>
+        <button type="button" className={`btn btn--primary sheet-cta side-cta ${sideWord}`} onClick={props.onPreview} disabled={!canPreview}>
+          {props.loading ? <span className="spin" aria-hidden="true" /> : `Preview ${sideWord}`}
+        </button>
       ) : (
-        <div className="bg-card border rounded-lg p-3 space-y-2">
-          <div className="text-xs font-semibold uppercase text-muted-foreground">Anteprima ordine</div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <Field label="Coin" value={props.preview.params.coin} />
-            <Field label="Side" value={props.preview.params.side === "buy" ? "LONG" : "SHORT"} />
-            <Field label="Size" value={`${props.preview.params.size} ${props.preview.params.coin}`} />
-            <Field label="Order type" value={props.preview.params.type} />
-            {props.preview.params.type === "limit" && props.preview.params.price && (
-              <Field label="Limit price" value={props.preview.params.price} />
-            )}
-            <Field label="Leverage" value={`${props.preview.params.leverage}×`} />
-            <Field
-              label="Est. liquidation"
-              value={
-                props.preview.estimatedLiq === null
-                  ? "—"
-                  : fmtPrice(props.preview.estimatedLiq)
-              }
-            />
-            <Field label="Take-profit" value={props.preview.params.tpPx ?? "—"} />
-            <Field label="Stop-loss" value={props.preview.params.slPx ?? "—"} />
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            Estimate only — ignores fees and funding.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" onClick={props.onModify} disabled={props.confirming}>
-              Modify
-            </Button>
-            <Button
-              size="sm"
-              onClick={props.onConfirm}
-              disabled={props.confirming}
-            >
-              {props.confirming ? <Spinner /> : "Conferma"}
-            </Button>
+        <div className="conf-quote in">
+          <strong>Order preview</strong>
+          <Facts
+            items={[
+              ["Market", props.preview.params.coin],
+              ["Side", props.preview.params.side === "buy" ? "Long" : "Short"],
+              ["Size", `${props.preview.params.size} ${props.preview.params.coin}`],
+              ["Type", props.preview.params.type === "limit" ? `Limit ${props.preview.params.price ?? ""}`.trim() : "Market"],
+              ["Leverage", `${props.preview.params.leverage}×`],
+              ["Liquidation", props.preview.estimatedLiq === null ? "n/a" : fmtPrice(props.preview.estimatedLiq)],
+              ["Take-profit", props.preview.params.tpPx ?? "None"],
+              ["Stop-loss", props.preview.params.slPx ?? "None"],
+            ]}
+          />
+          <p className="hint">Estimates, without fees and funding.</p>
+          <div className="sheet-actions">
+            <button type="button" className="btn" onClick={props.onModify} disabled={props.confirming}>
+              Edit
+            </button>
+            <button type="button" className="btn btn--primary" onClick={props.onConfirm} disabled={props.confirming}>
+              {props.confirming ? <span className="spin" aria-hidden="true" /> : `Place ${sideWord}`}
+            </button>
           </div>
         </div>
       )}
 
       <Fade in={!!props.error}>
-        <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
-          {props.error}
-        </div>
+        {props.error && (
+          <p className="note loss" role="alert">
+            <LineIcon name="alert" size={16} />
+            <span>{props.error}</span>
+          </p>
+        )}
       </Fade>
       <Fade in={!!props.success}>
-        <div className="bg-gain/10 border border-gain/30 rounded-lg p-2 text-xs text-gain-ink">
-          {props.success}
-        </div>
+        {props.success && (
+          <p className="note gain" role="status">
+            <LineIcon name="check" size={16} />
+            <span>{props.success}</span>
+          </p>
+        )}
       </Fade>
     </div>
   );
 }
 
-function OrdersTab({
-  orders,
-  onCancel,
-}: {
-  orders: OrderRow[];
-  onCancel: (coin: string, oid: number) => void;
-}) {
+function OrdersTab({ orders, onCancel }: { orders: OrderRow[]; onCancel: (coin: string, oid: number) => void }) {
   if (orders.length === 0) {
-    return (
-      <div className="text-center py-10 text-muted-foreground">
-        <p className="text-sm">Nessun ordine aperto.</p>
-      </div>
-    );
+    return <Empty icon="file" title="No open orders" text="Limit orders waiting to fill will show up here." />;
   }
   return (
-    <div className="space-y-2">
+    <ul className="rows wal-pad">
       {orders.map((o) => (
-        <div key={o.oid} className="bg-card border rounded-lg p-3 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold">{o.coin}</span>
-              <span className="text-[10px] uppercase text-muted-foreground">{o.type ?? "limit"}</span>
-              <span className={`text-[10px] font-bold ${o.side === "buy" ? "text-gain-ink" : "text-loss-ink"}`}>
-                {o.side === "buy" ? "BUY" : "SELL"}
-              </span>
+        <li key={o.oid}>
+          <div className="row">
+            <span className={`side-tag ${o.side === "buy" ? "long" : "short"}`}>{o.side === "buy" ? "Buy" : "Sell"}</span>
+            <div style={{ minWidth: 0 }}>
+              <div className="t">
+                {o.coin} <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>{o.type ?? "limit"}</span>
+              </div>
+              <div className="sub num">
+                {o.size} at {fmtPrice(o.limitPrice)}
+              </div>
             </div>
-            <div className="text-xs font-mono text-muted-foreground mt-0.5">
-              {o.size} @ {fmtPrice(o.limitPrice)}
-            </div>
+            <button type="button" className="btn btn--sm" onClick={() => onCancel(o.coin, o.oid)}>
+              Cancel
+            </button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => onCancel(o.coin, o.oid)}>
-            Cancella
-          </Button>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
@@ -1388,117 +1239,128 @@ function FundModal(props: {
   const isDeposit = props.mode === "deposit";
   const maxBalance = isDeposit ? props.arbBalance : props.hlWithdrawable;
   const amountOk = isPositiveDecimal(props.amount);
+  const previewRows = props.preview
+    ? Object.entries(props.preview).map(([k, v]) => [
+        k.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()),
+        typeof v === "object" ? JSON.stringify(v) : String(v),
+      ] as [string, string])
+    : [];
+
   return (
-    <Modal open={props.open} onClose={props.onClose} contentClassName="max-w-sm">
-      <div className="bg-card border rounded-xl w-full p-4">
-        <div className="flex items-center gap-3 mb-4">
-          <HyperliquidLogo size={28} />
-          <h2 className="text-lg font-semibold">Hyperliquid</h2>
-        </div>
+    <Sheet open={props.open} onClose={props.onClose} title="Hyperliquid funds">
+      <div className="sheet-body">
+        <Segmented
+          id="fund-mode"
+          label="Direction"
+          value={props.mode}
+          disabled={!!props.preview || props.loading}
+          onChange={(m) => {
+            props.setMode(m);
+            props.setAmount("");
+          }}
+          options={[
+            { value: "deposit", label: "Deposit" },
+            { value: "withdraw", label: "Withdraw" },
+          ]}
+        />
 
-        {/* Mode tabs */}
-        <div className="grid grid-cols-2 gap-1 bg-muted/30 p-1 rounded-lg mb-4">
-          {(["deposit", "withdraw"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { props.setMode(m); props.setAmount(""); }}
-              className="py-2 rounded-md text-sm font-medium transition-colors"
-              style={props.mode === m ? { background: "var(--primary)", color: "var(--primary-foreground)" } : {}}
-            >
-              {m === "deposit" ? "Deposita" : "Preleva"}
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-3">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-muted-foreground">Importo USDC</span>
-            <span className="text-muted-foreground">
-              Max: {fmtUsd(maxBalance)}
-            </span>
+        <div className="field">
+          <div className="lbl">
+            <label htmlFor="fund-amount">Amount in USDC</label>
+            <span className="num muted">Up to {fmtUsd(maxBalance)}</span>
           </div>
-          <Input
+          <input
+            id="fund-amount"
             type="text"
             inputMode="decimal"
+            autoComplete="off"
+            className="input num-in"
             value={props.amount}
             onChange={(e) => props.setAmount(e.target.value)}
             placeholder={isDeposit ? "5.00" : "10.00"}
             disabled={!!props.preview || props.loading}
-            className="font-mono text-lg"
           />
-          <div className="flex gap-1 mt-1">
+          <div className="quick">
             {[0.25, 0.5, 1].map((frac) => (
-              <button
-                key={frac}
-                type="button"
-                disabled={!!props.preview}
-                onClick={() => props.setAmount((maxBalance * frac).toFixed(2))}
-                className="flex-1 text-[10px] py-1 border rounded disabled:opacity-50"
-              >
+              <button key={frac} type="button" className="chip" disabled={!!props.preview} onClick={() => props.setAmount((maxBalance * frac).toFixed(2))}>
                 {frac === 1 ? "Max" : `${frac * 100}%`}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="text-[11px] text-muted-foreground mb-3 space-y-0.5">
+        <dl className="sum">
           {isDeposit ? (
             <>
-              <p>· Minimo: <strong>5 USDC</strong></p>
-              <p>· Bridge da Arbitrum a Hyperliquid</p>
-              <p>· Tempo: 2–5 minuti</p>
-            </>
-          ) : (
-            <>
-              <p>· Fee fissa: <strong>$1 USDC</strong></p>
-              <p>· Destinazione: il tuo wallet Arbitrum</p>
-              <p>· Tempo: 2–5 minuti</p>
-            </>
-          )}
-        </div>
-
-        <Swap tokenKey={props.success ? "success" : props.preview ? "preview" : "idle"}>
-          {props.success ? (
-            <>
-              <div className="bg-gain/10 border border-gain/30 rounded-lg p-2 text-xs text-gain-ink mb-3">
-                {props.success}
+              <div>
+                <dt>Minimum</dt>
+                <dd className="num">5 USDC</dd>
               </div>
-              <Button variant="outline" className="w-full" onClick={props.onClose}>Chiudi</Button>
-            </>
-          ) : props.preview ? (
-            <>
-              <pre className="text-[10px] bg-muted/30 p-2 rounded overflow-x-auto max-h-32 mb-3">
-                {JSON.stringify(props.preview, null, 2)}
-              </pre>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={props.onClose}>Annulla</Button>
-                <Button
-                  onClick={props.onConfirm}
-                  disabled={props.loading}
-                >
-                  {props.loading ? <Spinner /> : "Conferma"}
-                </Button>
+              <div>
+                <dt>Route</dt>
+                <dd>Arbitrum to Hyperliquid</dd>
               </div>
             </>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={props.onClose}>Annulla</Button>
-              <Button
-                onClick={props.onPreview}
-                disabled={props.loading || !amountOk}
-              >
-                {props.loading ? <Spinner /> : "Anteprima"}
-              </Button>
-            </div>
+            <>
+              <div>
+                <dt>Fee</dt>
+                <dd className="num">1 USDC</dd>
+              </div>
+              <div>
+                <dt>Arrives at</dt>
+                <dd>Your Arbitrum wallet</dd>
+              </div>
+            </>
           )}
-        </Swap>
-
-        <Fade in={!!props.error} className="mt-3">
-          <div className="bg-loss/10 border border-loss/30 rounded-lg p-2 text-xs text-loss-ink">
-            {props.error}
+          <div>
+            <dt>Time</dt>
+            <dd>2 to 5 minutes</dd>
           </div>
+        </dl>
+
+        {props.success ? (
+          <>
+            <p className="note gain" role="status">
+              <LineIcon name="check" size={16} />
+              <span>{props.success}</span>
+            </p>
+            <button type="button" className="btn sheet-cta" onClick={props.onClose}>
+              Close
+            </button>
+          </>
+        ) : props.preview ? (
+          <>
+            {previewRows.length > 0 && <Facts items={previewRows} />}
+            <div className="sheet-actions">
+              <button type="button" className="btn" onClick={props.onClose}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn--primary" onClick={props.onConfirm} disabled={props.loading}>
+                {props.loading ? <span className="spin" aria-hidden="true" /> : `Confirm ${isDeposit ? "deposit" : "withdrawal"}`}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="sheet-actions">
+            <button type="button" className="btn" onClick={props.onClose}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn--primary" onClick={props.onPreview} disabled={props.loading || !amountOk}>
+              {props.loading ? <span className="spin" aria-hidden="true" /> : "Preview"}
+            </button>
+          </div>
+        )}
+
+        <Fade in={!!props.error}>
+          {props.error && (
+            <p className="note loss" role="alert">
+              <LineIcon name="alert" size={16} />
+              <span>{props.error}</span>
+            </p>
+          )}
         </Fade>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
