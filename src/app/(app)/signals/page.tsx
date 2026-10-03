@@ -1,9 +1,16 @@
 "use client";
 
+/**
+ * Intelligence: what smart wallets are buying, and who trades best. Filters
+ * sit in one bar; results are rows with the figures aligned, not loose cards.
+ */
+
 import { useState, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
 import { CHAINS } from "@/lib/chains";
+import { LineIcon } from "@/components/line-icon";
+import { TokenIcon } from "@/components/token-icon";
+import { Change, Empty, PageHead, Panel, PillTabs, Segmented, Skeleton } from "@/components/premium";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,52 +67,77 @@ interface LeaderboardEntry {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function abbreviate(addr: string): string {
-  if (!addr || addr.length <= 14) return addr || "—";
-  return addr.slice(0, 6) + "..." + addr.slice(-4);
+  if (!addr || addr.length <= 14) return addr || "unknown";
+  return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
 function formatUsd(v: number | string | undefined): string {
-  if (v == null) return "—";
+  if (v == null) return "n/a";
   const n = typeof v === "string" ? parseFloat(v) : v;
-  if (isNaN(n)) return "—";
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
-  return `$${n.toFixed(2)}`;
+  if (isNaN(n)) return "n/a";
+  const sign = n < 0 ? "−" : "";
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(1)}K`;
+  return `${sign}$${a.toFixed(2)}`;
 }
 
-function formatPct(v: number | string | undefined): string {
-  if (v == null) return "—";
+/** Ratios may come as 0.42 or as 42; both mean 42%. */
+function toPct(v: number | string | undefined): number | null {
+  if (v == null) return null;
   const n = typeof v === "string" ? parseFloat(v) : v;
-  if (isNaN(n)) return "—";
-  return `${n >= 0 ? "+" : ""}${(n * (Math.abs(n) <= 1 ? 100 : 1)).toFixed(1)}%`;
+  if (isNaN(n)) return null;
+  return Math.abs(n) <= 1 ? n * 100 : n;
 }
 
-function Spinner({ className = "" }: { className?: string }) {
+function formatPrice(price: number): string {
+  return `$${price >= 1 ? price.toLocaleString("en-US", { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}`;
+}
+
+function ChainSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   return (
-    <svg className={`animate-spin-breathe ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="16" height="16">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
+    <div className="select select--chip">
+      <label htmlFor={id} className="sr-only">
+        Chain
+      </label>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {Object.values(CHAINS).map((c) => (
+          <option key={c.swapName} value={c.swapName}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <Skeleton key={i} height={56} />
+      ))}
+    </div>
   );
 }
 
 const WALLET_TYPE_LABELS: Record<string, string> = {
-  "1": "Smart Money",
-  "2": "KOL",
+  "1": "Smart money",
+  "2": "Influencer",
   "3": "Whale",
-  smart_money: "Smart Money",
-  kol: "KOL",
+  smart_money: "Smart money",
+  kol: "Influencer",
   whale: "Whale",
   sniper: "Sniper",
   dev: "Dev",
   fresh: "Fresh",
   pump: "Pump",
-  smartMoney: "Smart Money",
-  influencer: "KOL",
+  smartMoney: "Smart money",
+  influencer: "Influencer",
 };
 
-// ── Smart Money Signals Tab ──────────────────────────────────────────────────
+// ── Smart Money Signals ──────────────────────────────────────────────────────
 
 function SignalsTab() {
   const [chain, setChain] = useState("ethereum");
@@ -134,83 +166,58 @@ function SignalsTab() {
         setSignals(list);
         setFetched(true);
       } else {
-        setError(data.error || "Failed to fetch signals");
+        setError(data.error || "Could not load signals");
       }
     } catch {
-      setError("Failed to connect to the server");
+      setError("Could not reach the server");
     } finally {
       setLoading(false);
     }
   }, [chain, walletType]);
 
   return (
-    <div className="space-y-5">
-      {/* Chain + type selectors */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="signals-chain" className="block text-[13px] font-medium text-muted-foreground mb-2">Chain</label>
-          <select
-            id="signals-chain"
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-            value={chain}
-            onChange={(e) => setChain(e.target.value)}
-          >
-            {Object.values(CHAINS).map((c) => (
-              <option key={c.swapName} value={c.swapName}>{c.name}</option>
-            ))}
-          </select>
+    <Panel
+      flush
+      index={2}
+      title="What smart wallets are buying"
+      sub="Tokens bought by several tracked wallets at once"
+      action={
+        <div className="filter-bar">
+          <ChainSelect id="signals-chain" value={chain} onChange={setChain} />
+          <Segmented
+            id="sig-type"
+            label="Wallet type"
+            value={walletType || "all"}
+            onChange={(v) => setWalletType(v === "all" ? "" : v)}
+            options={[
+              { value: "all", label: "All" },
+              { value: "1", label: "Smart money" },
+              { value: "2", label: "Influencers" },
+              { value: "3", label: "Whales" },
+            ]}
+          />
+          <button type="button" className="btn btn--sm btn--primary" onClick={handleFetch} disabled={loading}>
+            {loading ? <span className="spin" aria-hidden="true" /> : <LineIcon name="refresh" size={15} />}
+            {fetched ? "Refresh" : "Show signals"}
+          </button>
         </div>
-        <div>
-          <label htmlFor="signals-wallet-type" className="block text-[13px] font-medium text-muted-foreground mb-2">Wallet Type</label>
-          <select
-            id="signals-wallet-type"
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-            value={walletType}
-            onChange={(e) => setWalletType(e.target.value)}
-          >
-            <option value="">All</option>
-            <option value="1">Smart Money</option>
-            <option value="2">KOL / Influencer</option>
-            <option value="3">Whales</option>
-          </select>
-        </div>
-      </div>
-
-      <Button
-        onClick={handleFetch}
-        disabled={loading}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
-      >
-        {loading ? (
-          <span className="flex items-center gap-2"><Spinner /> Loading signals...</span>
-        ) : (
-          "Get Signals"
-        )}
-      </Button>
-
-      {/* Disclaimer */}
-      <div className="rounded-lg bg-warn-soft border border-warn/30 px-3 py-2">
-        <p className="text-[11px] text-warn-ink leading-relaxed">
-          Signals are for informational purposes only and are <strong>NOT investment advice</strong>. Past performance does not guarantee future results.
-        </p>
-      </div>
-
-      {error && (
-        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">{error}</div>
-      )}
-
-      {fetched && signals.length === 0 && !error && (
-        <div className="rounded-xl bg-secondary border border-border/60 p-6 text-center">
-          <p className="text-[13px] text-muted-foreground">No signals found for this chain. Try a different chain or filter.</p>
-        </div>
-      )}
-
-      {/* Signal cards */}
-      {signals.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-[13px] font-medium text-muted-foreground">
-            {signals.length} signal{signals.length !== 1 ? "s" : ""}
+      }
+    >
+      {loading ? (
+        <Loading />
+      ) : error ? (
+        <div className="wal-pad">
+          <p className="note loss" role="alert">
+            <LineIcon name="alert" size={16} />
+            <span>{error}</span>
           </p>
+        </div>
+      ) : !fetched ? (
+        <Empty icon="signal" title="Pick a chain and a wallet type" text="Then press Show signals. Nothing loads until you ask." />
+      ) : signals.length === 0 ? (
+        <Empty icon="signal" title="No signals right now" text="Try another chain or wallet type." />
+      ) : (
+        <ul className="rows wal-pad sig-rows">
           {signals.slice(0, 20).map((s, i) => {
             // Signal data has nested token object: s.token.symbol, s.token.tokenAddress, etc.
             const tokenObj = s.token as Record<string, unknown> | undefined;
@@ -219,105 +226,81 @@ function SignalsTab() {
             const addressCount = s.triggerWalletCount ?? s.addressCount ?? s.address_count ?? 0;
             const totalAmt = s.amountUsd ?? s.amount_usd ?? s.totalAmountUsd ?? s.total_amount_usd;
             const mcap = (tokenObj?.marketCapUsd as string) ?? s.marketCap ?? s.market_cap;
-            const liq = s.liquidityUsd ?? s.liquidity_usd;
             const price = s.price;
             const change = s.priceChange24h ?? s.price_change_24h;
             const soldRatio = s.soldRatioPercent;
-            const types = s.walletTypes ?? s.wallet_types ?? [];
+            const types: string[] = [...(s.walletTypes ?? s.wallet_types ?? [])];
             const wType = s.walletType;
             if (wType && types.length === 0) types.push(wType);
             const logo = (tokenObj?.logo as string) ?? s.logo;
             const tokenName = (tokenObj?.name as string) ?? "";
-            const holders = tokenObj?.holders as string | undefined;
 
             return (
-              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-secondary p-4">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    {typeof logo === "string" && logo.startsWith("https://") ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={logo} alt={`${symbol} logo`} width={24} height={24} className="rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    ) : null}
-                    <span className="text-[14px] font-semibold">{symbol}</span>
-                    {tokenName && <span className="text-[11px] text-muted-foreground/60 truncate max-w-[120px]">{tokenName}</span>}
-                    <span className="text-[11px] text-muted-foreground/60 font-mono">{abbreviate(addr)}</span>
+              <li key={`${addr}-${i}`}>
+                <div className="row sig-row">
+                  {typeof logo === "string" && logo.startsWith("https://") ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- token logos come from many hosts
+                    <img src={logo} alt="" width={36} height={36} className="tok-logo" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+                  ) : (
+                    <TokenIcon symbol={symbol} size={36} />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div className="t trunc">
+                      {symbol} {tokenName && <span className="muted sig-name">{tokenName}</span>}
+                    </div>
+                    <div className="sub sig-sub">
+                      <span className="num">{abbreviate(addr)}</span>
+                      {types.map((t, j) => (
+                        <span key={j} className="tag">
+                          {WALLET_TYPE_LABELS[t] ?? t}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  {change != null && (
-                    <span className={`text-[12px] font-semibold tabular-nums ${Number(change) >= 0 ? "text-gain-ink" : "text-loss-ink"}`}>
-                      {Number(change) >= 0 ? "+" : ""}{Number(change).toFixed(2)}%
-                    </span>
-                  )}
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px]">
-                  {Number(addressCount) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Wallets</span>
-                      <span className="font-medium">{Number(addressCount)}</span>
-                    </div>
-                  )}
-                  {totalAmt != null && Number(totalAmt) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Volume</span>
-                      <span className="font-medium">{formatUsd(totalAmt)}</span>
-                    </div>
-                  )}
-                  {price != null && Number(price) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Price</span>
-                      <span className="font-medium tabular-nums">
-                        ${Number(price) >= 1 ? Number(price).toLocaleString("en-US", { maximumFractionDigits: 2 }) : Number(price) >= 0.0001 ? Number(price).toFixed(6) : Number(price).toExponential(2)}
-                      </span>
-                    </div>
-                  )}
-                  {mcap != null && Number(mcap) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Market Cap</span>
-                      <span className="font-medium">{formatUsd(mcap)}</span>
-                    </div>
-                  )}
-                  {liq != null && Number(liq) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Liquidity</span>
-                      <span className="font-medium">{formatUsd(liq)}</span>
-                    </div>
-                  )}
-                  {holders != null && Number(holders) > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Holders</span>
-                      <span className="font-medium">{Number(holders).toLocaleString("en-US")}</span>
-                    </div>
-                  )}
-                  {soldRatio != null && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Sold Ratio</span>
-                      <span className={`font-medium ${Number(soldRatio) > 80 ? "text-loss-ink" : ""}`}>{Number(soldRatio).toFixed(1)}%</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Wallet type badges */}
-                {types.length > 0 && (
-                  <div className="flex gap-1.5 mt-2.5 flex-wrap">
-                    {types.map((t, j) => (
-                      <span key={j} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
-                        {WALLET_TYPE_LABELS[t] ?? t}
-                      </span>
-                    ))}
+                  <div className="sig-col">
+                    <span className="num">{Number(addressCount) > 0 ? Number(addressCount) : "n/a"}</span>
+                    <span className="sub">wallets</span>
                   </div>
-                )}
-              </div>
+                  <div className="sig-col">
+                    <span className="num">{totalAmt != null && Number(totalAmt) > 0 ? formatUsd(totalAmt) : "n/a"}</span>
+                    <span className="sub">bought</span>
+                  </div>
+                  <div className="sig-col">
+                    <span className="num">{mcap != null && Number(mcap) > 0 ? formatUsd(mcap) : "n/a"}</span>
+                    <span className="sub">market cap</span>
+                  </div>
+                  <div className="end">
+                    <div className="num">{price != null && Number(price) > 0 ? formatPrice(Number(price)) : ""}</div>
+                    {change != null ? <Change value={Number(change)} /> : soldRatio != null ? <span className={`num sold${Number(soldRatio) > 80 ? " text-loss-ink" : " muted"}`}>{Number(soldRatio).toFixed(0)}% sold</span> : null}
+                  </div>
+                </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+      <p className="sig-foot">Signals show what others did. They are information, not investment advice; past results do not repeat on&nbsp;cue.</p>
+    </Panel>
   );
 }
 
-// ── Leaderboard Tab ──────────────────────────────────────────────────────────
+// ── Leaderboard ──────────────────────────────────────────────────────────────
+
+const TIME_FRAMES = [
+  { value: "1", label: "1D" },
+  { value: "2", label: "3D" },
+  { value: "3", label: "7D" },
+  { value: "4", label: "1M" },
+  { value: "5", label: "3M" },
+];
+
+const SORTS = [
+  { value: "1", label: "PnL" },
+  { value: "2", label: "Win rate" },
+  { value: "3", label: "Trades" },
+  { value: "4", label: "Volume" },
+  { value: "5", label: "ROI" },
+];
 
 function LeaderboardTab() {
   const [chain, setChain] = useState("ethereum");
@@ -345,186 +328,101 @@ function LeaderboardTab() {
         setEntries(list);
         setFetched(true);
       } else {
-        setError(data.error || "Failed to fetch leaderboard");
+        setError(data.error || "Could not load the leaderboard");
       }
     } catch {
-      setError("Failed to connect to the server");
+      setError("Could not reach the server");
     } finally {
       setLoading(false);
     }
   }, [chain, timeFrame, sortBy]);
 
-  const timeFrameLabels: Record<string, string> = {
-    "1": "1 Day",
-    "2": "3 Days",
-    "3": "7 Days",
-    "4": "1 Month",
-    "5": "3 Months",
-  };
-
-  const sortLabels: Record<string, string> = {
-    "1": "PnL",
-    "2": "Win Rate",
-    "3": "Tx Count",
-    "4": "Volume",
-    "5": "ROI",
-  };
-
   return (
-    <div className="space-y-5">
-      {/* Selectors */}
-      <div>
-        <label htmlFor="leaderboard-chain" className="block text-[13px] font-medium text-muted-foreground mb-2">Chain</label>
-        <select
-          id="leaderboard-chain"
-          className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-3 text-sm font-medium outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-          value={chain}
-          onChange={(e) => setChain(e.target.value)}
-        >
-          {Object.values(CHAINS).map((c) => (
-            <option key={c.swapName} value={c.swapName}>{c.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">Time Frame</p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(timeFrameLabels).map(([k, v]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setTimeFrame(k)}
-                className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
-                  timeFrame === k
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
+    <Panel
+      flush
+      index={2}
+      title="Top traders"
+      sub="Wallets ranked on the chain you pick"
+      action={
+        <div className="filter-bar">
+          <ChainSelect id="leaderboard-chain" value={chain} onChange={setChain} />
+          <Segmented id="lb-time" label="Period" value={timeFrame} onChange={setTimeFrame} options={TIME_FRAMES} />
+          <div className="select select--chip">
+            <label htmlFor="lb-sort" className="sr-only">
+              Sort by
+            </label>
+            <select id="lb-sort" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              {SORTS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  By {o.label.toLowerCase()}
+                </option>
+              ))}
+            </select>
           </div>
+          <button type="button" className="btn btn--sm btn--primary" onClick={handleFetch} disabled={loading}>
+            {loading ? <span className="spin" aria-hidden="true" /> : <LineIcon name="refresh" size={15} />}
+            {fetched ? "Refresh" : "Show ranking"}
+          </button>
         </div>
-        <div>
-          <p className="text-[13px] font-medium text-muted-foreground mb-2">Sort By</p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(sortLabels).map(([k, v]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setSortBy(k)}
-                className={`h-8 px-2.5 rounded-lg text-[11px] font-semibold transition-colors ${
-                  sortBy === k
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <Button
-        onClick={handleFetch}
-        disabled={loading}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
-      >
-        {loading ? (
-          <span className="flex items-center gap-2"><Spinner /> Loading...</span>
-        ) : (
-          "Get Leaderboard"
-        )}
-      </Button>
-
-      {error && (
-        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">{error}</div>
-      )}
-
-      {fetched && entries.length === 0 && !error && (
-        <div className="rounded-xl bg-secondary border border-border/60 p-6 text-center">
-          <p className="text-[13px] text-muted-foreground">No leaderboard data for this chain/period.</p>
-        </div>
-      )}
-
-      {/* Leaderboard list */}
-      {entries.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[13px] font-medium text-muted-foreground">
-            Top {entries.length} traders
+      }
+    >
+      {loading ? (
+        <Loading />
+      ) : error ? (
+        <div className="wal-pad">
+          <p className="note loss" role="alert">
+            <LineIcon name="alert" size={16} />
+            <span>{error}</span>
           </p>
+        </div>
+      ) : !fetched ? (
+        <Empty icon="bar-chart" title="Choose a chain and a period" text="Then press Show ranking." />
+      ) : entries.length === 0 ? (
+        <Empty icon="bar-chart" title="No ranking for this period" text="Try another chain or a longer period." />
+      ) : (
+        <ol className="rows wal-pad lb-rows">
           {entries.slice(0, 20).map((e, i) => {
             const addr = e.walletAddress ?? e.wallet_address ?? e.address ?? "";
             const pnl = e.realizedPnl ?? e.realized_pnl ?? e.pnl;
-            const winRate = e.winRate ?? e.win_rate;
+            const winRate = toPct(e.winRate ?? e.win_rate);
             const txCount = e.txCount ?? e.tx_count ?? e.txNumber;
-            const vol = e.volume;
-            const roi = e.roi ?? e.profitRate ?? e.profit_rate;
+            const roi = toPct(e.roi ?? e.profitRate ?? e.profit_rate);
             const wType = e.walletType ?? e.wallet_type;
 
             return (
-              <div key={`${addr}-${i}`} className="rounded-xl border border-border/60 bg-secondary px-4 py-3">
-                <div className="flex items-center gap-3">
-                  {/* Rank */}
-                  <span className={`text-[13px] font-bold w-6 text-center tabular-nums shrink-0 ${
-                    i < 3 ? "text-primary" : "text-muted-foreground/50"
-                  }`}>
-                    {i + 1}
-                  </span>
-
-                  {/* Address + type */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold font-mono">{abbreviate(addr)}</span>
-                      {wType && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-brand">
-                          {WALLET_TYPE_LABELS[wType] ?? wType}
-                        </span>
-                      )}
-                    </div>
-                    {/* Stats row */}
-                    <div className="flex gap-3 mt-1 text-[11px]">
-                      {pnl != null && (
-                        <span className={Number(pnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>
-                          PnL: {formatUsd(pnl)}
-                        </span>
-                      )}
-                      {winRate != null && (
-                        <span className="text-muted-foreground">
-                          WR: {formatPct(winRate)}
-                        </span>
-                      )}
-                      {txCount != null && (
-                        <span className="text-muted-foreground">
-                          Txs: {Number(txCount)}
-                        </span>
-                      )}
-                      {vol != null && Number(vol) > 0 && (
-                        <span className="text-muted-foreground">
-                          Vol: {formatUsd(vol)}
-                        </span>
-                      )}
-                      {roi != null && (
-                        <span className={Number(roi) >= 0 ? "text-gain-ink" : "text-loss-ink"}>
-                          ROI: {formatPct(roi)}
-                        </span>
-                      )}
+              <li key={`${addr}-${i}`}>
+                <div className="row lb-row">
+                  <span className={`rank num${i < 3 ? " top" : ""}`}>{i + 1}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="t num">{abbreviate(addr)}</div>
+                    <div className="sub">
+                      {wType ? <span className="tag">{WALLET_TYPE_LABELS[wType] ?? wType}</span> : null}
+                      {txCount != null && <span>{Number(txCount)} trades</span>}
                     </div>
                   </div>
+                  <div className="sig-col">
+                    <span className="num">{winRate != null ? `${winRate.toFixed(0)}%` : "n/a"}</span>
+                    <span className="sub">win rate</span>
+                  </div>
+                  <div className="sig-col">
+                    <span className="num">{e.volume != null && Number(e.volume) > 0 ? formatUsd(e.volume) : "n/a"}</span>
+                    <span className="sub">volume</span>
+                  </div>
+                  <div className="end">
+                    <div className={`num ${pnl != null ? (Number(pnl) >= 0 ? "text-gain-ink" : "text-loss-ink") : ""}`}>{formatUsd(pnl)}</div>
+                    <Change value={roi} digits={1} />
+                  </div>
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
-    </div>
+    </Panel>
   );
 }
 
-// ── Main Signals Page ────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
   const { authenticated } = useAuth();
@@ -532,57 +430,26 @@ export default function SignalsPage() {
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground text-[15px]">
-          Please connect your wallet first.
-        </p>
+      <div className="page">
+        <Empty icon="signal" title="Sign in first" text="Connect your wallet to see smart money signals." />
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-5 py-2">
-      {/* Header */}
-      <div>
-        <p className="text-eyebrow">Smart money · leaderboard</p>
-        <h1 className="mt-1.5 text-display-lg text-foreground">
-          Intelligence
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-2">
-          Smart money signals and top trader leaderboard
-        </p>
-      </div>
-
-      {/* Tab switcher */}
-      <div className="flex gap-1 p-1 rounded-xl bg-secondary">
-        <button
-          type="button"
-          onClick={() => setTab("signals")}
-          className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
-            tab === "signals"
-              ? "bg-secondary text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Smart Money Signals
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("leaderboard")}
-          className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
-            tab === "leaderboard"
-              ? "bg-secondary text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Leaderboard
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="rounded-2xl border border-border/60 bg-card p-5">
-        {tab === "signals" ? <SignalsTab /> : <LeaderboardTab />}
-      </div>
+    <div className="page">
+      <PageHead title="Intelligence" lede="Follow what experienced wallets buy, and see who trades best on each&nbsp;chain." />
+      <PillTabs
+        id="intel-tabs"
+        label="Intelligence views"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "signals", label: "Smart money" },
+          { value: "leaderboard", label: "Leaderboard" },
+        ]}
+      />
+      {tab === "signals" ? <SignalsTab /> : <LeaderboardTab />}
     </div>
   );
 }
