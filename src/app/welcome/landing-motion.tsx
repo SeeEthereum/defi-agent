@@ -25,7 +25,7 @@ export function LandingMotion() {
     const cleanups: Array<() => void> = [];
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    // ── Loops (feature tiles) pause while off screen ─────────────────────
+    // ── The marquee pauses while off screen ─────────────────────────────
     root.querySelectorAll<HTMLElement>("[data-loop]").forEach((scope) => {
       cleanups.push(
         inView(scope, () => {
@@ -36,29 +36,6 @@ export function LandingMotion() {
         }, { margin: "20% 0px" })
       );
     });
-
-    // ── Phone carousel dots follow the centred tile ──────────────────────
-    const deck = root.querySelector<HTMLElement>(".deck");
-    const dots = Array.from(root.querySelectorAll<HTMLElement>(".deck-dots span"));
-    if (deck && dots.length) {
-      const slots = Array.from(deck.querySelectorAll<HTMLElement>(".tile-slot"));
-      const io = new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue;
-            const i = slots.indexOf(e.target as HTMLElement);
-            dots.forEach((d, n) => (d.dataset.on = n === i ? "true" : "false"));
-          }
-        },
-        { root: deck, threshold: 0.6 }
-      );
-      slots.forEach((s) => io.observe(s));
-      cleanups.push(() => io.disconnect());
-      // Start on the middle tile on phones, as the desktop fan does.
-      if (window.matchMedia("(max-width: 900px)").matches && slots[1]) {
-        deck.scrollLeft = slots[1].offsetLeft - (deck.clientWidth - slots[1].offsetWidth) / 2;
-      }
-    }
 
     // ── Spotlight border under the pointer ───────────────────────────────
     const onPointer = (e: PointerEvent) => {
@@ -122,18 +99,9 @@ export function LandingMotion() {
     if (window.matchMedia("(min-width: 1081px) and (hover: hover)").matches) {
       const hero = root.querySelector<HTMLElement>(".hero");
       const art = root.querySelector<HTMLElement>(".hero-art img");
-      const deckWrap = root.querySelector<HTMLElement>(".deck-wrap");
       if (hero && art) {
         cleanups.push(
           scroll(animate(art, { y: [-24, 60], scale: [1.1, 1.1] }, { ease: "linear" }), {
-            target: hero,
-            offset: ["start start", "end start"],
-          })
-        );
-      }
-      if (hero && deckWrap) {
-        cleanups.push(
-          scroll(animate(deckWrap, { y: [0, -48] }, { ease: "linear" }), {
             target: hero,
             offset: ["start start", "end start"],
           })
