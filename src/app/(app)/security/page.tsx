@@ -1,18 +1,15 @@
 "use client";
 
+/**
+ * Security: who may spend your tokens (approvals, revocable), and how risky
+ * the tokens you hold are. Filters sit in one bar; results are rows.
+ */
+
 import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { CHAINS } from "@/lib/chains";
+import { LineIcon } from "@/components/line-icon";
+import { Empty, Metric, PageHead, Panel, PillTabs, Segmented, Sheet, Skeleton } from "@/components/premium";
 
 function userFacingError(detail: unknown, fallback: string): string {
   const message =
@@ -93,56 +90,55 @@ interface ApprovalItem {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function abbreviate(addr: string): string {
-  if (!addr || addr.length <= 14) return addr || "—";
-  return addr.slice(0, 6) + "..." + addr.slice(-4);
+  if (!addr || addr.length <= 14) return addr || "unknown";
+  return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
 function getChainName(idx: string | number | undefined): string {
-  if (!idx) return "—";
-  const chain = Object.values(CHAINS).find(
-    (c) => String(c.chainIndex) === String(idx)
-  );
+  if (!idx) return "unknown chain";
+  const chain = Object.values(CHAINS).find((c) => String(c.chainIndex) === String(idx));
   return chain?.name ?? String(idx);
 }
 
-function getRiskColor(level: string | undefined): string {
-  if (!level) return "text-muted-foreground";
+/** Risk level as a calm label and a tone used for its colour. */
+function riskTone(level: string | undefined): { label: string; tone: "bad" | "warn" | "ok" | "flat" } {
+  if (!level) return { label: "Unknown", tone: "flat" };
   const l = level.toLowerCase();
-  if (l === "high" || l === "3" || l === "danger") return "text-loss-ink";
-  if (l === "medium" || l === "2" || l === "warning") return "text-warn-ink";
-  if (l === "low" || l === "1" || l === "safe" || l === "0") return "text-gain-ink";
-  return "text-muted-foreground";
+  if (l === "high" || l === "3" || l === "danger") return { label: "High risk", tone: "bad" };
+  if (l === "medium" || l === "2" || l === "warning") return { label: "Medium risk", tone: "warn" };
+  if (l === "low" || l === "1" || l === "safe" || l === "0") return { label: "Looks safe", tone: "ok" };
+  return { label: level, tone: "flat" };
 }
 
-function getRiskBadge(level: string | undefined): { label: string; bg: string; text: string } {
-  if (!level) return { label: "Unknown", bg: "bg-secondary", text: "text-muted-foreground" };
-  const l = level.toLowerCase();
-  if (l === "high" || l === "3" || l === "danger")
-    return { label: "High Risk", bg: "bg-loss-soft", text: "text-loss-ink" };
-  if (l === "medium" || l === "2" || l === "warning")
-    return { label: "Medium Risk", bg: "bg-warn-soft", text: "text-warn-ink" };
-  if (l === "low" || l === "1" || l === "safe" || l === "0")
-    return { label: "Safe", bg: "bg-gain-soft", text: "text-gain-ink" };
-  return { label: level, bg: "bg-secondary", text: "text-muted-foreground" };
-}
-
-function Spinner({ className = "" }: { className?: string }) {
+function ChainSelect({ id, value, onChange, allLabel }: { id: string; value: string; onChange: (v: string) => void; allLabel?: string }) {
   return (
-    <svg
-      className={`animate-spin-breathe ${className}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-    >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
+    <div className="select select--chip">
+      <label htmlFor={id} className="sr-only">
+        Chain
+      </label>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {allLabel && <option value="">{allLabel}</option>}
+        {Object.values(CHAINS).map((c) => (
+          <option key={c.swapName} value={c.swapName}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
-// ── Token Scanner Tab ────────────────────────────────────────────────────────
+function Loading() {
+  return (
+    <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} height={60} />
+      ))}
+    </div>
+  );
+}
+
+// ── Token Scanner ────────────────────────────────────────────────────────────
 
 function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
   const [mode, setMode] = useState<"wallet" | "manual">("wallet");
@@ -181,124 +177,82 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
         setResults(list);
         setScanned(true);
       } else {
-        setError(data.error || "Scan failed");
+        setError(data.error || "The scan failed");
       }
     } catch {
-      setError("Failed to connect to the server");
+      setError("Could not reach the server");
     } finally {
       setLoading(false);
     }
   }, [mode, walletAddress, chain, manualTokens]);
 
   return (
-    <div className="space-y-5">
-      {/* Mode selector */}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setMode("wallet")}
-          className={`flex-1 h-9 rounded-lg text-[12px] font-semibold transition-colors ${
-            mode === "wallet"
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
-          }`}
-        >
-          Scan My Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("manual")}
-          className={`flex-1 h-9 rounded-lg text-[12px] font-semibold transition-colors ${
-            mode === "manual"
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary"
-          }`}
-        >
-          Scan Specific Tokens
-        </button>
-      </div>
-
-      {/* Chain selector (wallet mode — required) */}
-      {mode === "wallet" && (
-        <div>
-          <Label htmlFor="scan-chain" className="text-[13px] font-medium text-muted-foreground mb-2">
-            Select chain
-          </Label>
-          <select
-            id="scan-chain"
-            className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-            value={chain}
-            onChange={(e) => setChain(e.target.value)}
+    <Panel
+      flush
+      index={2}
+      title="Token risk scan"
+      sub="Honeypots, hidden taxes, owners who can mint or freeze"
+      action={
+        <div className="filter-bar">
+          <Segmented
+            id="scan-mode"
+            label="What to scan"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "wallet", label: "My wallet" },
+              { value: "manual", label: "Specific tokens" },
+            ]}
+          />
+          {mode === "wallet" && <ChainSelect id="scan-chain" value={chain} onChange={setChain} />}
+          <button
+            type="button"
+            className="btn btn--sm btn--primary"
+            onClick={handleScan}
+            disabled={loading || (mode === "manual" && !manualTokens.trim()) || (mode === "wallet" && !chain)}
           >
-            {Object.values(CHAINS).map((c) => (
-              <option key={c.swapName} value={c.swapName}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            {loading ? <span className="spin" aria-hidden="true" /> : <LineIcon name="shield-check" size={15} />}
+            {loading ? "Scanning…" : "Scan"}
+          </button>
         </div>
-      )}
-
-      {/* Manual token input */}
+      }
+    >
       {mode === "manual" && (
-        <div>
-          <Label htmlFor="scan-tokens" className="text-[13px] font-medium text-muted-foreground mb-2">
-            Token list (chainId:address, comma-separated)
-          </Label>
-          <Input
+        <div className="field scan-input">
+          <label htmlFor="scan-tokens">Tokens to scan, as chainId:address, separated by commas</label>
+          <input
             id="scan-tokens"
-            placeholder="e.g. 1:0xdac17f958d2ee523a2206206994597c13d831ec7"
+            className="input mono"
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="1:0xdac17f958d2ee523a2206206994597c13d831ec7"
             value={manualTokens}
             onChange={(e) => setManualTokens(e.target.value)}
-            className="h-10 rounded-xl border-border/60 bg-secondary text-sm"
           />
-          <p className="text-[11px] text-muted-foreground/60 mt-1 px-1">
-            Chain IDs: 1=Ethereum, 42161=Arbitrum, 8453=Base, 56=BNB, 137=Polygon
-          </p>
+          <p className="hint">Chain IDs: 1 Ethereum, 42161 Arbitrum, 8453 Base, 56 BNB Chain, 137 Polygon, 10 Optimism.</p>
         </div>
       )}
 
-      <Button
-        onClick={handleScan}
-        disabled={loading || (mode === "manual" && !manualTokens.trim()) || (mode === "wallet" && !chain)}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
-      >
-        {loading ? (
-          <span className="flex items-center gap-2">
-            <Spinner /> Scanning...
-          </span>
-        ) : (
-          "Scan Tokens"
-        )}
-      </Button>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">
-          {error}
-        </div>
-      )}
-
-      {/* Results */}
-      {scanned && results.length === 0 && !error && (
-        <div className="rounded-xl bg-gain-soft border border-gain/30 p-4 text-center">
-          <p className="text-[13px] font-medium text-gain-ink">
-            No risky tokens found in your wallet
+      {loading ? (
+        <Loading />
+      ) : error ? (
+        <div className="wal-pad">
+          <p className="note loss" role="alert">
+            <LineIcon name="alert" size={16} />
+            <span>{error}</span>
           </p>
         </div>
-      )}
-
-      {results.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-[13px] font-medium text-muted-foreground">
-            {results.length} token{results.length !== 1 ? "s" : ""} scanned
-          </p>
+      ) : !scanned ? (
+        <Empty icon="shield-check" title="Nothing scanned yet" text={mode === "wallet" ? "Pick a chain and press Scan to check the tokens you hold there." : "Paste one or more tokens above, then press Scan."} />
+      ) : results.length === 0 ? (
+        <Empty icon="shield-check" title="No risky tokens found" text="The scan found nothing to worry about." />
+      ) : (
+        <ul className="rows wal-pad">
           {results.map((token, i) => {
             const addr =
               token.tokenAddress ?? token.tokenContractAddress ?? token.address ?? "";
             const symbol = token.tokenSymbol ?? token.symbol ?? abbreviate(addr);
             const risk = token.riskLevel ?? token.risk_level;
-            const badge = getRiskBadge(risk);
             const isHoneypot =
               token.isHoneypot ?? token.is_honeypot ?? token.honeypot ?? false;
             const buyTax = token.buyTaxes ?? token.buyTax ?? token.buy_tax;
@@ -327,91 +281,66 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
               if (token.isFundLinkage) risks.push("Fund linkage detected");
             }
 
+            const tone = riskTone(risk);
+            const taxBad = (v: unknown) => v != null && Number(v) > 5;
+
             return (
-              <div
-                key={`${addr}-${i}`}
-                className="rounded-xl border border-border/60 bg-secondary overflow-hidden"
-              >
-                {/* Header */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-border/30">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-semibold">{symbol}</span>
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>
-                        {badge.label}
-                      </span>
-                      {isHoneypot && (
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-loss-soft text-loss-ink">
-                          Honeypot
-                        </span>
-                      )}
+              <li key={`${addr}-${i}`}>
+                <div className="scan-item">
+                  <div className="row scan-row">
+                    <span className={`risk-dot ${tone.tone}`} aria-hidden="true">
+                      <LineIcon name={tone.tone === "ok" ? "shield-check" : "alert"} size={16} />
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="t scan-t">
+                        <span>{symbol}</span>
+                        <span className={`st ${tone.tone === "bad" ? "bad" : tone.tone === "warn" ? "wait" : tone.tone === "ok" ? "ok" : ""}`}>{tone.label}</span>
+                        {isHoneypot && <span className="st bad">Honeypot</span>}
+                      </div>
+                      <div className="sub">
+                        <span className="num">{abbreviate(addr)}</span> · {getChainName(chainIdx)}
+                      </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground/60 font-mono mt-0.5">
-                      {abbreviate(addr)} · {getChainName(chainIdx)}
-                    </p>
+                    <dl className="facts scan-facts">
+                      <div>
+                        <dt>Buy tax</dt>
+                        <dd className={`num${taxBad(buyTax) ? " text-loss-ink" : ""}`}>{buyTax != null ? `${Number(buyTax).toFixed(1)}%` : "n/a"}</dd>
+                      </div>
+                      <div>
+                        <dt>Sell tax</dt>
+                        <dd className={`num${taxBad(sellTax) ? " text-loss-ink" : ""}`}>{sellTax != null ? `${Number(sellTax).toFixed(1)}%` : "n/a"}</dd>
+                      </div>
+                      <div>
+                        <dt>Mintable</dt>
+                        <dd className={isMintable ? "text-warn-ink" : ""}>{isMintable == null ? "n/a" : isMintable ? "Yes" : "No"}</dd>
+                      </div>
+                      <div>
+                        <dt>Pausable</dt>
+                        <dd className={canPause ? "text-warn-ink" : ""}>{canPause == null ? "n/a" : canPause ? "Yes" : "No"}</dd>
+                      </div>
+                    </dl>
                   </div>
-                </div>
-
-                {/* Details */}
-                <div className="px-4 py-3 space-y-2 text-[12px]">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                    {buyTax != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Buy Tax</span>
-                        <span className={Number(buyTax) > 5 ? "text-loss-ink font-medium" : ""}>{Number(buyTax).toFixed(1)}%</span>
-                      </div>
-                    )}
-                    {sellTax != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Sell Tax</span>
-                        <span className={Number(sellTax) > 5 ? "text-loss-ink font-medium" : ""}>{Number(sellTax).toFixed(1)}%</span>
-                      </div>
-                    )}
-                    {isMintable != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Mintable</span>
-                        <span className={isMintable ? "text-warn-ink" : "text-gain-ink"}>{isMintable ? "Yes" : "No"}</span>
-                      </div>
-                    )}
-                    {canPause != null && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Pausable</span>
-                        <span className={canPause ? "text-warn-ink" : "text-gain-ink"}>{canPause ? "Yes" : "No"}</span>
-                      </div>
-                    )}
-                    {holders != null && Number(holders) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Holders</span>
-                        <span>{Number(holders).toLocaleString("en-US")}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Risk items */}
-                  {risks.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-[11px] font-medium text-loss-ink mb-1">Risk Factors:</p>
-                      <ul className="space-y-0.5">
-                        {risks.map((r, j) => (
-                          <li key={j} className="text-[11px] text-loss-ink flex items-start gap-1.5">
-                            <span className="mt-0.5 shrink-0">•</span>
-                            <span>{typeof r === "string" ? r : JSON.stringify(r)}</span>
-                          </li>
-                        ))}
-                      </ul>
+                  {(risks.length > 0 || (holders != null && Number(holders) > 0)) && (
+                    <div className="scan-extra">
+                      {risks.map((r, j) => (
+                        <span key={j} className="tag tag--bad">
+                          {typeof r === "string" ? r : JSON.stringify(r)}
+                        </span>
+                      ))}
+                      {holders != null && Number(holders) > 0 && <span className="muted">{Number(holders).toLocaleString("en-US")} holders</span>}
                     </div>
                   )}
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </Panel>
   );
 }
 
-// ── Approvals Tab ────────────────────────────────────────────────────────────
+// ── Approvals ────────────────────────────────────────────────────────────────
 
 interface RevokePending {
   tokenAddr: string;
@@ -419,6 +348,11 @@ interface RevokePending {
   chainIdx: number;
   symbol: string;
   chainName: string;
+}
+
+function isUnlimitedAllowance(allowance: unknown): boolean {
+  const a = String(allowance);
+  return a.includes("unlimited") || a.includes("MAX") || (a.length > 30 && /^[0-9]+$/.test(a));
 }
 
 function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
@@ -497,102 +431,72 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
         setApprovals(list);
         setFetched(true);
       } else {
-        setError(data.error || "Failed to fetch approvals");
+        setError(data.error || "Could not load approvals");
       }
     } catch {
-      setError("Failed to connect to the server");
+      setError("Could not reach the server");
     } finally {
       setLoading(false);
     }
   }, [walletAddress, chain]);
 
   if (!walletAddress) {
-    return (
-      <div className="text-center py-8 text-muted-foreground text-[13px]">
-        Please connect your wallet first.
-      </div>
-    );
+    return <Empty icon="wallet" title="Loading your wallet" text="One moment." />;
   }
 
-  return (
-    <div className="space-y-5">
-      {/* Chain filter */}
-      <div>
-        <Label htmlFor="approvals-chain" className="text-[13px] font-medium text-muted-foreground mb-2">
-          Filter by chain (optional)
-        </Label>
-        <select
-          id="approvals-chain"
-          className="flex h-10 w-full rounded-xl border border-border/60 bg-secondary px-4 text-sm font-medium text-foreground outline-none focus:border-primary focus:ring-3 focus:ring-primary/25 appearance-none cursor-pointer"
-          value={chain}
-          onChange={(e) => setChain(e.target.value)}
-        >
-          <option value="">All chains</option>
-          {Object.values(CHAINS).map((c) => (
-            <option key={c.swapName} value={c.swapName}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+  const unlimitedCount = approvals.filter((a) => isUnlimitedAllowance(a.remainAmount ?? a.allowance ?? a.approvedAmount ?? a.approved_amount ?? "")).length;
+  const riskyCount = approvals.filter((a) => a.vulnerabilityFlag ?? a.isAtRisk ?? a.is_at_risk).length;
 
-      <Button
-        onClick={handleFetch}
-        disabled={loading}
-        className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-semibold"
+  return (
+    <>
+      {fetched && approvals.length > 0 && (
+        <div className="metrics in">
+          <Metric label="Active approvals" value={approvals.length} sub={`${revokedKeys.size} revoked this visit`} />
+          <Metric label="Unlimited" value={<span className={unlimitedCount ? "text-warn-ink" : ""}>{unlimitedCount}</span>} sub="can spend everything" />
+          <Metric label="Flagged" value={<span className={riskyCount ? "text-loss-ink" : ""}>{riskyCount}</span>} sub="spender at risk" />
+        </div>
+      )}
+
+      <Panel
+        flush
+        index={2}
+        title="Who can spend your tokens"
+        sub="Every app you approved keeps that right until you revoke it"
+        action={
+          <div className="filter-bar">
+            <ChainSelect id="approvals-chain" value={chain} onChange={setChain} allLabel="All chains" />
+            <button type="button" className="btn btn--sm btn--primary" onClick={handleFetch} disabled={loading}>
+              {loading ? <span className="spin" aria-hidden="true" /> : <LineIcon name="refresh" size={15} />}
+              {fetched ? "Check again" : "Check approvals"}
+            </button>
+          </div>
+        }
       >
         {loading ? (
-          <span className="flex items-center gap-2">
-            <Spinner /> Loading...
-          </span>
-        ) : (
-          "Check Approvals"
-        )}
-      </Button>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl bg-loss-soft border border-loss/30 p-4 text-[13px] text-loss-ink">
-          {error}
-        </div>
-      )}
-
-      {/* Empty state — Voxr-style "all clear" hero with kinetic display. */}
-      {fetched && approvals.length === 0 && !error && (
-        <div className="voxr-halo relative rounded-2xl border border-border bg-card p-10 text-center overflow-hidden">
-          <div
-            className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-60 w-[320px] rounded-full opacity-50 blur-[100px]"
-            style={{ background: "radial-gradient(closest-side, color-mix(in srgb, var(--gain) 30%, transparent), transparent)" }}
-          />
-          <p className="relative text-eyebrow animate-kinetic-in" style={{ color: "var(--gain-ink)" }}>
-            All clear
-          </p>
-          <h2 className="relative mt-3 text-display-lg text-foreground animate-kinetic-in stagger-1">
-            No approvals.
-          </h2>
-          <p className="relative mt-3 text-[13px] text-muted-foreground animate-kinetic-in stagger-2">
-            Your wallet has no outstanding ERC-20 or Permit2 approvals.
-          </p>
-        </div>
-      )}
-
-      {/* Approvals list */}
-      {approvals.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[13px] font-medium text-muted-foreground">
-              {approvals.length} active approval{approvals.length !== 1 ? "s" : ""}
-            </p>
-            <p className="text-[11px] text-warn-ink font-medium">
-              Revoke unused approvals to stay safe
+          <Loading />
+        ) : error ? (
+          <div className="wal-pad">
+            <p className="note loss" role="alert">
+              <LineIcon name="alert" size={16} />
+              <span>{error}</span>
             </p>
           </div>
-          {revokeError && (
-            <div className="rounded-xl bg-loss-soft border border-loss/30 p-3 text-[12px] text-loss-ink">
-              {revokeError}
-            </div>
-          )}
-          {approvals.map((item, i) => {
+        ) : !fetched ? (
+          <Empty icon="lock" title="Check your approvals" text="See which apps can still move your tokens, and revoke the ones you no longer use." />
+        ) : approvals.length === 0 ? (
+          <Empty icon="shield-check" title="All clear" text="Your wallet has no open ERC-20 or Permit2 approvals." />
+        ) : (
+          <>
+            {revokeError && (
+              <div className="wal-pad">
+                <p className="note loss" role="alert">
+                  <LineIcon name="alert" size={16} />
+                  <span>{revokeError}</span>
+                </p>
+              </div>
+            )}
+            <ul className="rows wal-pad">
+              {approvals.map((item, i) => {
             const tokenAddr =
               item.tokenAddress ?? item.tokenContractAddress ?? "";
             const symbol = item.symbol ?? item.tokenSymbol ?? abbreviate(tokenAddr);
@@ -604,7 +508,6 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
             const networkName = item.network;
             const risk = item.riskLevel ?? item.risk_level;
             const isRisky = item.vulnerabilityFlag ?? item.isAtRisk ?? item.is_at_risk ?? false;
-            const riskColor = getRiskColor(risk);
             const isUnlimited =
               String(allowance).includes("unlimited") ||
               String(allowance).includes("MAX") ||
@@ -614,232 +517,136 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
             const isRevoking = revokingKey === revokeKey;
             const isRevoked = revokedKeys.has(revokeKey);
 
-            return (
-              <div
-                key={`${tokenAddr}-${spender}-${i}`}
-                className={`rounded-xl border bg-secondary overflow-hidden ${
-                  isRevoked ? "border-gain/30 opacity-60" : isRisky ? "border-loss/30" : "border-border/60"
-                }`}
-              >
-                <div className="px-4 py-3 space-y-2">
-                  {/* Token + chain */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-semibold">{symbol}</span>
-                      <span className="text-[11px] text-muted-foreground/60">
-                        {networkName ?? getChainName(chainIdx)}
+                return (
+                  <li key={`${tokenAddr}-${spender}-${i}`} className={isRevoked ? "is-done" : undefined}>
+                    <div className="row appr-row">
+                      <span className={`risk-dot ${isRevoked ? "ok" : isRisky ? "bad" : isUnlimited ? "warn" : "flat"}`} aria-hidden="true">
+                        <LineIcon name={isRevoked ? "check" : isRisky ? "alert" : "lock"} size={16} />
                       </span>
-                    </div>
-                    {isRevoked ? (
-                      <span className="text-[11px] font-semibold text-gain-ink">Revoked</span>
-                    ) : isRisky ? (
-                      <span className="text-[11px] font-semibold text-loss-ink">At Risk</span>
-                    ) : risk && (
-                      <span className={`text-[11px] font-semibold ${riskColor}`}>
-                        {risk}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Spender */}
-                  <div className="text-[12px]">
-                    <span className="text-muted-foreground">Approved to: </span>
-                    <span className="font-medium">
-                      {spenderName || abbreviate(spender)}
-                    </span>
-                    {spenderName && (
-                      <span className="text-muted-foreground/60 ml-1 font-mono text-[10px]">
-                        ({abbreviate(spender)})
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Allowance */}
-                  <div className="text-[12px]">
-                    <span className="text-muted-foreground">Amount: </span>
-                    <span className={`font-medium ${isUnlimited ? "text-warn-ink" : ""}`}>
-                      {isUnlimited
-                        ? "Unlimited"
-                        : item.remainAmtPrecise
-                          ? `${parseFloat(item.remainAmtPrecise).toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
-                          : allowance || "—"}
-                    </span>
-                    {isUnlimited && !isRevoked && (
-                      <span className="text-[10px] text-warn-ink ml-1">(consider revoking)</span>
-                    )}
-                  </div>
-                  {/* Tags */}
-                  {item.tags && (
-                    <div className="text-[11px]">
-                      <span className={`px-1.5 py-0.5 rounded-full ${item.tags === "isEoa" ? "bg-warn-soft text-warn-ink" : "bg-secondary text-muted-foreground"}`}>
-                        {item.tags === "isEoa" ? "EOA (not a contract)" : item.tags}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Revoke button */}
-                  {!isRevoked && tokenAddr && spender && chainIdx != null && (
-                    <div className="pt-1">
-                      <Button
-                        onClick={() =>
-                          setConfirmRevoke({
-                            tokenAddr,
-                            spender,
-                            chainIdx: Number(chainIdx),
-                            symbol,
-                            chainName: networkName ?? getChainName(chainIdx),
-                          })
-                        }
-                        disabled={isRevoking || !!revokingKey}
-                        variant="outline"
-                        className="w-full h-8 rounded-lg text-[12px] font-semibold border-loss/30 text-loss-ink hover:bg-loss-soft hover:text-loss-ink hover:border-loss/30 disabled:opacity-50"
-                      >
-                        {isRevoking ? (
-                          <span className="flex items-center gap-2">
-                            <Spinner /> Revoking...
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 6 6 18" />
-                              <path d="m6 6 12 12" />
-                            </svg>
-                            Revoke Approval
-                          </span>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                  {isRevoked && (
-                    <div className="pt-1">
-                      <div className="w-full h-8 rounded-lg text-[12px] font-semibold text-gain-ink bg-gain-soft flex items-center justify-center gap-1.5">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                        Successfully Revoked
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t scan-t">
+                          <span>{symbol}</span>
+                          <span className="muted appr-chain">{networkName ?? getChainName(chainIdx)}</span>
+                          {isRisky && !isRevoked && <span className="st bad">At risk</span>}
+                          {!isRisky && risk && !isRevoked && <span className={`st ${riskTone(risk).tone === "bad" ? "bad" : "wait"}`}>{risk}</span>}
+                          {item.tags === "isEoa" && <span className="st wait">Spender is a wallet, not an app</span>}
+                        </div>
+                        <div className="sub trunc">
+                          to {spenderName || <span className="num">{abbreviate(spender)}</span>}
+                          {spenderName && <span className="num"> · {abbreviate(spender)}</span>}
+                        </div>
                       </div>
+                      <div className="end">
+                        <div className={`num${isUnlimited ? " text-warn-ink" : ""}`}>
+                          {isUnlimited
+                            ? "Unlimited"
+                            : item.remainAmtPrecise
+                              ? `${parseFloat(item.remainAmtPrecise).toLocaleString("en-US", { maximumFractionDigits: 6 })}`
+                              : allowance || "n/a"}
+                        </div>
+                        <div className="sub">allowance</div>
+                      </div>
+                      {isRevoked ? (
+                        <span className="st ok appr-act">Revoked</span>
+                      ) : tokenAddr && spender && chainIdx != null ? (
+                        <button
+                          type="button"
+                          className="btn btn--sm appr-act revoke"
+                          onClick={() =>
+                            setConfirmRevoke({
+                              tokenAddr,
+                              spender,
+                              chainIdx: Number(chainIdx),
+                              symbol,
+                              chainName: networkName ?? getChainName(chainIdx),
+                            })
+                          }
+                          disabled={isRevoking || !!revokingKey}
+                        >
+                          {isRevoking ? <span className="spin" aria-hidden="true" /> : "Revoke"}
+                        </button>
+                      ) : (
+                        <span />
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </Panel>
 
-      <Dialog open={confirmRevoke !== null} onOpenChange={(open) => { if (!open) setConfirmRevoke(null); }}>
-        <DialogContent className="rounded-2xl sm:rounded-2xl border-border/60 shadow-lg">
-          <DialogHeader>
-            <DialogTitle>Confirm revoke</DialogTitle>
-          </DialogHeader>
-          {confirmRevoke && (
-            <div className="space-y-3 text-[13px]">
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-muted-foreground">Token</span>
-                <span className="font-medium text-right">{confirmRevoke.symbol}</span>
+      <Sheet open={confirmRevoke !== null} onClose={() => setConfirmRevoke(null)} title="Revoke this approval?">
+        {confirmRevoke && (
+          <div className="sheet-body">
+            <dl className="sum">
+              <div>
+                <dt>Token</dt>
+                <dd>{confirmRevoke.symbol}</dd>
               </div>
-              <div className="space-y-1">
-                <span className="text-muted-foreground">Spender</span>
-                <p className="font-mono text-[12px] break-all leading-relaxed">{confirmRevoke.spender}</p>
+              <div>
+                <dt>Chain</dt>
+                <dd>{confirmRevoke.chainName}</dd>
               </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-muted-foreground">Chain</span>
-                <span className="font-medium text-right">{confirmRevoke.chainName}</span>
+              <div>
+                <dt>Spender</dt>
+                <dd className="num conf-recipient">{confirmRevoke.spender}</dd>
               </div>
+            </dl>
+            <p className="hint">Revoking sends a small transaction and costs gas on {confirmRevoke.chainName}. The app will need a new approval to use this token&nbsp;again.</p>
+            <div className="sheet-actions">
+              <button type="button" className="btn" onClick={() => setConfirmRevoke(null)} disabled={!!revokingKey}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!!revokingKey || !confirmRevoke}
+                onClick={() => {
+                  const item = confirmRevoke;
+                  setConfirmRevoke(null);
+                  if (item) void handleRevoke(item.tokenAddr, item.spender, item.chainIdx);
+                }}
+              >
+                Revoke
+              </button>
             </div>
-          )}
-          <DialogFooter className="sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 rounded-xl"
-              onClick={() => setConfirmRevoke(null)}
-              disabled={!!revokingKey}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="h-10 rounded-xl"
-              disabled={!!revokingKey || !confirmRevoke}
-              onClick={() => {
-                const item = confirmRevoke;
-                setConfirmRevoke(null);
-                if (item) void handleRevoke(item.tokenAddr, item.spender, item.chainIdx);
-              }}
-            >
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </div>
+        )}
+      </Sheet>
+    </>
   );
 }
 
-// ── Main Security Page ───────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SecurityPage() {
   const { authenticated, walletAddress } = useAuth();
-  const [tab, setTab] = useState<"scanner" | "approvals">("scanner");
+  const [tab, setTab] = useState<"approvals" | "scanner">("approvals");
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground text-[15px]">
-          Please connect your wallet first.
-        </p>
+      <div className="page">
+        <Empty icon="shield-check" title="Sign in first" text="Connect your wallet to check approvals and token risks." />
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-5 py-2">
-      {/* Header */}
-      <div>
-        <p className="text-eyebrow">Risk · approvals</p>
-        <h1 className="mt-1.5 text-display-lg text-foreground">
-          Security
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-2">
-          Scan tokens for risks and manage your approvals
-        </p>
-      </div>
-
-      {/* Tab switcher */}
-      <div className="flex gap-1 p-1 rounded-xl bg-secondary">
-        <button
-          type="button"
-          onClick={() => setTab("scanner")}
-          className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
-            tab === "scanner"
-              ? "bg-secondary text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Token Scanner
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("approvals")}
-          className={`flex-1 h-9 rounded-lg text-[13px] font-semibold transition-all ${
-            tab === "approvals"
-              ? "bg-secondary text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Approvals
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="rounded-2xl border border-border/60 bg-card p-5">
-        {tab === "scanner" ? (
-          <TokenScannerTab walletAddress={walletAddress} />
-        ) : (
-          <ApprovalsTab walletAddress={walletAddress} />
-        )}
-      </div>
+    <div className="page">
+      <PageHead title="Security" lede="See which apps can spend your tokens, revoke what you no longer use, and check tokens before you&nbsp;trust&nbsp;them." />
+      <PillTabs
+        id="sec-tabs"
+        label="Security views"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "approvals", label: "Approvals" },
+          { value: "scanner", label: "Token scan" },
+        ]}
+      />
+      {tab === "scanner" ? <TokenScannerTab walletAddress={walletAddress} /> : <ApprovalsTab walletAddress={walletAddress} />}
     </div>
   );
 }
