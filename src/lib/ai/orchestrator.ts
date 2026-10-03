@@ -1,10 +1,15 @@
 import OpenAI from "openai";
 import type {
-  ChatCompletionMessageParam,
-} from "openai/resources/chat/completions";
+  FunctionTool,
+  Response,
+  ResponseFunctionToolCall,
+  ResponseInputItem,
+} from "openai/resources/responses/responses";
+import { toResponseInputItems } from "openai/lib/responses/ResponseInputItems";
 import { z } from "zod";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
+import { MAIN_EFFORT, MAIN_MODEL } from "./models";
 import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, gasStationStatus, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
@@ -20,8 +25,12 @@ import {
   sessionEvmAddress,
 } from "@/lib/api/validation";
 
-const MAX_TOOL_ROUNDS = 8;
-const OPENAI_TIMEOUT_MS = 60_000;
+const MAX_TOOL_ROUNDS = 6;
+const OPENAI_TIMEOUT_MS = 90_000;
+/** Per model call; reasoning tokens count toward it. */
+const MAX_OUTPUT_TOKENS = 6000;
+/** Tool payloads are third-party data; cap what goes back into the context. */
+const MAX_TOOL_RESULT_CHARS = 24_000;
 
 const hlCoin = z.string().regex(/^[A-Z0-9@_-]{1,16}$/);
 
@@ -117,14 +126,14 @@ function validatePropose(
   return { ok: true, params };
 }
 
-// ── OpenAI-format tools (converted from Anthropic-style tool definitions) ────
-const openaiTools = AI_TOOLS.map((t) => ({
+// ── Responses-API tools (converted from the Anthropic-style definitions) ────
+const responseTools: FunctionTool[] = AI_TOOLS.map((t) => ({
   type: "function" as const,
-  function: {
-    name: t.name,
-    description: t.description ?? "",
-    parameters: t.input_schema,
-  },
+  name: t.name,
+  description: t.description ?? "",
+  parameters: t.input_schema as Record<string, unknown>,
+  // The schemas have optional fields; strict mode would require all of them.
+  strict: false,
 }));
 
 let _openai: OpenAI | null = null;
@@ -373,19 +382,36 @@ export interface AiResponse {
   }>;
 }
 
-async function completeChat(
-  messages: ChatCompletionMessageParam[],
-  withTools: boolean
-) {
-  return getOpenAI().chat.completions.create(
+function createResponse(input: ResponseInputItem[], withTools: boolean): Promise<Response> {
+  return getOpenAI().responses.create(
     {
-      model: "gpt-4.1",
-      max_tokens: 4096,
-      messages,
-      ...(withTools ? { tools: openaiTools } : {}),
+      model: MAIN_MODEL,
+      instructions: SYSTEM_PROMPT,
+      input,
+      reasoning: { effort: MAIN_EFFORT },
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      // Nothing is kept on OpenAI's side; reasoning travels back encrypted
+      // so tool rounds keep the model's train of thought.
+      store: false,
+      include: ["reasoning.encrypted_content"],
+      ...(withTools ? { tools: responseTools, parallel_tool_calls: true } : {}),
     },
     { signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS) }
   );
+}
+
+function functionCalls(response: Response): ResponseFunctionToolCall[] {
+  return response.output.filter((item): item is ResponseFunctionToolCall => item.type === "function_call");
+}
+
+function serializeToolResult(result: unknown): string {
+  const json = JSON.stringify(result) ?? "null";
+  if (json.length <= MAX_TOOL_RESULT_CHARS) return json;
+  return JSON.stringify({
+    truncated: true,
+    note: "Result was too large and was cut. Summarise what is here; ask the user to narrow the request if needed.",
+    partial: json.slice(0, MAX_TOOL_RESULT_CHARS),
+  });
 }
 
 export async function runAiChat(
@@ -398,101 +424,65 @@ export async function runAiChat(
     userAddress = undefined;
   }
 
-  const openaiMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    ...messages,
-  ];
-
-  let response = await completeChat(openaiMessages, true);
-
+  const input: ResponseInputItem[] = messages.map((m) => ({ role: m.role, content: m.content }));
   const proposedActions: AiResponse["proposedActions"] = [];
+
+  let response = await createResponse(input, true);
 
   // Agentic loop: keep going while the model wants to use tools
   let toolRounds = 0;
-  while (response.choices[0]?.finish_reason === "tool_calls") {
+  while (functionCalls(response).length > 0) {
+    // Carry the model's own output (reasoning + calls) into the next turn.
+    input.push(...toResponseInputItems(response.output));
+
     if (toolRounds >= MAX_TOOL_ROUNDS) {
-      openaiMessages.push({
-        role: "system",
-        content:
-          "Tool budget exhausted. Answer with the information you already have; do not call more tools.",
+      for (const call of functionCalls(response)) {
+        input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify({ error: "tool budget exhausted" }) });
+      }
+      input.push({
+        role: "developer",
+        content: "Tool budget exhausted. Answer now with the information you already have; do not call more tools.",
       });
-      response = await completeChat(openaiMessages, false);
+      response = await createResponse(input, false);
       break;
     }
     toolRounds += 1;
 
-    const choice = response.choices[0];
-    const toolCalls = (choice.message.tool_calls ?? []).filter(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (tc): tc is any => tc.type === "function"
-    );
-
-    // Add the assistant message with tool calls
-    openaiMessages.push(choice.message);
-
-    for (const toolCall of toolCalls) {
+    for (const toolCall of functionCalls(response)) {
       let args: Record<string, unknown>;
       try {
-        const parsed: unknown = JSON.parse(toolCall.function.arguments || "{}");
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          openaiMessages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ error: "invalid tool arguments" }),
-          });
-          continue;
-        }
+        const parsed: unknown = JSON.parse(toolCall.arguments || "{}");
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
         args = parsed as Record<string, unknown>;
       } catch {
-        openaiMessages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({ error: "invalid tool arguments" }),
-        });
+        input.push({ type: "function_call_output", call_id: toolCall.call_id, output: JSON.stringify({ error: "invalid tool arguments" }) });
         continue;
       }
 
       let result: unknown;
       try {
-        result = await executeToolCall(
-          toolCall.function.name,
-          args,
-          userAddress
-        );
+        result = await executeToolCall(toolCall.name, args, userAddress);
       } catch (error) {
-        console.error("[ai/tool]", toolCall.function.name, error);
+        console.error("[ai/tool]", toolCall.name, error);
         result = { error: "tool failed" };
       }
 
       // Collect proposed actions
-      if (
-        result &&
-        typeof result === "object" &&
-        "action" in (result as Record<string, unknown>)
-      ) {
-        const actionResult = result as {
-          action: string;
-          params: Record<string, unknown>;
-        };
-        proposedActions.push({
-          action: actionResult.action,
-          params: actionResult.params,
-        });
+      if (result && typeof result === "object" && "action" in (result as Record<string, unknown>)) {
+        const actionResult = result as { action: string; params: Record<string, unknown> };
+        proposedActions.push({ action: actionResult.action, params: actionResult.params });
       }
 
-      // Add tool result
-      openaiMessages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(result),
-      });
+      input.push({ type: "function_call_output", call_id: toolCall.call_id, output: serializeToolResult(result) });
     }
 
-    response = await completeChat(openaiMessages, true);
+    response = await createResponse(input, true);
   }
 
-  // Extract text from final response
-  const text = response.choices[0]?.message?.content ?? "";
+  let text = response.output_text ?? "";
+  if (!text && response.status === "incomplete") {
+    text = "I ran out of room for that answer. Ask a narrower question and I will try again.";
+  }
 
   return { text, proposedActions };
 }

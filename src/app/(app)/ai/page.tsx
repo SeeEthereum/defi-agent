@@ -3,12 +3,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, useReducedMotion } from "motion/react";
+import useSWR from "swr";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { formatUnits } from "viem";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
-import { Empty } from "@/components/premium";
+import { Empty, Sheet } from "@/components/premium";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -122,6 +124,51 @@ function shortAddr(addr: string): string {
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** Set on replies that are not the model's: off-topic refusals, errors. */
+  kind?: "refusal" | "error";
+}
+
+interface Quota {
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: string | null;
+  model?: string;
+}
+
+const MAX_QUESTION_CHARS = 1500;
+
+/**
+ * What the model sees: refusals and errors are app messages, not its own
+ * words, and the question that triggered a refusal goes with it.
+ */
+function historyForServer(msgs: Message[]): Array<{ role: Message["role"]; content: string }> {
+  const out: Array<{ role: Message["role"]; content: string }> = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.kind) continue;
+    const next = msgs[i + 1];
+    if (m.role === "user" && next?.kind) continue;
+    out.push({ role: m.role, content: m.content });
+  }
+  return out.slice(-16);
+}
+
+/** "5 h 12 min", "12 min 04 s" or "38 s" until `iso`, ticking every second. */
+function useCountdown(iso: string | null): { left: number; label: string } {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!iso) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [iso]);
+  const left = iso ? Math.max(0, Date.parse(iso) - now) : 0;
+  const h = Math.floor(left / 3_600_000);
+  const m = Math.floor((left % 3_600_000) / 60_000);
+  const sec = Math.floor((left % 60_000) / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const label = h > 0 ? `${h} h ${pad(m)} min` : m > 0 ? `${m} min ${pad(sec)} s` : `${sec} s`;
+  return { left, label };
 }
 
 interface ProposedAction {
@@ -324,6 +371,65 @@ function AssistantMark({ size = 28 }: { size?: number }) {
   );
 }
 
+const AI_LIMIT_TEXT = "You have 20 questions every 24 hours, counted from your first one.";
+
+/** What the assistant does and refuses, in two short lists. */
+function Capabilities() {
+  return (
+    <div className="ai-caps">
+      <div>
+        <h2>It can</h2>
+        <ul>
+          <li>Read your balances, history and positions on six chains</li>
+          <li>Find yields, prices, gas and what smart money is buying</li>
+          <li>Prepare swaps, bridges, transfers, Fluid deposits and perps orders</li>
+          <li>Check tokens and websites for scams before you trust them</li>
+        </ul>
+      </div>
+      <div>
+        <h2>It won&rsquo;t</h2>
+        <ul>
+          <li>Move money without your Confirm on the card</li>
+          <li>Show or export keys: nobody can, they stay in OKX&rsquo;s enclave</li>
+          <li>Promise returns or give personal investment advice</li>
+          <li>Chat about topics outside your wallet and crypto</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/** Questions left today, as ticks, with the real time of the refill. */
+function Allowance({ quota, countdown }: { quota: Quota | null; countdown: string }) {
+  if (!quota) return <span id="ai-allowance" className="allowance" />;
+  const exhausted = quota.remaining <= 0;
+  return (
+    <span id="ai-allowance" className={cn("allowance", exhausted && "is-out")} role="status">
+      <span className="ticks" aria-hidden="true">
+        {Array.from({ length: quota.limit }, (_, i) => (
+          <i key={i} data-on={i < quota.remaining || undefined} />
+        ))}
+      </span>
+      {exhausted ? (
+        <span>
+          Questions refill in <span className="num">{countdown}</span>
+        </span>
+      ) : (
+        <span>
+          <span className="num">{quota.remaining}</span> of {quota.limit} left
+          {quota.resetAt ? (
+            <>
+              , refill in <span className="num">{countdown}</span>
+            </>
+          ) : (
+            " today"
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function AiPage() {
   const { authenticated } = useAuth();
   // The (app) layout renders pages only after hydration (it waits for the
@@ -336,6 +442,25 @@ export default function AiPage() {
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  const { data: quotaRes, mutate: mutateQuotaRaw } = useSWR<{ success: boolean; data?: Quota }>(
+    authenticated ? "/api/ai/quota" : null,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: true }
+  );
+  const quota = quotaRes?.success ? (quotaRes.data ?? null) : null;
+  const mutateQuota = useCallback(
+    (q: Quota, opts?: { revalidate?: boolean }) => mutateQuotaRaw({ success: true, data: q }, opts),
+    [mutateQuotaRaw]
+  );
+  const countdown = useCountdown(quota?.resetAt ?? null);
+  const exhausted = quota != null && quota.remaining <= 0;
+
+  // The allowance refills on the server at resetAt: read it again then.
+  useEffect(() => {
+    if (exhausted && quota?.resetAt && countdown.left === 0) void mutateQuotaRaw();
+  }, [exhausted, quota?.resetAt, countdown.left, mutateQuotaRaw]);
 
   // Save chat history whenever messages change
   useEffect(() => {
@@ -351,7 +476,8 @@ export default function AiPage() {
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || loading) return;
-      const userMessage: Message = { role: "user", content: text.trim() };
+      if (quota && quota.remaining <= 0) return;
+      const userMessage: Message = { role: "user", content: text.trim().slice(0, MAX_QUESTION_CHARS) };
       const newMessages = [...messages, userMessage];
       setMessages(newMessages);
       setInput("");
@@ -362,15 +488,16 @@ export default function AiPage() {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: newMessages }),
+          body: JSON.stringify({ messages: historyForServer(newMessages) }),
         });
         const data = await res.json();
+        if (data.quota) void mutateQuota({ ...(quota ?? {}), ...data.quota }, { revalidate: false });
 
         if (data.success) {
           if (data.data.text) {
             setMessages((prev) => [
               ...prev,
-              { role: "assistant", content: data.data.text },
+              { role: "assistant", content: data.data.text, ...(data.data.refused ? { kind: "refusal" as const } : {}) },
             ]);
           }
           if (data.data.proposedActions?.length) {
@@ -379,23 +506,27 @@ export default function AiPage() {
               ...data.data.proposedActions,
             ]);
           }
+        } else if (data.code === "quota_exhausted") {
+          // Nothing was asked: take the question back out of the thread.
+          setMessages((prev) => prev.slice(0, -1));
+          setInput(userMessage.content);
         } else {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: `${data.error || "Something went wrong"}` },
+            { role: "assistant", content: `${data.error || "Something went wrong"}`, kind: "error" },
           ]);
         }
       } catch {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "Network error. Please try again." },
+          { role: "assistant", content: "Network error. This question was not counted; try again.", kind: "error" },
         ]);
       } finally {
         setLoading(false);
         inputRef.current?.focus();
       }
     },
-    [messages, loading]
+    [messages, loading, quota, mutateQuota]
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -679,7 +810,9 @@ export default function AiPage() {
             id="ai-chat-input"
             ref={inputRef}
             rows={1}
-            placeholder={hasContent ? "Reply…" : "Ask me anything…"}
+            maxLength={MAX_QUESTION_CHARS}
+            aria-describedby="ai-allowance"
+            placeholder={exhausted ? `New questions in ${countdown.label}` : hasContent ? "Reply…" : "Ask about your wallet or crypto…"}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
@@ -692,15 +825,36 @@ export default function AiPage() {
                 sendMessage(input);
               }
             }}
-            disabled={loading}
+            disabled={loading || exhausted}
           />
-          <button type="submit" className="send" aria-label="Send message" disabled={loading || !input.trim()}>
+          <button type="submit" className="send" aria-label="Send message" disabled={loading || exhausted || !input.trim()}>
             <LineIcon name="arrow-up" size={18} strokeWidth={2.2} />
           </button>
         </div>
       </div>
-      <p className="ai-hint">Enter to send, Shift+Enter for a new line. Nothing moves until you confirm.</p>
+      <div className="ai-foot">
+        <Allowance quota={quota} countdown={countdown.label} />
+        {input.length > MAX_QUESTION_CHARS * 0.8 ? (
+          <span className={cn("num", input.length >= MAX_QUESTION_CHARS && "text-warn-ink")}>
+            {input.length}/{MAX_QUESTION_CHARS}
+          </span>
+        ) : (
+          <span className="ai-hint">Enter to send. Nothing moves until you confirm.</span>
+        )}
+      </div>
     </form>
+  );
+
+  const about = (
+    <Sheet open={aboutOpen} onClose={() => setAboutOpen(false)} title="What the assistant does">
+      <div className="sheet-body">
+        <Capabilities />
+        <p className="hint">
+          Runs on {quota?.model ?? "OpenAI"}. {AI_LIMIT_TEXT} Questions that are not about your wallet or crypto get a short no and still count, so the
+          assistant stays fast and affordable for&nbsp;everyone.
+        </p>
+      </div>
+    </Sheet>
   );
 
   if (!hasContent) {
@@ -727,6 +881,9 @@ export default function AiPage() {
               </li>
             ))}
           </ul>
+          <div className="in" style={{ "--i": 3 } as React.CSSProperties}>
+            <Capabilities />
+          </div>
         </div>
       </div>
     );
@@ -739,9 +896,13 @@ export default function AiPage() {
           <AssistantMark size={36} />
           <div>
             <h1>Assistant</h1>
-            <p>Prepares transactions, sends nothing without your&nbsp;OK</p>
+            <p>{quota?.model ? `${quota.model}, ` : ""}sends nothing without your&nbsp;OK</p>
           </div>
         </div>
+        <div className="ai-bar-acts">
+        <button type="button" className="btn btn--sm btn--icon" aria-label="What the assistant can do" onClick={() => setAboutOpen(true)}>
+          <LineIcon name="sparkle" size={15} />
+        </button>
         <button
           type="button"
           className="btn btn--sm"
@@ -754,13 +915,14 @@ export default function AiPage() {
           <LineIcon name="plus" size={15} />
           New chat
         </button>
+        </div>
       </div>
 
       <ol className="ai-thread" aria-label="Conversation">
         {messages.map((msg, i) => (
           <motion.li
             key={i}
-            className={cn("msg", msg.role)}
+            className={cn("msg", msg.role, msg.kind && `is-${msg.kind}`)}
             initial={i < restored.length ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={ENTER}
@@ -768,9 +930,16 @@ export default function AiPage() {
             {msg.role === "assistant" ? (
               <>
                 <AssistantMark />
-                <div className="md">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
+                {msg.kind ? (
+                  <p className="app-note">
+                    <LineIcon name={msg.kind === "refusal" ? "lock" : "alert"} size={15} />
+                    <span>{msg.content}</span>
+                  </p>
+                ) : (
+                  <div className="md">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  </div>
+                )}
               </>
             ) : (
               <p>{msg.content}</p>
@@ -809,6 +978,7 @@ export default function AiPage() {
       </ol>
 
       {composer}
+      {about}
     </div>
   );
 }
