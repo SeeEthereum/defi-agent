@@ -642,6 +642,63 @@ export default function TradePage() {
 
   const positionCount = positions?.positions.length ?? 0;
 
+  // Setup state, one message at a time. It sits in the order ticket, where it
+  // explains why ordering is locked, so its arrival does not push the page.
+  const setupNote =
+    stage === "register_error" ? (
+        <div className="note loss msg-note" role="alert">
+          <LineIcon name="alert" size={16} />
+          <div>
+            <strong>Hyperliquid setup failed</strong>
+            <p>{registerErr ?? "Hyperliquid could not be set up."}</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={async () => {
+              setRegisterErr(null);
+              const r = await apiGet<RegisterData>("/api/perp/register?force=true");
+              if (r.success) setRegister(r.data);
+              else setRegisterErr(r.error);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : stage === "needs_agent" && register ? (
+        <div className="note warn msg-note">
+          <LineIcon name="alert" size={16} />
+          <div>
+            <strong>Finish the Hyperliquid setup</strong>
+            <p>{register.message ?? "The signing agent still needs to be registered."}</p>
+          </div>
+        </div>
+      ) : stage === "needs_arb_funds" && quickstart ? (
+        <div className="note warn msg-note">
+          <LineIcon name="wallet" size={16} />
+          <div>
+            <strong>Fund your Arbitrum wallet</strong>
+            <p>
+              You need at least $5 USDC on Arbitrum to start. You have {fmtUsd(quickstart.assets.arb_usdc_balance)}. Send USDC on Arbitrum&nbsp;to:
+            </p>
+            <p className="num conf-recipient">{quickstart.wallet}</p>
+          </div>
+        </div>
+      ) : stage === "needs_hl_deposit" && quickstart ? (
+        <div className="note msg-note">
+          <HyperliquidLogo size={16} />
+          <div>
+            <strong>Deposit USDC to Hyperliquid</strong>
+            <p>
+              You have {fmtUsd(quickstart.assets.arb_usdc_balance)} on Arbitrum. Deposit it to start trading: minimum $5, it arrives in 2 to 5&nbsp;minutes.
+            </p>
+          </div>
+          <button type="button" className="btn btn--sm btn--primary" onClick={() => openFund("deposit", String(Math.floor(quickstart.assets.arb_usdc_balance)))}>
+            Deposit now
+          </button>
+        </div>
+      ) : null;
+
   return (
     <div className="page">
       <PageHead
@@ -666,61 +723,6 @@ export default function TradePage() {
         <Metric label="Margin used" value={fmtUsd(positions?.totalMarginUsed)} />
         <Metric label="USDC on Arbitrum" value={fmtUsd(quickstart?.assets.arb_usdc_balance)} sub="Ready to deposit" />
       </div>
-
-      {/* Setup state, one message at a time */}
-      {stage === "register_error" ? (
-        <div className="note loss msg-note in" role="alert">
-          <LineIcon name="alert" size={16} />
-          <div>
-            <strong>Hyperliquid setup failed</strong>
-            <p>{registerErr ?? "Hyperliquid could not be set up."}</p>
-          </div>
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={async () => {
-              setRegisterErr(null);
-              const r = await apiGet<RegisterData>("/api/perp/register?force=true");
-              if (r.success) setRegister(r.data);
-              else setRegisterErr(r.error);
-            }}
-          >
-            Try again
-          </button>
-        </div>
-      ) : stage === "needs_agent" && register ? (
-        <div className="note warn msg-note in">
-          <LineIcon name="alert" size={16} />
-          <div>
-            <strong>Finish the Hyperliquid setup</strong>
-            <p>{register.message ?? "The signing agent still needs to be registered."}</p>
-          </div>
-        </div>
-      ) : stage === "needs_arb_funds" && quickstart ? (
-        <div className="note warn msg-note in">
-          <LineIcon name="wallet" size={16} />
-          <div>
-            <strong>Fund your Arbitrum wallet</strong>
-            <p>
-              You need at least $5 USDC on Arbitrum to start. You have {fmtUsd(quickstart.assets.arb_usdc_balance)}. Send USDC on Arbitrum&nbsp;to:
-            </p>
-            <p className="num conf-recipient">{quickstart.wallet}</p>
-          </div>
-        </div>
-      ) : stage === "needs_hl_deposit" && quickstart ? (
-        <div className="note msg-note in">
-          <HyperliquidLogo size={16} />
-          <div>
-            <strong>Deposit USDC to Hyperliquid</strong>
-            <p>
-              You have {fmtUsd(quickstart.assets.arb_usdc_balance)} on Arbitrum. Deposit it to start trading: minimum $5, it arrives in 2 to 5&nbsp;minutes.
-            </p>
-          </div>
-          <button type="button" className="btn btn--sm btn--primary" onClick={() => openFund("deposit", String(Math.floor(quickstart.assets.arb_usdc_balance)))}>
-            Deposit now
-          </button>
-        </div>
-      ) : null}
 
       {/* Markets ticker */}
       <div className="ticker in" style={{ "--i": 2 } as React.CSSProperties} role="group" aria-label="Markets">
@@ -784,7 +786,9 @@ export default function TradePage() {
         </Panel>
 
         <Panel className="span-5 ticket" index={4} title="New order">
+          {setupNote}
           <TradeTab
+            lockNote={!setupNote}
             stage={stage}
             side={orderSide}
             setSide={setOrderSide}
@@ -960,6 +964,7 @@ function PositionsTab({
 }
 
 function TradeTab(props: {
+  lockNote: boolean;
   stage: "auth" | "register_error" | "needs_agent" | "needs_arb_funds" | "needs_hl_deposit" | "ready";
   side: "buy" | "sell";
   setSide: (v: "buy" | "sell") => void;
@@ -1008,10 +1013,10 @@ function TradeTab(props: {
 
   return (
     <div className="form order">
-      {disabled && (
+      {disabled && props.lockNote && (
         <p className="note">
           <LineIcon name="lock" size={16} />
-          <span>Finish the deposit above to place orders.</span>
+          <span>Orders open once Hyperliquid is set up and funded.</span>
         </p>
       )}
 

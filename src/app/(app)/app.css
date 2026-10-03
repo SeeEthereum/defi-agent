@@ -252,7 +252,8 @@
   & .alloc-legend li:last-child { border-bottom: 0; padding-bottom: 0; }
   & .alloc-legend .sw { width: 9px; height: 9px; border-radius: 3px; }
   & .alloc-legend .muted { color: var(--muted-foreground); text-align: right; }
-  @media (max-width: 960px) { & .dash-hero { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { & .dash-hero { grid-template-columns: minmax(0, 1fr); } }
+  & .skel-text { display: inline-block; color: transparent; border-radius: 0.12em; }
 }
 @media (max-width: 520px) {
   .app .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }

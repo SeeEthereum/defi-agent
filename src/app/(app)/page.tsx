@@ -122,7 +122,14 @@ export default function DashboardPage() {
                 {greeting()}, {accountName || "trader"}. Total value
               </p>
               <p className="hero-figure" aria-live="polite">
-                {balLoading ? <Skeleton height={88} width={320} /> : <CountUp value={totalUsd} format={(n) => usd.format(n)} />}
+                {balLoading ? (
+                  // Same text, same box: the figure takes its final size before the number arrives.
+                  <span className="skel skel-text" aria-label="Loading">
+                    {usd.format(0)}
+                  </span>
+                ) : (
+                  <CountUp value={totalUsd} format={(n) => usd.format(n)} />
+                )}
               </p>
               <div className="page-actions" style={{ marginTop: 6 }}>
                 <Link href="/ai" className="btn btn--primary btn--well">
@@ -137,6 +144,15 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {balLoading && (
+              <div className="alloc" aria-hidden="true">
+                <Skeleton height={10} />
+                <div style={{ display: "grid", gap: 8 }}>
+                  <Skeleton height={25} />
+                  <Skeleton height={25} />
+                </div>
+              </div>
+            )}
             {!balLoading && totalUsd > 0 && (
               <div className="alloc" aria-label="Value by chain">
                 <div className="alloc-bar" aria-hidden="true">
@@ -192,7 +208,7 @@ export default function DashboardPage() {
           {balLoading ? (
             <div style={{ display: "grid", gap: 12 }}>
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} height={44} />
+                <Skeleton key={i} height={60} />
               ))}
             </div>
           ) : holdings.length === 0 ? (

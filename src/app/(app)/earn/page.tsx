@@ -533,7 +533,8 @@ export default function EarnPage() {
         <Metric label="Your positions" value={positionsLoading ? "…" : positions.length} sub={positionsLoading ? undefined : positions.length ? "earning now" : "nothing supplied yet"} />
       </div>
 
-      {(positionsLoading || positions.length > 0) && (
+      {/* Only when there is something to show: a panel that appears and vanishes would shift the page. */}
+      {!positionsLoading && positions.length > 0 && (
         <Panel flush index={2} title="Your positions" sub="Supplied to Fluid, earning yield">
           {positionsLoading ? (
             <div className="wal-pad" style={{ display: "grid", gap: 12 }}>
