@@ -22,7 +22,7 @@ import { CHAIN_COLORS } from "@/lib/chain-colors";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { TokenIcon } from "@/components/token-icon";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
-import { CountUp, Empty, PageHead, Panel, PillTabs, Skeleton } from "@/components/premium";
+import { CountUp, Empty, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { toast } from "sonner";
 
@@ -120,6 +120,185 @@ function AddressQr({ address }: { address: string }) {
   );
 }
 
+interface AccountRow {
+  accountId: string;
+  okxName: string;
+  name: string;
+  renamed: boolean;
+  evmAddress: string | null;
+  totalValueUsd: string | null;
+  isActive: boolean;
+}
+
+/**
+ * Every account of this login: rename it (the name is kept by albicocca,
+ * OKX has no rename) or make it the active one.
+ */
+function AccountsSheet({
+  open,
+  onClose,
+  activeId,
+  switching,
+  onSwitch,
+  onRenamed,
+}: {
+  open: boolean;
+  onClose: () => void;
+  activeId: string | null;
+  switching: boolean;
+  onSwitch: (accountId: string) => Promise<void>;
+  onRenamed: () => void;
+}) {
+  const [accounts, setAccounts] = useState<AccountRow[] | null>(null);
+  const [maxLen, setMaxLen] = useState(32);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch("/api/wallet/accounts")
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) {
+          setAccounts(res.data.accounts);
+          setMaxLen(res.data.maxNameLength ?? 32);
+          setError(null);
+        } else setError(res.error ?? "Could not load your accounts");
+      })
+      .catch(() => !cancelled && setError("Could not reach the server"));
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const save = async (accountId: string, label: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/wallet/accounts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, label }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(data.error ?? "Could not rename the account");
+        return;
+      }
+      setAccounts((prev) =>
+        prev?.map((a) => (a.accountId === accountId ? { ...a, name: data.data.name ?? a.okxName, renamed: data.data.name != null } : a)) ?? prev
+      );
+      setEditing(null);
+      onRenamed();
+      toast.success(data.data.name ? `Renamed to ${data.data.name}` : "Name reset");
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Your accounts">
+      <div className="sheet-body">
+        {error ? (
+          <p className="note loss">
+            <LineIcon name="alert" size={16} />
+            <span>{error}</span>
+          </p>
+        ) : !accounts ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <Skeleton height={64} />
+            <Skeleton height={64} />
+          </div>
+        ) : (
+          <ul className="rows acct-list">
+            {accounts.map((a) => {
+              const active = a.isActive || a.accountId === activeId;
+              return (
+                <li key={a.accountId}>
+                  {editing === a.accountId ? (
+                    <form
+                      className="acct-edit"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void save(a.accountId, draft);
+                      }}
+                    >
+                      <label htmlFor={`acct-name-${a.accountId}`} className="sr-only">
+                        New name for {a.name}
+                      </label>
+                      <input
+                        id={`acct-name-${a.accountId}`}
+                        className="input"
+                        value={draft}
+                        maxLength={maxLen}
+                        placeholder={a.okxName}
+                        autoFocus
+                        onChange={(e) => setDraft(e.target.value)}
+                      />
+                      <div className="sheet-actions">
+                        <button type="button" className="btn btn--sm" onClick={() => setEditing(null)} disabled={saving}>
+                          Cancel
+                        </button>
+                        <button type="submit" className="btn btn--sm btn--primary" disabled={saving}>
+                          {saving ? <span className="spin" aria-hidden="true" /> : "Save"}
+                        </button>
+                      </div>
+                      {a.renamed && (
+                        <button type="button" className="link-btn" onClick={() => void save(a.accountId, "")} disabled={saving}>
+                          Use the original name, {a.okxName}
+                        </button>
+                      )}
+                    </form>
+                  ) : (
+                    <div className="row acct-row">
+                      <span className="avatar" aria-hidden="true">
+                        {a.name.trim().charAt(0).toUpperCase() || "A"}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t trunc">
+                          {a.name} {active && <span className="st ok">In use</span>}
+                        </div>
+                        <div className="sub num">
+                          {a.evmAddress ? `${a.evmAddress.slice(0, 8)}…${a.evmAddress.slice(-6)}` : "Address appears once you use it"}
+                          {a.totalValueUsd != null ? ` · $${Number(a.totalValueUsd).toFixed(2)}` : ""}
+                        </div>
+                      </div>
+                      <div className="acct-acts">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label={`Rename ${a.name}`}
+                          onClick={() => {
+                            setDraft(a.renamed ? a.name : "");
+                            setEditing(a.accountId);
+                          }}
+                        >
+                          <LineIcon name="pencil" size={15} />
+                        </button>
+                        {!active && (
+                          <button type="button" className="btn btn--sm" disabled={switching} onClick={() => void onSwitch(a.accountId)}>
+                            {switching ? <span className="spin" aria-hidden="true" /> : "Use"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="hint">Names are only visible to you in albicocca. Addresses and funds do not change.</p>
+      </div>
+    </Sheet>
+  );
+}
+
 export default function WalletPage() {
   const { authenticated, walletAddress, accountName, accountId, accountCount, mutate: mutateAuth } = useAuth();
   const { balancesByChain, isLoading, mutateAll } = useAllChainBalances();
@@ -140,6 +319,7 @@ export default function WalletPage() {
   const [addingAccount, setAddingAccount] = useState(false);
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
 
   // History state
   const [history, setHistory] = useState<TxEntry[]>([]);
@@ -418,7 +598,12 @@ export default function WalletPage() {
             {initials}
           </span>
           <div className="who">
-            <div className="t">{accountName ?? "Wallet 1"}</div>
+            <div className="t">
+              {accountName ?? "Wallet 1"}
+              <button type="button" className="icon-btn rename-btn" aria-label="Rename this account" onClick={() => setAccountsOpen(true)}>
+                <LineIcon name="pencil" size={14} />
+              </button>
+            </div>
             {walletAddress && (
               <button type="button" className="addr" onClick={copyAddress} aria-label="Copy wallet address">
                 <span className="num">{`${walletAddress.slice(0, 8)}…${walletAddress.slice(-6)}`}</span>
@@ -427,20 +612,10 @@ export default function WalletPage() {
             )}
           </div>
           <div className="acts">
-            {accountCount > 1 && (
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => {
-                  const id = prompt(`Switch to account ID (current: ${accountId ?? "unknown"})`);
-                  if (id) handleSwitchAccount(id);
-                }}
-                disabled={switchingAccount}
-              >
-                {switchingAccount ? <span className="spin" aria-hidden="true" /> : <LineIcon name="swap" size={15} />}
-                Switch ({accountCount})
-              </button>
-            )}
+            <button type="button" className="btn btn--sm" onClick={() => setAccountsOpen(true)} disabled={switchingAccount}>
+              {switchingAccount ? <span className="spin" aria-hidden="true" /> : <LineIcon name="wallet" size={15} />}
+              Accounts{accountCount > 1 ? ` (${accountCount})` : ""}
+            </button>
             <button type="button" className="btn btn--sm" onClick={handleAddAccount} disabled={addingAccount}>
               {addingAccount ? <span className="spin" aria-hidden="true" /> : <LineIcon name="plus" size={15} />}
               Add account
@@ -448,6 +623,18 @@ export default function WalletPage() {
           </div>
         </div>
       </PageHead>
+
+      <AccountsSheet
+        open={accountsOpen}
+        onClose={() => setAccountsOpen(false)}
+        activeId={accountId}
+        switching={switchingAccount}
+        onSwitch={async (id) => {
+          await handleSwitchAccount(id);
+          setAccountsOpen(false);
+        }}
+        onRenamed={() => mutateAuth()}
+      />
 
       <PillTabs
         id="wallet-tabs"

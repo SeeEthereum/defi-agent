@@ -48,7 +48,8 @@ export type LineIconName =
   | "file"
   | "sliders"
   | "search"
-  | "x";
+  | "x"
+  | "pencil";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   ...CORE_PATHS,
@@ -226,6 +227,12 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
       <path d="M4 17h2" />
       <path d="M10 17h10" />
       <circle cx="8" cy="17" r="2" />
+    </>
+  ),
+  pencil: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="m13.5 6.5 4 4" />
     </>
   ),
   x: (
