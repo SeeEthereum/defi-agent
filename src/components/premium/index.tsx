@@ -120,6 +120,39 @@ export function PillTabs<T extends string>({
   );
 }
 
+/** Segmented choice with a sliding light pill. */
+export function Segmented<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  className = "",
+}: {
+  id: string;
+  label: string;
+  value: T | null;
+  options: Array<{ value: T; label: ReactNode }>;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`seg ${className}`} role="radiogroup" aria-label={label}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button key={o.value} type="button" role="radio" aria-checked={on} disabled={disabled} data-v={o.value} onClick={() => onChange(o.value)}>
+            {on && <motion.span layoutId={`${id}-seg`} className="seg-bg" transition={SPRING} />}
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** A number that counts up once it is on screen (static under reduced motion). */
 export function CountUp({ value, format }: { value: number; format: (n: number) => string }) {
   const ref = useRef<HTMLSpanElement>(null);

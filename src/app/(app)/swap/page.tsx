@@ -14,7 +14,7 @@ import { TokenIcon } from "@/components/token-icon";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
-import { Change, Empty, PageHead, Panel, Picker, PickRow, Skeleton } from "@/components/premium";
+import { Change, Empty, PageHead, Panel, Picker, PickRow, Segmented, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -206,7 +206,6 @@ function readQuoteId(payload: unknown): string {
 }
 
 
-const SEG_SPRING = { type: "spring" as const, stiffness: 420, damping: 36, mass: 0.8 };
 
 function TokenSelector({
   label,
@@ -365,34 +364,6 @@ function TokenSelector({
   );
 }
 
-/** Segmented choice with a sliding light pill. */
-function Segmented<T extends string>({
-  id,
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: T | null;
-  options: Array<{ value: T; label: string }>;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="seg" role="radiogroup" aria-label={label}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <button key={o.value} type="button" role="radio" aria-checked={on} onClick={() => onChange(o.value)}>
-            {on && <motion.span layoutId={`${id}-seg`} className="seg-bg" transition={SEG_SPRING} />}
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function SwapPage() {
   const { authenticated } = useAuth();
