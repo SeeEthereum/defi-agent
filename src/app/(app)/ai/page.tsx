@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { motion, useReducedMotion } from "motion/react";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import ReactMarkdown from "react-markdown";
+import { formatUnits } from "viem";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
+import { Empty } from "@/components/premium";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -92,6 +93,27 @@ function tokenSymbol(addr?: string): string {
   return TOKEN_MAP[addr.toLowerCase()] ?? addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
+// Decimals of the tokens in TOKEN_MAP, so swap and bridge amounts (sent in
+// minimal units) can be shown as people read them. Unknown tokens keep the raw value.
+const TOKEN_DECIMALS: Record<string, number> = {
+  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": 18,
+  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6,
+  "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6,
+  "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,
+  "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,
+  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 18,
+  "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": 18,
+  "0x4200000000000000000000000000000000000006": 18,
+};
+
+function minimalToDisplay(raw: unknown, addr: unknown, symbol: string): string {
+  const value = String(raw);
+  const decimals = typeof addr === "string" ? TOKEN_DECIMALS[addr.toLowerCase()] : undefined;
+  if (decimals == null || !/^\d+$/.test(value)) return `${value} ${symbol}`;
+  return `${formatUnits(BigInt(value), decimals)} ${symbol}`;
+}
+
 function shortAddr(addr: string): string {
   return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
@@ -108,6 +130,9 @@ interface ProposedAction {
 }
 
 // ── Action Card ──────────────────────────────────────────────────────────────
+/** Shown in place of a value the assistant has not filled in yet. */
+const MISSING = "Not set";
+
 function ActionCard({
   action,
   onConfirm,
@@ -128,22 +153,22 @@ function ActionCard({
     const chain = getChainBySwapName(p.chain as string);
     const fromSymbol = tokenSymbol(p.fromToken as string | undefined);
     const toSymbol = tokenSymbol(p.toToken as string | undefined);
-    title = "Token Swap";
+    title = "Token swap";
     icon = "swap";
     rows.push({
       label: "Amount",
-      value: hasParam(p.amount) ? `${p.amount} ${fromSymbol}` : "—",
+      value: hasParam(p.amount) ? minimalToDisplay(p.amount, p.fromToken, fromSymbol) : MISSING,
     });
     rows.push({ label: "From", value: fromSymbol });
     rows.push({ label: "To", value: toSymbol });
-    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chain) ? String(p.chain) : "—") });
+    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chain) ? String(p.chain) : MISSING) });
     if (p.slippage) rows.push({ label: "Slippage", value: `${p.slippage}%` });
     if (p.gasLevel) rows.push({ label: "Gas", value: String(p.gasLevel) });
-    if (p.mevProtection) rows.push({ label: "MEV Protection", value: "Enabled" });
+    if (p.mevProtection) rows.push({ label: "MEV protection", value: "On" });
   } else if (action.action === "supply") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
-    title = "Fluid Supply";
+    title = "Supply on Fluid";
     icon = "trending-up";
     rows.push({ label: "Asset", value: p.fTokenSymbol as string });
     rows.push({ label: "Amount", value: `${p.amount}` });
@@ -154,15 +179,15 @@ function ActionCard({
     const token = p.contractToken
       ? tokenSymbol(p.contractToken as string)
       : chain?.nativeSymbol ?? "ETH";
-    title = "Token Transfer";
+    title = "Transfer";
     icon = "send";
     rows.push({ label: "Token", value: token });
-    rows.push({ label: "Amount", value: hasParam(p.amount) ? `${p.amount} ${token}` : "—" });
+    rows.push({ label: "Amount", value: hasParam(p.amount) ? `${p.amount} ${token}` : MISSING });
     rows.push({
       label: "To",
-      value: hasParam(p.recipient) ? shortAddr(String(p.recipient)) : "—",
+      value: hasParam(p.recipient) ? shortAddr(String(p.recipient)) : MISSING,
     });
-    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chainIndex) ? String(p.chainIndex) : "—") });
+    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chainIndex) ? String(p.chainIndex) : MISSING) });
   } else if (action.action === "bridge") {
     const p = action.params;
     const fromChain = getChainByIndex(Number(p.fromChain));
@@ -170,12 +195,12 @@ function ActionCard({
     const fromSymbol = (p.fromTokenSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
     const toSymbol = (p.toTokenSymbol as string) || tokenSymbol(p.toToken as string | undefined);
     title = "Bridge";
-    icon = "layers";
-    rows.push({ label: "From chain", value: fromChain?.name ?? (hasParam(p.fromChain) ? String(p.fromChain) : "—") });
-    rows.push({ label: "To chain", value: toChain?.name ?? (hasParam(p.toChain) ? String(p.toChain) : "—") });
+    icon = "bridge";
+    rows.push({ label: "From chain", value: fromChain?.name ?? (hasParam(p.fromChain) ? String(p.fromChain) : MISSING) });
+    rows.push({ label: "To chain", value: toChain?.name ?? (hasParam(p.toChain) ? String(p.toChain) : MISSING) });
     rows.push({
       label: "Amount",
-      value: hasParam(p.fromAmount) ? `${p.fromAmount} ${fromSymbol}` : "—",
+      value: hasParam(p.fromAmount) ? minimalToDisplay(p.fromAmount, p.fromToken, fromSymbol) : MISSING,
     });
     rows.push({ label: "From token", value: fromSymbol });
     rows.push({ label: "To token", value: toSymbol });
@@ -184,28 +209,28 @@ function ActionCard({
   } else if (action.action === "withdraw") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
-    title = "Fluid Withdraw";
+    title = "Withdraw from Fluid";
     icon = "trending-down";
     rows.push({ label: "Asset", value: p.fTokenSymbol as string });
-    rows.push({ label: "Amount", value: p.amount === "all" ? "Withdraw All" : String(p.amount) });
+    rows.push({ label: "Amount", value: p.amount === "all" ? "Everything" : String(p.amount) });
     rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
   } else if (action.action === "hl_order") {
     const p = action.params;
-    const side = p.side === "buy" ? "LONG" : p.side === "sell" ? "SHORT" : "—";
-    title = `Hyperliquid ${side === "—" ? "Order" : side === "LONG" ? "Long" : "Short"}`;
+    const side = p.side === "buy" ? "Long" : p.side === "sell" ? "Short" : null;
+    title = side ? `Hyperliquid ${side.toLowerCase()}` : "Hyperliquid order";
     icon = p.side === "buy" ? "long" : "short";
-    rows.push({ label: "Market", value: hasParam(p.coin) ? `${p.coin}-PERP` : "—" });
-    rows.push({ label: "Side", value: side });
-    rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : "—" });
+    rows.push({ label: "Market", value: hasParam(p.coin) ? `${p.coin}-PERP` : MISSING });
+    rows.push({ label: "Side", value: side ?? MISSING });
+    rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : MISSING });
     if (p.type) rows.push({ label: "Type", value: String(p.type).toUpperCase() });
-    rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : "—" });
-    if (p.currentPrice) rows.push({ label: "Mark Price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString()}` });
-    if (p.slPx) rows.push({ label: "Stop Loss", value: `$${p.slPx}` });
-    if (p.tpPx) rows.push({ label: "Take Profit", value: `$${p.tpPx}` });
+    rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : MISSING });
+    if (p.currentPrice) rows.push({ label: "Mark price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString()}` });
+    if (p.slPx) rows.push({ label: "Stop loss", value: `$${p.slPx}` });
+    if (p.tpPx) rows.push({ label: "Take profit", value: `$${p.tpPx}` });
     rows.push({ label: "Settlement", value: "USDC on Hyperliquid L1" });
   } else if (action.action === "hl_close") {
     const p = action.params;
-    title = "Close Hyperliquid Position";
+    title = "Close Hyperliquid position";
     icon = "close";
     rows.push({ label: "Market", value: `${p.coin}-PERP` });
     if (p.size) rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
@@ -213,55 +238,45 @@ function ActionCard({
     if (p.unrealizedPnl) rows.push({ label: "Unrealized PnL", value: `${parseFloat(String(p.unrealizedPnl)) >= 0 ? "+" : ""}${p.unrealizedPnl} USDC` });
   }
 
+  const ready = actionParamsReady(action);
+
   return (
-    <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-brand/5 p-4 space-y-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <LineIcon name={icon} size={16} />
-        </span>
-        <span className="font-semibold text-sm">{title}</span>
-        <Badge variant="outline" className="ml-auto text-[10px] border-primary/30 text-primary">
-          Awaiting Confirmation
-        </Badge>
-      </div>
-
-      <div className="rounded-xl bg-background/60 border border-border/40 divide-y divide-border/40">
-        {rows.map((row) => (
-          <div key={row.label} className="flex items-center justify-between px-3 py-2">
-            <span className="text-xs text-muted-foreground">{row.label}</span>
-            <span className="text-xs font-medium">{row.value}</span>
+    <div className="bezel act">
+      <div className="core">
+        <div className="act-head">
+          <span className="act-ico" aria-hidden="true">
+            <LineIcon name={icon} size={18} />
+          </span>
+          <div>
+            <div className="t">{title}</div>
+            <div className="sub">{ready ? "Waiting for your confirmation" : "Some details are missing"}</div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      <div className="flex gap-2 pt-1">
-        <Button
-          size="sm"
-          className="flex-1 h-9 rounded-xl text-sm font-medium shadow-sm"
-          onClick={onConfirm}
-          disabled={executing || !actionParamsReady(action)}
-        >
-          {executing ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Executing…
-            </span>
-          ) : (
-            "Confirm"
-          )}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1 h-9 rounded-xl text-sm"
-          onClick={onReject}
-          disabled={executing}
-        >
-          Reject
-        </Button>
+        <dl className="act-rows">
+          {rows.map((row) => (
+            <div key={row.label}>
+              <dt>{row.label}</dt>
+              <dd className={row.value === MISSING ? "missing" : undefined}>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className="act-btns">
+          <button type="button" className="btn btn--sm" onClick={onReject} disabled={executing}>
+            Reject
+          </button>
+          <button type="button" className="btn btn--sm btn--primary" onClick={onConfirm} disabled={executing || !ready}>
+            {executing ? (
+              <>
+                <span className="spin" aria-hidden="true" />
+                Executing…
+              </>
+            ) : (
+              "Confirm"
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -274,7 +289,6 @@ const SUGGESTIONS = [
   "Swap 0.1 ETH for USDC on Arbitrum",
   "Supply 100 USDC on Fluid Ethereum",
   "Show my Fluid positions",
-  "Show my wallet address",
   "Show my recent transactions",
 ];
 
@@ -300,30 +314,39 @@ function saveMessages(msgs: Message[]) {
   } catch {}
 }
 
+const ENTER = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.8 };
+
+function AssistantMark({ size = 28 }: { size?: number }) {
+  return (
+    <span className="ai-mark" style={{ width: size, height: size }} aria-hidden="true">
+      <LineIcon name="sparkle" size={Math.round(size * 0.5)} />
+    </span>
+  );
+}
+
 export default function AiPage() {
   const { authenticated } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
+  // The (app) layout renders pages only after hydration (it waits for the
+  // disclaimer flag in localStorage), so reading storage here is safe.
+  const [restored] = useState(loadMessages);
+  const [messages, setMessages] = useState<Message[]>(restored);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [proposedActions, setProposedActions] = useState<ProposedAction[]>([]);
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Load chat history from localStorage on mount
-  useEffect(() => {
-    const saved = loadMessages();
-    if (saved.length > 0) setMessages(saved);
-  }, []);
+  const reduce = useReducedMotion();
 
   // Save chat history whenever messages change
   useEffect(() => {
     if (messages.length > 0) saveMessages(messages);
   }, [messages]);
 
+  // The page scrolls with the window; keep the newest message in view.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, proposedActions]);
+    if (messages.length === 0 && proposedActions.length === 0) return;
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  }, [messages, proposedActions, loading, reduce]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -332,6 +355,7 @@ export default function AiPage() {
       const newMessages = [...messages, userMessage];
       setMessages(newMessages);
       setInput("");
+      if (inputRef.current) inputRef.current.style.height = "";
       setLoading(true);
 
       try {
@@ -387,7 +411,7 @@ export default function AiPage() {
     switch (action.action) {
       case "supply": {
         // Step 1: Approve fToken to spend underlying (e.g. USDC)
-        setMessages((prev) => [...prev, { role: "assistant", content: "⏳ Approvazione token per Fluid..." }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "Approving the token for Fluid…" }]);
         const approveEarnRes = await fetch("/api/earn/approve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -399,7 +423,7 @@ export default function AiPage() {
         });
         const approveEarnData = await approveEarnRes.json();
         if (!approveEarnData.success) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `**Approvazione fallita:** ${approveEarnData.error}` }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed:** ${approveEarnData.error}` }]);
           setExecutingIndex(null);
           return;
         }
@@ -408,7 +432,7 @@ export default function AiPage() {
         // there is no transaction to wait for.
         if (!approveEarnData.data?.alreadyApproved) {
           if (earnApproveTxHash) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `Approvazione inviata (\`${earnApproveTxHash.slice(0, 10)}…\`). In attesa di conferma on-chain...` }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${earnApproveTxHash.slice(0, 10)}…\`). Waiting for confirmation…` }]);
           }
           const earnChain = getChainByIndex(action.params.chainIndex as number)?.swapName ?? "arbitrum";
           const confirmed = await waitForReceipt(earnApproveTxHash ?? "", earnChain);
@@ -432,7 +456,7 @@ export default function AiPage() {
         const fromAddr = (action.params.fromToken as string ?? "").toLowerCase();
         const isNative = fromAddr === NATIVE_TOKEN;
         if (!isNative && fromAddr) {
-          setMessages((prev) => [...prev, { role: "assistant", content: "⏳ Approving token for swap..." }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: "Approving the token for the swap…" }]);
           const approveRes = await fetch("/api/swap/approve", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -452,7 +476,7 @@ export default function AiPage() {
           const alreadyApproved = Boolean(approveData.data?.alreadyApproved);
           if (!alreadyApproved) {
             if (approveTxHash) {
-              setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation...` }]);
+              setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation…` }]);
             }
             const confirmed = await waitForReceipt(approveTxHash ?? "", action.params.chain as string);
             if (!confirmed) {
@@ -636,196 +660,155 @@ export default function AiPage() {
 
   if (!authenticated) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Please connect your wallet first.</p>
+      <div className="page">
+        <Empty icon="wallet" title="Sign in first" text="Connect your wallet to talk to the assistant." />
       </div>
     );
   }
 
   const hasContent = messages.length > 0 || proposedActions.length > 0;
 
-  return (
-    <div className="relative flex flex-col h-[calc(100dvh-4rem-56px)] md:h-[calc(100dvh-4rem)] overflow-hidden">
+  const composer = (
+    <form onSubmit={handleSubmit} className={cn("ai-composer", hasContent && "is-docked")}>
+      <div className="bezel">
+        <div className="core">
+          <label htmlFor="ai-chat-input" className="sr-only">
+            Message to the assistant
+          </label>
+          <textarea
+            id="ai-chat-input"
+            ref={inputRef}
+            rows={1}
+            placeholder={hasContent ? "Reply…" : "Ask me anything…"}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(input);
+              }
+            }}
+            disabled={loading}
+          />
+          <button type="submit" className="send" aria-label="Send message" disabled={loading || !input.trim()}>
+            <LineIcon name="arrow-up" size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+      </div>
+      <p className="ai-hint">Enter to send, Shift+Enter for a new line. Nothing moves until you confirm.</p>
+    </form>
+  );
 
-      {/* ── Header — only visible when conversation has started ────────── */}
-      <div className={cn("relative shrink-0 px-6 pt-6 pb-4 border-b border-border/60 z-10 transition-all duration-300", !hasContent && "hidden")}>
-        <div className="relative flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-brand-soft text-brand flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-            </svg>
+  if (!hasContent) {
+    return (
+      <div className="ai">
+        <div className="ai-start">
+          <header className="ai-hero in">
+            <AssistantMark size={52} />
+            <h1 className="page-title">How can I&nbsp;help?</h1>
+            <p className="page-lede">
+              Ask about your portfolio and yields, or describe a transaction. I prepare it, you confirm&nbsp;it.
+            </p>
+          </header>
+          <div className="in" style={{ "--i": 1 } as React.CSSProperties}>
+            {composer}
           </div>
+          <ul className="ai-suggest in" style={{ "--i": 2 } as React.CSSProperties} aria-label="Suggestions">
+            {SUGGESTIONS.map((s) => (
+              <li key={s}>
+                <button type="button" onClick={() => sendMessage(s)}>
+                  {s}
+                  <LineIcon name="arrow-up-right" size={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ai">
+      <div className="ai-bar in">
+        <div className="ai-id">
+          <AssistantMark size={36} />
           <div>
-            <h1 className="text-[15px] font-medium tracking-tight">AI Assistant</h1>
-            <p className="text-[11px] text-muted-foreground">Powered by Claude · Zero fees</p>
+            <h1>Assistant</h1>
+            <p>Prepares transactions, sends nothing without your&nbsp;OK</p>
           </div>
         </div>
-        {messages.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setMessages([]);
-              setProposedActions([]);
-              localStorage.removeItem(CHAT_STORAGE_KEY);
-            }}
-            className="text-[11px] text-muted-foreground/60 hover:text-destructive transition-colors px-2 py-1 rounded-lg hover:bg-destructive/5"
-          >
-            Clear chat
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={() => {
+            setMessages([]);
+            setProposedActions([]);
+            localStorage.removeItem(CHAT_STORAGE_KEY);
+          }}
+        >
+          <LineIcon name="plus" size={15} />
+          New chat
+        </button>
       </div>
 
-      {/* ── Messages ───────────────────────────────────────────────────── */}
-      <div className="relative flex-1 overflow-y-auto px-6 py-4 space-y-4 z-10">
-        {/* Empty state */}
-        {!hasContent && (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-6 py-12">
-
-            <div className="ai-in flex flex-col items-center">
-              <div className="h-14 w-14 rounded-full bg-brand-soft text-brand flex items-center justify-center mb-6">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-                </svg>
-              </div>
-              <h2 className="text-[clamp(32px,4vw,48px)] font-medium tracking-[-0.045em] leading-none text-balance">How can I help you?</h2>
-              <p className="mt-4 text-[15px] text-muted-foreground max-w-sm text-pretty">
-                Ask me about your portfolio, yields, or tell me what transaction to&nbsp;prepare.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 justify-center max-w-md">
-              {SUGGESTIONS.map((s, i) => (
-                <button
-                  key={s}
-                  style={{ animation: `ai-fade-up 0.6s var(--ease-out) both ${0.2 + i * 0.06}s` }}
-                  className="rounded-full border border-border bg-shell px-4 py-2 text-[13px] text-text-2 hover:text-foreground hover:border-border-strong active:scale-[0.97] transition-[color,border-color,transform] duration-300 text-left"
-                  onClick={() => sendMessage(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Message list */}
+      <ol className="ai-thread" aria-label="Conversation">
         {messages.map((msg, i) => (
-          <div
+          <motion.li
             key={i}
-            className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
+            className={cn("msg", msg.role)}
+            initial={i < restored.length ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={ENTER}
           >
-            {msg.role === "assistant" && (
-              <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-                </svg>
-              </div>
-            )}
-            <div
-              className={cn(
-                "max-w-[88%] sm:max-w-[75%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-br-sm"
-                  : "bg-muted rounded-bl-sm"
-              )}
-            >
-              {msg.role === "assistant" ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:pl-4 [&>ul>li]:mb-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>code]:text-xs [&>pre]:text-xs">
+            {msg.role === "assistant" ? (
+              <>
+                <AssistantMark />
+                <div className="md">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
-              ) : (
-                <p className="whitespace-pre-wrap">{msg.content}</p>
-              )}
-            </div>
-          </div>
+              </>
+            ) : (
+              <p>{msg.content}</p>
+            )}
+          </motion.li>
         ))}
 
-        {/* Proposed action cards */}
         {proposedActions.map((action, i) => (
-          <div key={i} className="flex justify-start">
-            <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-              </svg>
-            </div>
-            <div className="max-w-[85%] w-full sm:w-72">
-              <ActionCard
-                action={action}
-                onConfirm={() => executeAction(action, i)}
-                onReject={() => setProposedActions((prev) => prev.filter((_, idx) => idx !== i))}
-                executing={executingIndex === i}
-              />
-            </div>
-          </div>
+          <motion.li
+            key={`act-${i}`}
+            className="msg assistant"
+            initial={{ opacity: 0, y: 12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={ENTER}
+          >
+            <AssistantMark />
+            <ActionCard
+              action={action}
+              onConfirm={() => executeAction(action, i)}
+              onReject={() => setProposedActions((prev) => prev.filter((_, idx) => idx !== i))}
+              executing={executingIndex === i}
+            />
+          </motion.li>
         ))}
 
-        {/* Loading indicator */}
         {loading && (
-          <div className="flex justify-start">
-            <div className="h-6 w-6 rounded-full bg-brand-soft text-brand flex items-center justify-center mr-2 mt-1 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-              </svg>
-            </div>
-            <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3">
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-              </div>
-            </div>
-          </div>
+          <motion.li className="msg assistant" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={ENTER}>
+            <AssistantMark />
+            <span className="typing" role="status" aria-label="The assistant is writing">
+              <span />
+              <span />
+              <span />
+            </span>
+          </motion.li>
         )}
+      </ol>
 
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* ── Input bar ──────────────────────────────────────────────────── */}
-      <div className="relative shrink-0 border-t border-border px-3 py-3 md:px-6 md:py-4 bg-background/80 backdrop-blur z-10">
-        <form onSubmit={handleSubmit} className="flex gap-3 items-end">
-          <div className="flex-1 relative">
-            <label htmlFor="ai-chat-input" className="sr-only">
-              Chat message
-            </label>
-            <textarea
-              id="ai-chat-input"
-              ref={inputRef}
-              rows={1}
-              placeholder="Ask anything about your portfolio, yields, or swaps…"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage(input);
-                }
-              }}
-              disabled={loading}
-              className="w-full resize-none rounded-2xl border border-border bg-shell px-4 py-3 text-[15px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-60 overflow-hidden"
-              style={{ minHeight: "44px" }}
-            />
-          </div>
-          <Button
-            type="submit"
-            size="icon"
-            aria-label="Send message"
-            className="h-11 w-11 rounded-full shrink-0 bg-primary text-primary-foreground border-0 hover:bg-primary/90 active:scale-95 transition-transform"
-            disabled={loading || !input.trim()}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m22 2-7 20-4-9-9-4Z" />
-              <path d="M22 2 11 13" />
-            </svg>
-          </Button>
-        </form>
-        <p className="text-[10px] text-muted-foreground/50 text-center mt-2">
-          Press Enter to send · Shift+Enter for new line
-        </p>
-      </div>
+      {composer}
     </div>
   );
 }

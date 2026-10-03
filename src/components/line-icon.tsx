@@ -39,7 +39,11 @@ export type LineIconName =
   | "copy"
   | "chevron-down"
   | "signal"
-  | "refresh";
+  | "refresh"
+  | "arrow-up"
+  | "arrow-down"
+  | "plus"
+  | "file";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   swap: (
@@ -221,6 +225,30 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
       <path d="M4 4v4h4" />
       <path d="M4 13a8 8 0 0 0 14.6 4.5L20 16" />
       <path d="M20 20v-4h-4" />
+    </>
+  ),
+  "arrow-up": (
+    <>
+      <path d="M12 19V5" />
+      <path d="m5.5 11.5 6.5-6.5 6.5 6.5" />
+    </>
+  ),
+  "arrow-down": (
+    <>
+      <path d="M12 5v14" />
+      <path d="m5.5 12.5 6.5 6.5 6.5-6.5" />
+    </>
+  ),
+  plus: (
+    <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
     </>
   ),
 };
