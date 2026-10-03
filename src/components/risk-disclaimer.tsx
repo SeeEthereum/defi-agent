@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LineIcon } from "@/components/line-icon";
+import { CoreIcon } from "@/components/line-icon-core";
 
 export const DISCLAIMER_KEY = "defi-agent-disclaimer-accepted";
 
@@ -329,7 +329,7 @@ export function RiskCards({ onAllSeen }: { onAllSeen: () => void }) {
           disabled={current === 0}
           aria-label="Previous card"
         >
-          <LineIcon name="arrow-right" size={16} className="flip" />
+          <CoreIcon name="arrow-right" size={16} className="flip" />
         </button>
         <button
           type="button"
@@ -338,7 +338,7 @@ export function RiskCards({ onAllSeen }: { onAllSeen: () => void }) {
           disabled={current === last}
           aria-label="Next card"
         >
-          <LineIcon name="arrow-right" size={16} />
+          <CoreIcon name="arrow-right" size={16} />
         </button>
       </div>
       <p className="sr-only" aria-live="polite">

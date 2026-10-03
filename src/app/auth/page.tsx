@@ -20,7 +20,7 @@ import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import "../welcome/landing.css";
 import { BrandMark } from "@/components/brand-mark";
-import { LineIcon } from "@/components/line-icon";
+import { CoreIcon } from "@/components/line-icon-core";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { typeset as t } from "@/lib/typeset";
 import { DISCLAIMER_KEY, RiskCards } from "@/components/risk-disclaimer";
@@ -216,7 +216,7 @@ export default function AuthPage() {
                 <button type="button" className="btn btn--primary btn--lg auth-cta" onClick={acceptDisclaimer} disabled={!ticked || !allSeen}>
                   Accept &amp; continue
                   <span className="well" aria-hidden="true">
-                    <LineIcon name="arrow-right" size={18} />
+                    <CoreIcon name="arrow-right" size={18} />
                   </span>
                 </button>
               </div>
@@ -250,7 +250,7 @@ export default function AuthPage() {
                         <>
                           Sign in with OKX
                           <span className="well" aria-hidden="true">
-                            <LineIcon name="arrow-up-right" size={18} />
+                            <CoreIcon name="arrow-up-right" size={18} />
                           </span>
                         </>
                       )}
@@ -274,7 +274,7 @@ export default function AuthPage() {
                       <a className="btn btn--primary" href={loginUrl} target="_blank" rel="noopener noreferrer">
                         Open sign-in page
                         <span className="well" aria-hidden="true">
-                          <LineIcon name="arrow-up-right" size={16} />
+                          <CoreIcon name="arrow-up-right" size={16} />
                         </span>
                       </a>
                       <button type="button" className="btn" onClick={copyLink}>

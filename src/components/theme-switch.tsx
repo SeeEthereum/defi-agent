@@ -1,6 +1,6 @@
 "use client";
 
-import { LineIcon } from "@/components/line-icon";
+import { CoreIcon } from "@/components/line-icon-core";
 import { useThemePref } from "@/hooks/use-theme";
 import { setThemePref, type ThemePref } from "@/lib/theme";
 
@@ -40,7 +40,7 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
               (e.currentTarget.parentElement?.querySelector(`[aria-label="${next.label}"]`) as HTMLElement | null)?.focus();
             }}
           >
-            <LineIcon name={o.icon} size={15} />
+            <CoreIcon name={o.icon} size={15} />
           </button>
         );
       })}

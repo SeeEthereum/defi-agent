@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LineIcon } from "@/components/line-icon";
+import { CoreIcon } from "@/components/line-icon-core";
 
 /**
  * The one moving strip on the page. Autoplaying motion alongside other
@@ -31,7 +31,7 @@ export function Marquee({ items }: { items: string[] }) {
         aria-label={paused ? "Play the moving list" : "Pause the moving list"}
         onClick={() => setPaused((p) => !p)}
       >
-        <LineIcon name={paused ? "play" : "pause"} size={14} />
+        <CoreIcon name={paused ? "play" : "pause"} size={14} />
       </button>
     </div>
   );

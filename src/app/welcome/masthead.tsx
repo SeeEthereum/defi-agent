@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
-import { LineIcon } from "@/components/line-icon";
+import { CoreIcon } from "@/components/line-icon-core";
 import { ThemeSwitch } from "@/components/theme-switch";
 
 const LINKS = [
@@ -128,12 +128,12 @@ export function Masthead() {
         {LINKS.map((l) => (
           <a key={l.id} href={`#${l.id}`}>
             {l.label}
-            <LineIcon name="arrow-right" size={16} />
+            <CoreIcon name="arrow-right" size={16} />
           </a>
         ))}
         <a href="/auth">
           Sign in
-          <LineIcon name="arrow-up-right" size={16} />
+          <CoreIcon name="arrow-up-right" size={16} />
         </a>
         <div className="sheet-foot">
           <span>Theme</span>
