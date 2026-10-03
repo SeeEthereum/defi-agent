@@ -11,21 +11,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAllChainBalances } from "@/hooks/use-balances";
 import { useFluidMarkets } from "@/hooks/use-fluid-markets";
 import { CHAINS } from "@/lib/chains";
+import { CHAIN_COLORS } from "@/lib/chain-colors";
 import { formatUsd } from "@/lib/utils";
 import { TokenIcon } from "@/components/token-icon";
 import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
 import { CountUp, Empty, Metric, Panel, Skeleton } from "@/components/premium";
 
-// Chain identity colours: data colours for the allocation bar, not accents.
-const CHAIN_COLORS: Record<number, string> = {
-  1: "#627EEA",
-  42161: "#28A0F0",
-  8453: "#0052FF",
-  56: "#F0B90B",
-  137: "#8247E5",
-  10: "#FF0420",
-};
 
 interface PnlOverview {
   realizedPnl: number;
@@ -139,7 +131,7 @@ export default function DashboardPage() {
                     <LineIcon name="arrow-up-right" size={16} />
                   </span>
                 </Link>
-                <Link href="/wallet" className="btn">
+                <Link href="/wallet?tab=receive" className="btn">
                   Add funds
                 </Link>
               </div>
@@ -209,7 +201,7 @@ export default function DashboardPage() {
               title="Nothing here yet"
               text="Send crypto to your address on any supported chain, then ask the assistant what to do with it."
               action={
-                <Link href="/wallet" className="btn btn--sm">
+                <Link href="/wallet?tab=receive" className="btn btn--sm">
                   Show my address
                 </Link>
               }
