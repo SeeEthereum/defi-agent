@@ -35,3 +35,10 @@ services:
         sync: false
       - key: NEAR_INTENTS_API_KEY # 1Click partner key (confidential swaps)
         sync: false
+      # Neon Postgres: assistant allowance (20 questions a day) and account
+      # names. Without it both live in memory and reset on every restart.
+      - key: DATABASE_URL
+        sync: false
+      # Optional overrides; defaults are gpt-6.1-sol and gpt-6-luna.
+      # - key: OPENAI_MODEL
+      # - key: OPENAI_GUARD_MODEL
