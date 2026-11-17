@@ -10,6 +10,8 @@ import { AuthContext, useAuthState } from "@/hooks/use-auth";
 import { DISCLAIMER_KEY } from "@/components/risk-disclaimer";
 import { askRiskConfirmation, RiskConfirmHost } from "@/components/risk-confirm";
 import { confirmRiskIfAsked } from "@/lib/api/risk-retry";
+import { answerWalletPrompts } from "@/lib/api/approval-code-retry";
+import { askApprovalCode, ApprovalCodeHost } from "@/components/approval-code-prompt";
 import "./app.css";
 
 // Derive the disclaimer state from localStorage via useSyncExternalStore so
@@ -52,8 +54,9 @@ function redirectIfNoSession(res: Response): void {
 /**
  * Client session guard. useAuthState already polls /api/auth/status for the
  * OKX login flag; this additionally treats HTTP 401 `{ code: "no_session" }`
- * (missing/expired session cookie) as a hard redirect to /auth, and asks the
- * user about transactions the wallet flagged (lib/api/risk-retry).
+ * (missing/expired session cookie) as a hard redirect to /auth, asks the
+ * user about transactions the wallet flagged (lib/api/risk-retry), and for
+ * OKX's email code when it holds a token approval (lib/api/approval-code-retry).
  */
 function useSessionGuard() {
   useEffect(() => {
@@ -61,16 +64,20 @@ function useSessionGuard() {
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const res = await nativeFetch(input, init);
       redirectIfNoSession(res);
-      return confirmRiskIfAsked(
+      const send = async (retryInput: RequestInfo | URL, retryInit?: RequestInit) => {
+        const retry = await nativeFetch(retryInput, retryInit);
+        redirectIfNoSession(retry);
+        return retry;
+      };
+      // A flagged transaction asks for consent; a held token approval asks
+      // for OKX's email code. One request can run into both, in any order.
+      return answerWalletPrompts(
         res,
         input,
         init,
-        async (retryInput, retryInit) => {
-          const retry = await nativeFetch(retryInput, retryInit);
-          redirectIfNoSession(retry);
-          return retry;
-        },
-        askRiskConfirmation
+        send,
+        (r, i, ri, s) => confirmRiskIfAsked(r, i, ri, s, askRiskConfirmation),
+        askApprovalCode
       );
     };
 
@@ -178,6 +185,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
           <AppDock />
           <RiskConfirmHost />
+          <ApprovalCodeHost />
         </div>
       </MotionConfig>
     </AuthContext>

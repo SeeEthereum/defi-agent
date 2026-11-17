@@ -6,6 +6,7 @@ import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi } from "@/lib/fluid/abis";
 import { withSession } from "@/lib/session/session";
 import { guardDuplicates } from "@/lib/api/duplicate-guard";
+import { approvalCode, approvalPromptResponseFor, releasePausedApproval } from "@/lib/okx/approval-code";
 import {
   decimalAmount,
   chainId as chainIdSchema,
@@ -26,6 +27,7 @@ const schema = z.object({
   fTokenSymbol: z.string().min(1),
   amount: decimalAmount,
   chainIndex: chainIdSchema,
+  approvalCode,
 });
 
 function txHashOf(data: unknown): `0x${string}` | null {
@@ -47,7 +49,7 @@ function txHashOf(data: unknown): `0x${string}` | null {
 export const POST = withSession(guardDuplicates("earn/approve", async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex: chainId } = schema.parse(body);
+    const { fTokenSymbol, amount, chainIndex: chainId, approvalCode } = schema.parse(body);
 
     const fToken = getFToken(chainId, fTokenSymbol);
     if (!fToken) {
@@ -65,6 +67,10 @@ export const POST = withSession(guardDuplicates("earn/approve", async (request: 
       });
     }
 
+    // The user typed OKX's email code: send the approval OKX paused and wait
+    // for it; the allowance check below then sees it.
+    const releasedTx = approvalCode ? await releasePausedApproval(approvalCode, chainId) : null;
+
     const owner = (await sessionEvmAddress(String(chainId))) as `0x${string}`;
     const rawAmount = parseAmount(amount, fToken.underlyingDecimals);
     const spender = fToken.address;
@@ -81,7 +87,7 @@ export const POST = withSession(guardDuplicates("earn/approve", async (request: 
     if (allowance >= rawAmount) {
       return NextResponse.json({
         success: true,
-        data: { txHash: null, alreadyApproved: true },
+        data: { txHash: releasedTx, alreadyApproved: true },
       });
     }
 
@@ -116,6 +122,8 @@ export const POST = withSession(guardDuplicates("earn/approve", async (request: 
     });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
+    const prompt = approvalPromptResponseFor(error);
+    if (prompt) return prompt;
     return apiError("earn/approve", error, "Approve failed");
   }
 }, { recentMs: 0 }));

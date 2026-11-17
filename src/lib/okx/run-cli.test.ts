@@ -183,3 +183,67 @@ describe("--force", () => {
     expect(argsOfLastCall()).toContain("--force");
   });
 });
+
+describe("approval verification (OKX email code)", () => {
+  // Shapes printed by onchainos v4.6.11 (cli/src/commands/agentic_wallet/approval_code.rs).
+  const codeSent = {
+    confirming: true,
+    scene: "approval_code_sent",
+    message:
+      "This approval requires email verification (approval double confirmation is on). A verification code was sent to the bound email. The approval has not been executed yet.",
+    next: "Ask the user for the 6-digit code from the bound email, then run `onchainos wallet approval-code verify --verification-code <code>`.",
+  };
+
+  it("turns a held approval (exit 2) into ApprovalCodeError, not a risk prompt", async () => {
+    const { ApprovalCodeError } = await import("./cli");
+    exec.mockRejectedValue(exitTwo(codeSent));
+    const error = await inSession(() => runCli(["wallet", "contract-call"], { to: "0x1" })).catch((e) => e);
+    expect(error).toBeInstanceOf(ApprovalCodeError);
+    expect(error).not.toBeInstanceOf(RiskConfirmingError);
+  });
+
+  it("keeps the CLI's errorCode on a coded failure", async () => {
+    exec.mockRejectedValue(
+      Object.assign(new Error("Command failed"), {
+        killed: false,
+        code: 1,
+        stdout: JSON.stringify({
+          ok: false,
+          error: "The verification code is incorrect. The approval was not completed.",
+          errorCode: "approval_code_invalid",
+        }),
+        stderr: "",
+      })
+    );
+    const { walletApprovalCodeVerify } = await import("./cli");
+    const error = await inSession(() => walletApprovalCodeVerify("123456")).catch((e) => e);
+    expect(error).toBeInstanceOf(OkxCliError);
+    expect(error.errorCode).toBe("approval_code_invalid");
+    expect(exec.mock.calls.at(-1)?.[1]).toEqual(["wallet", "approval-code", "verify", "--verification-code", "123456"]);
+  });
+
+  it("counts a resend as done when OKX answers that a code was sent", async () => {
+    const { walletApprovalCodeResend } = await import("./cli");
+    exec.mockRejectedValue(exitTwo(codeSent));
+    await expect(inSession(() => walletApprovalCodeResend())).resolves.toBeUndefined();
+  });
+
+  it("answers 428 for a held approval and 400 with the reason for a wrong code", async () => {
+    const { ApprovalCodeError } = await import("./cli");
+    const { approvalPromptResponseFor } = await import("./approval-code");
+    const held = approvalPromptResponseFor(new ApprovalCodeError("wallet contract-call"));
+    expect(held?.status).toBe(428);
+    expect((await held?.json()).code).toBe("approval_code");
+
+    const wrong = approvalPromptResponseFor(new OkxCliError("wallet approval-code verify", 1, "x", "approval_code_invalid"));
+    expect(wrong?.status).toBe(400);
+    expect(await wrong?.json()).toMatchObject({ code: "approval_code_invalid", retryable: true });
+
+    const tooMany = approvalPromptResponseFor(
+      new OkxCliError("wallet approval-code verify", 1, "x", "approval_code_attempts_exceeded")
+    );
+    expect(await tooMany?.json()).toMatchObject({ retryable: false, error: expect.stringMatching(/start again/) });
+
+    expect(approvalPromptResponseFor(new OkxCliError("wallet send", 1, "insufficient funds"))).toBeNull();
+  });
+});

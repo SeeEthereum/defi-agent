@@ -20,6 +20,7 @@ import {
 import { CHAINS, getChainByIndex } from "@/lib/chains";
 import { CHAIN_COLORS } from "@/lib/chain-colors";
 import { GasStationModal } from "@/components/gas-station-modal";
+import { OkxProtections } from "@/components/okx-protections";
 import { TokenIcon } from "@/components/token-icon";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import { CountUp, Empty, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
@@ -714,6 +715,8 @@ export default function WalletPage() {
           )}
         </Panel>
       )}
+
+      {tab === "balances" && <OkxProtections />}
 
       {tab === "activity" && (
         <Panel

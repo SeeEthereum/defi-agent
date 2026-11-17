@@ -3,6 +3,7 @@ import { bridgeQuote } from "@/lib/bridge/lifi";
 import { walletContractCall } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
+import { approvalCode, approvalPromptResponseFor, releasePausedApproval } from "@/lib/okx/approval-code";
 import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { encodeApprove } from "@/lib/fluid/ftokens";
@@ -31,6 +32,7 @@ const schema = z.object({
     .string({ error: "Missing quote. Refresh the quote and try again." })
     .min(1, "Missing quote. Refresh the quote and try again."),
   acknowledgeRisk,
+  approvalCode,
 });
 
 // LI.FI's native token sentinels — both cases exist; normalize via lowercase
@@ -105,7 +107,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
   let restoreQuote: (() => void) | null = null;
   try {
     const body = await request.json();
-    const { fromChain, toChain, fromToken, toToken, fromAmount, quoteId, acknowledgeRisk } =
+    const { fromChain, toChain, fromToken, toToken, fromAmount, quoteId, acknowledgeRisk, approvalCode } =
       schema.parse(body);
 
     // Validate source chain
@@ -116,6 +118,12 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
         { status: 400 }
       );
     }
+
+    // The user typed OKX's email code: send the token approval OKX paused
+    // and wait for it to be mined. Step 1 below then finds the allowance in
+    // place. This runs before the quote check: the approval is needed
+    // either way, and reading the email may outlast the quote.
+    if (approvalCode) await releasePausedApproval(approvalCode, fromChain);
 
     const bound = checkQuote(
       quoteId,
@@ -266,7 +274,9 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
           // Gas Station can trigger on the approve call too (it's the
           // first contract-call of the flow) — surface the picker, don't
           // bury it in the approve-failed message.
-          const gasStation = gasStationResponseFor(approveError);
+          // So can approval verification: OKX holds the approval for the
+          // email code. Nothing was signed; the same quote stays usable.
+          const gasStation = gasStationResponseFor(approveError) ?? approvalPromptResponseFor(approveError);
           if (gasStation) {
             restoreQuote();
             return gasStation;
@@ -347,7 +357,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
-    const prompt = gasStation ?? riskResponseFor(error);
+    const prompt = gasStation ?? riskResponseFor(error) ?? approvalPromptResponseFor(error);
     if (prompt) {
       // The wallet stopped to ask before signing: the same quote stays usable.
       restoreQuote?.();

@@ -92,6 +92,10 @@ const SAFE_MESSAGE_PATTERNS = [
   /OKX is busy/i,
   /no price data found/i,
   /please sign in again/i,
+  // Approval verification (lib/okx/approval-code).
+  /was not sent/i,
+  /nothing else was sent/i,
+  /start again/i,
 ];
 
 /**

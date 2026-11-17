@@ -1,6 +1,7 @@
 import { execFile, type ChildProcess } from "child_process";
 import { currentSession, onchainosEnv } from "@/lib/session/session";
 import { holdUnsealedIdentity } from "@/lib/session/keyring-seal";
+import { savePolicyFromLogin } from "./security-policy";
 import { ONCHAINOS_BIN } from "./cli";
 
 /**
@@ -145,6 +146,8 @@ export function startLoginPoll(authSessionId: string, loginUrl: string): LoginSe
           // `wallet status` be the source of truth.
         }
 
+        // OKX reports the account's protections only here (onchainos 4.6.11+).
+        savePolicyFromLogin(user, stdout);
         session.phase = "done";
       }
     );

@@ -33,7 +33,9 @@ export class OkxCliError extends Error {
   constructor(
     public command: string,
     public exitCode: number | null,
-    public stderr: string
+    public stderr: string,
+    /** The CLI's machine-readable `errorCode`, when it printed one. */
+    public errorCode?: string
   ) {
     super(`onchainos ${command} failed: ${stderr || "unknown error"}`);
     this.name = "OkxCliError";
@@ -77,6 +79,22 @@ export class RiskConfirmingError extends Error {
   ) {
     super(prompt);
     this.name = "RiskConfirmingError";
+  }
+}
+
+/** `confirming.scene` when OKX paused a token approval for an email code. */
+export const APPROVAL_CODE_SCENE = "approval_code_sent";
+
+/**
+ * The account has approval verification on: OKX paused a token approval
+ * and emailed a 6-digit code. Nothing was broadcast; `wallet approval-code
+ * verify` sends the paused approval, unchanged, once the code is right.
+ * See ./approval-code.
+ */
+export class ApprovalCodeError extends Error {
+  constructor(public command: string) {
+    super("This approval needs the code OKX sent to your email.");
+    this.name = "ApprovalCodeError";
   }
 }
 
@@ -262,6 +280,7 @@ export async function runCli<T = unknown>(
         //    expires or quota is crossed — without degrading traffic into
         //    user-visible errors.
         if (json.confirming === true) {
+          if (json.scene === APPROVAL_CODE_SCENE) throw new ApprovalCodeError(subcommands.join(" "));
           const gasStation = parseGasStationConfirming(json);
           if (gasStation) {
             throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
@@ -289,7 +308,8 @@ export async function runCli<T = unknown>(
           throw new OkxCliError(
             subcommands.join(" "),
             0,
-            typeof json.error === "string" ? json.error : "Command reported a failure"
+            typeof json.error === "string" ? json.error : "Command reported a failure",
+            typeof json.errorCode === "string" ? json.errorCode : undefined
           );
         }
 
@@ -303,6 +323,7 @@ export async function runCli<T = unknown>(
         if (
           parseOrConfirming instanceof GasStationConfirmingError ||
           parseOrConfirming instanceof RiskConfirmingError ||
+          parseOrConfirming instanceof ApprovalCodeError ||
           parseOrConfirming instanceof OkxCliError
         ) {
           throw parseOrConfirming;
@@ -333,6 +354,7 @@ export async function runCli<T = unknown>(
       if (
         error instanceof GasStationConfirmingError ||
         error instanceof RiskConfirmingError ||
+        error instanceof ApprovalCodeError ||
         error instanceof SealedSessionError
       ) {
         throw error;
@@ -398,6 +420,7 @@ export async function runCli<T = unknown>(
           // not a JSON confirming response
         }
         if (json?.confirming) {
+          if (json.scene === APPROVAL_CODE_SCENE) throw new ApprovalCodeError(subcommands.join(" "));
           const gasStation = parseGasStationConfirming(json);
           if (gasStation) {
             throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
@@ -435,7 +458,17 @@ export async function runCli<T = unknown>(
       // Try to extract a meaningful message from stderr or stdout
       let detail = (err.stderr || "").trim();
 
-      // Sometimes the CLI prints the error in stdout as JSON
+      // Sometimes the CLI prints the error in stdout as JSON, with a
+      // machine-readable errorCode (e.g. approval_code_invalid).
+      let errorCode: string | undefined;
+      if (err.stdout) {
+        try {
+          const parsed = JSON.parse(err.stdout);
+          if (typeof parsed.errorCode === "string") errorCode = parsed.errorCode;
+        } catch {
+          // not JSON
+        }
+      }
       if (!detail && err.stdout) {
         try {
           const parsed = JSON.parse(err.stdout);
@@ -460,7 +493,8 @@ export async function runCli<T = unknown>(
       throw new OkxCliError(
         subcommands.join(" "),
         exitCode,
-        detail || fallback
+        detail || fallback,
+        errorCode
       );
     }
   }));
@@ -637,6 +671,36 @@ export async function walletContractCall(params: {
   if (params.relayerId) args["relayer-id"] = params.relayerId;
   if (params.enableGasStation) args["enable-gas-station"] = true;
   return runCli(["wallet", "contract-call"], args);
+}
+
+// ── Approval verification (email code) ─────────────────────────────────────
+
+/** What `wallet approval-code verify` returns once it sent the paused approval. */
+export interface ApprovalReplay {
+  operation: "broadcast" | "signMessage";
+  txHash?: string;
+  orderId?: string;
+}
+
+/** Check the emailed code; if right, OKX sends the paused approval, unchanged. */
+export async function walletApprovalCodeVerify(code: string) {
+  return runCli<ApprovalReplay>(["wallet", "approval-code", "verify"], { "verification-code": code });
+}
+
+/** Email a new code for the same paused approval. */
+export async function walletApprovalCodeResend(): Promise<void> {
+  try {
+    await runCli(["wallet", "approval-code", "resend"]);
+  } catch (error) {
+    // Success is reported as the same "code sent" pause.
+    if (error instanceof ApprovalCodeError) return;
+    throw error;
+  }
+}
+
+/** Drop the paused approval without sending it. */
+export async function walletApprovalCodeCancel() {
+  return runCli<{ cancelled: boolean }>(["wallet", "approval-code", "cancel"]);
 }
 
 // ── Gas Station management commands ─────────────────────────────────────────

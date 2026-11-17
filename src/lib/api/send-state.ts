@@ -27,8 +27,11 @@ export function recentMessage(secondsAgo: number): string {
 /** 428 code: the wallet flagged the transaction and wants the user to confirm. */
 export const RISK_CONFIRMATION_CODE = "risk_confirmation";
 
-/** What a page receives when the user declines the wallet's warning. */
+/** What a page receives when the user declines the wallet's warning (or the code prompt). */
 export const RISK_DECLINED_MESSAGE = "Cancelled. Nothing was sent.";
+
+/** 428 code: OKX paused a token approval until the user types the code it emailed. */
+export const APPROVAL_CODE_CODE = "approval_code";
 
 export const SEND_STATE_TITLES: Record<SendStateCode, string> = {
   duplicate_in_flight: "Already in progress",
@@ -42,6 +45,10 @@ const SEND_STATE_PATTERNS = [
   /went through \d+ seconds? ago/i,
   /may still go through/i,
   /nothing was sent/i,
+  // Approval verification (lib/okx/approval-code): what happened to the approval.
+  /was not sent/i,
+  /nothing else was sent/i,
+  /start again/i,
 ];
 
 /** True for a message that must be shown to the user unchanged. */

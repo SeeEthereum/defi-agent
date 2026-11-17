@@ -11,18 +11,37 @@ import {
   baseUnitAmount,
   badRequest,
   apiError,
+  sessionEvmAddress,
 } from "@/lib/api/validation";
+import { approvalCode, approvalPromptResponseFor, releasePausedApproval } from "@/lib/okx/approval-code";
+import { getPublicClient } from "@/lib/fluid/client";
+import { erc20Abi } from "viem";
 
 const schema = z.object({
   token: tokenAddress,
   amount: baseUnitAmount,
   chain: z.string().min(1),
+  approvalCode,
 });
+
+/** Current allowance, or null when the chain cannot be read. */
+async function allowanceOf(chainIndex: number, token: string, owner: string, spender: string): Promise<bigint | null> {
+  try {
+    return await getPublicClient(chainIndex).readContract({
+      address: token as `0x${string}`,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [owner as `0x${string}`, spender as `0x${string}`],
+    });
+  } catch {
+    return null;
+  }
+}
 
 export const POST = withSession(guardDuplicates("swap/approve", async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { token, amount, chain } = schema.parse(body);
+    const { token, amount, chain, approvalCode } = schema.parse(body);
 
     const chainConfig = getChainBySwapName(chain);
     if (!chainConfig) {
@@ -35,6 +54,10 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
     const chainIndex = String(chainConfig.chainIndex);
     const tokenAddr = normalizeAddress(token);
 
+    // The user typed OKX's email code: send the approval OKX paused and wait
+    // for it, then carry on below, which finds the allowance in place.
+    const releasedTx = approvalCode ? await releasePausedApproval(approvalCode, chainIndex) : null;
+
     // Approve only the amount being swapped.
     const approveData = await dexApproveTransaction({
       chainIndex,
@@ -46,7 +69,7 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
       // No calldata = allowance already sufficient
       return NextResponse.json({
         success: true,
-        data: { txHash: null, alreadyApproved: true },
+        data: { txHash: releasedTx, alreadyApproved: true },
       });
     }
 
@@ -58,7 +81,22 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
       "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // Polygon
       "0x55d398326f99059ff775485246999027b3197955", // BNB Chain
     ];
-    if (USDT_ADDRESSES.includes(tokenAddr)) {
+    // Read the allowance ourselves too: right after a released approval,
+    // and so a sufficient allowance never gets approved twice.
+    const owner = await sessionEvmAddress(chainIndex).catch(() => null);
+    const currentAllowance = owner
+      ? await allowanceOf(chainConfig.chainIndex, tokenAddr, owner, approveData.dexContractAddress)
+      : null;
+    if (currentAllowance !== null && currentAllowance >= BigInt(amount)) {
+      return NextResponse.json({
+        success: true,
+        data: { txHash: releasedTx, alreadyApproved: true },
+      });
+    }
+
+    // Only when the current allowance is above zero: approve(0) otherwise
+    // costs gas for nothing (and, with approval verification on, a code).
+    if (USDT_ADDRESSES.includes(tokenAddr) && currentAllowance !== 0n) {
       try {
         const resetData = await dexApproveTransaction({
           chainIndex,
@@ -77,8 +115,11 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
           // Brief pause to let the reset propagate
           await new Promise((r) => setTimeout(r, 2000));
         }
-      } catch {
-        // Reset is best-effort — continue with the actual approval
+      } catch (resetError) {
+        // OKX holds the reset for the email code: ask for it now, or the
+        // approval below would fail on USDT's non-zero allowance.
+        if (approvalPromptResponseFor(resetError)) throw resetError;
+        // Otherwise the reset is best-effort: continue with the approval.
       }
     }
 
@@ -108,6 +149,8 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
     });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
+    const prompt = approvalPromptResponseFor(error);
+    if (prompt) return prompt;
     return apiError("swap/approve", error, "Approve failed");
   }
 }, { recentMs: 0 }));
