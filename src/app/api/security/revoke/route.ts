@@ -3,6 +3,7 @@ import { walletContractCall } from "@/lib/okx/cli";
 import { encodeApprove } from "@/lib/fluid/ftokens";
 import { z } from "zod";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   apiError,
   badRequest,
@@ -16,7 +17,7 @@ const schema = z.object({
   chainIndex: chainId,
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("security/revoke", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { tokenAddress, spenderAddress, chainIndex } = schema.parse(body);
@@ -45,4 +46,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("security/revoke", error, "Request failed");
   }
-});
+}));

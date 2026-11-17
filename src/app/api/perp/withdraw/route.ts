@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { hlWithdraw } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import { badRequest, decimalAmount } from "@/lib/api/validation";
 import { z } from "zod";
 
@@ -16,7 +17,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("perp/withdraw", async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     const result = await hlWithdraw(params);
@@ -25,4 +26,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return respondBinError(error, "Withdraw failed");
   }
-});
+}));

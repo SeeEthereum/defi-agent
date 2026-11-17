@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { hlTpSl } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import { badRequest, decimalAmount } from "@/lib/api/validation";
 import { z } from "zod";
 
@@ -19,7 +20,7 @@ const schema = z
     message: "At least one of slPx or tpPx is required",
   });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("perp/tpsl", async (request: NextRequest) => {
   try {
     const params = schema.parse(await request.json());
     const result = await hlTpSl(params);
@@ -28,4 +29,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return respondBinError(error, "TP/SL failed");
   }
-});
+}, { recentMs: 0 }));

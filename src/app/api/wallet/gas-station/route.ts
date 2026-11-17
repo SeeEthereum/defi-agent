@@ -8,6 +8,7 @@ import {
 } from "@/lib/okx/cli";
 import { z } from "zod";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   apiError,
   badRequest,
@@ -80,7 +81,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("disable"), chain: chainId }),
 ]);
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("wallet/gas-station", async (request: NextRequest) => {
   try {
     const body = actionSchema.parse(await request.json());
     const chain = String(body.chain);
@@ -120,4 +121,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("wallet/gas-station", error, "Request failed");
   }
-});
+}));

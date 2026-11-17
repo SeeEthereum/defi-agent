@@ -11,6 +11,7 @@ import { formatUnits } from "viem";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { Empty, Sheet } from "@/components/premium";
+import { isStaleQuote } from "@/lib/api/send-state";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -757,7 +758,7 @@ export default function AiPage() {
       });
       const data = await res.json();
 
-      if (res.status === 409 && (action.action === "swap" || action.action === "bridge")) {
+      if (isStaleQuote(data) && (action.action === "swap" || action.action === "bridge")) {
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: "Price moved, ask me again for a fresh quote" },

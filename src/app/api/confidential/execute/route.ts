@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { currentSession, withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import { walletSend, GasStationConfirmingError } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { checkQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
@@ -26,7 +27,7 @@ function refuse(error: string, status: number, code?: string): NextResponse {
 }
 
 // POST /api/confidential/execute — live quote, then transfer to its deposit address.
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("confidential/execute", async (request: NextRequest) => {
   let claimedQuoteId: string | null = null;
   let sendAttempted = false;
   try {
@@ -141,4 +142,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (gasStation) return gasStation;
     return confidentialError("confidential/execute", error, "Confidential swap failed");
   }
-});
+}));

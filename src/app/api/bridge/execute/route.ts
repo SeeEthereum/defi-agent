@@ -8,7 +8,8 @@ import { encodeApprove } from "@/lib/fluid/ftokens";
 import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi } from "viem";
 import { withSession } from "@/lib/session/session";
-import { checkQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
+import { checkQuote, consumeQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
 import {
   apiError,
   badRequest,
@@ -98,7 +99,8 @@ async function waitForAllowance(
   );
 }
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("bridge/execute", async (request: NextRequest) => {
+  let restoreQuote: (() => void) | null = null;
   try {
     const body = await request.json();
     const { fromChain, toChain, fromToken, toToken, fromAmount, quoteId } =
@@ -194,6 +196,9 @@ export const POST = withSession(async (request: NextRequest) => {
       );
     }
 
+    // From here on transactions may be signed: the quote cannot be used again.
+    restoreQuote = consumeQuote(quoteId);
+
     if (!isNativeToken(fromToken) && approvalAddress) {
       const spenderAddr = approvalAddress.toLowerCase() as `0x${string}`;
 
@@ -258,7 +263,10 @@ export const POST = withSession(async (request: NextRequest) => {
           // first contract-call of the flow) — surface the picker, don't
           // bury it in the approve-failed message.
           const gasStation = gasStationResponseFor(approveError);
-          if (gasStation) return gasStation;
+          if (gasStation) {
+            restoreQuote();
+            return gasStation;
+          }
 
           const msg =
             approveError instanceof Error
@@ -335,8 +343,12 @@ export const POST = withSession(async (request: NextRequest) => {
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
-    if (gasStation) return gasStation;
+    if (gasStation) {
+      // The wallet stopped before signing: the same quote stays usable.
+      restoreQuote?.();
+      return gasStation;
+    }
 
     return apiError("bridge/execute", error, "Bridge execution failed");
   }
-});
+}));

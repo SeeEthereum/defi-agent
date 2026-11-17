@@ -84,6 +84,7 @@ const SAFE_MESSAGE_PATTERNS = [
   /gas station/i,
   /slippage/i,
   /quota/i,
+  /did not answer in time/i,
 ];
 
 /**

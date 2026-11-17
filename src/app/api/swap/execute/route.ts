@@ -6,7 +6,8 @@ import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
 import { withSession } from "@/lib/session/session";
-import { checkQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
+import { checkQuote, consumeQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
 import {
   tokenAddress,
   baseUnitAmount,
@@ -33,7 +34,8 @@ const schema = z.object({
   mevProtection: z.boolean().optional(),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("swap/execute", async (request: NextRequest) => {
+  let restoreQuote: (() => void) | null = null;
   try {
     const body = await request.json();
     const {
@@ -164,6 +166,9 @@ export const POST = withSession(async (request: NextRequest) => {
 
     const useMev = mevProtection && MEV_SUPPORTED_CHAINS.includes(chain);
 
+    // From here on a transaction may be signed: the quote cannot be used again.
+    restoreQuote = consumeQuote(quoteId);
+
     // Don't pass the DEX API's gas estimate — it's often an extreme upper bound
     // (e.g. 50M gas) that causes "insufficient funds for gas * price + value" errors.
     // Let the node estimate the actual gas needed, which is typically 200k-500k.
@@ -234,8 +239,12 @@ export const POST = withSession(async (request: NextRequest) => {
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
-    if (gasStation) return gasStation;
+    if (gasStation) {
+      // The wallet stopped before signing: the same quote stays usable.
+      restoreQuote?.();
+      return gasStation;
+    }
 
     return apiError("swap/execute", error, "Swap failed");
   }
-});
+}));

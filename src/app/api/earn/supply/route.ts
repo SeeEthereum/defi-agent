@@ -7,6 +7,7 @@ import {
 } from "@/lib/fluid/ftokens";
 import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   decimalAmount,
   chainId as chainIdSchema,
@@ -22,7 +23,7 @@ const schema = z.object({
   chainIndex: chainIdSchema,
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("earn/supply", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fTokenSymbol, amount, chainIndex: chainId } = schema.parse(body);
@@ -59,4 +60,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("earn/supply", error, "Supply failed");
   }
-});
+}));

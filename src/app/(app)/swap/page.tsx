@@ -17,6 +17,7 @@ import { LineIcon } from "@/components/line-icon";
 import { Change, Empty, PageHead, Panel, Picker, PickRow, Segmented, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
+import { isStaleQuote, SEND_STATE_TITLES, sendStateCode } from "@/lib/api/send-state";
 
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -692,7 +693,12 @@ export default function SwapPage() {
         }),
       });
       const data = await res.json();
-      if (res.status === 409) {
+      const sendState = sendStateCode(data);
+      if (sendState) {
+        setError({ type: "swap", title: SEND_STATE_TITLES[sendState], message: data.error });
+        return;
+      }
+      if (isStaleQuote(data)) {
         skipClearQuoteErrorRef.current = true;
         setQuote(null);
         setError({

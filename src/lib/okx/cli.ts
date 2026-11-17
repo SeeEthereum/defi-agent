@@ -6,6 +6,8 @@ import type { CliResult, GasStationConfirming, GasStationToken } from "./types";
 import { appendBuilderCode } from "./builder-code";
 import { withOnchainosLock } from "./lock";
 import { currentSession, ensureSessionHome, onchainosEnv, sessionHomeExists } from "@/lib/session/session";
+import { markOutcomeUnknown } from "@/lib/api/duplicate-guard";
+import { UNKNOWN_OUTCOME_MESSAGE } from "@/lib/api/send-state";
 
 const execFileAsync = promisify(execFile);
 
@@ -297,6 +299,7 @@ export async function runCli<T = unknown>(
       const err = error as {
         code?: string;
         exitCode?: number;
+        killed?: boolean;
         stderr?: string;
         stdout?: string;
       };
@@ -311,6 +314,21 @@ export async function runCli<T = unknown>(
         stderr: err.stderr,
         stdout: err.stdout,
       });
+
+      // The 30 s timeout killed the binary. A command that broadcasts may
+      // already have sent the transaction, so the user must not be told it
+      // simply failed, and the duplicate guard must block a blind retry.
+      if (err.killed) {
+        const broadcasts =
+          subcommands[0] === "wallet" &&
+          (subcommands[1] === "send" || subcommands[1] === "contract-call");
+        if (broadcasts) markOutcomeUnknown();
+        throw new OkxCliError(
+          subcommands.join(" "),
+          null,
+          broadcasts ? UNKNOWN_OUTCOME_MESSAGE : "The wallet backend did not answer in time. Please try again."
+        );
+      }
 
       // Exit code 2 = confirming response (not an error). Two cases:
       //

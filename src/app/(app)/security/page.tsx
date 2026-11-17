@@ -10,19 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, Metric, PageHead, Panel, PillTabs, Segmented, Sheet, Skeleton } from "@/components/premium";
-
-function userFacingError(detail: unknown, fallback: string): string {
-  const message =
-    typeof detail === "string"
-      ? detail
-      : detail instanceof Error
-        ? detail.message
-        : "";
-  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
-    return message;
-  }
-  return fallback;
-}
+import { userFacingError } from "@/lib/api/send-state";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

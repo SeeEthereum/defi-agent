@@ -17,6 +17,7 @@ import { Empty, PageHead, Panel, PillTabs, Picker, PickRow, Skeleton } from "@/c
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { AnimatePresence, motion } from "motion/react";
 import { ConfidentialPanel } from "./confidential-panel";
+import { isStaleQuote, sendStateCode } from "@/lib/api/send-state";
 
 // Lowercase everywhere for consistent comparison. LI.FI accepts both cases.
 const NATIVE_TOKEN_LIFI = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -628,7 +629,11 @@ export default function BridgePage() {
       });
 
       const data = await res.json();
-      if (res.status === 409) {
+      if (sendStateCode(data)) {
+        setError(data.error);
+        return;
+      }
+      if (isStaleQuote(data)) {
         skipClearQuoteErrorRef.current = true;
         clearQuote();
         setError("The quote expired or the price moved. Getting a fresh one…");

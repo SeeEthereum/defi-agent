@@ -61,8 +61,9 @@ export type QuoteCheck =
 
 /**
  * Verify that this session may execute `id` for exactly these parameters.
- * The entry stays usable until it expires, so a retry after a transient
- * failure does not force the user to re-quote.
+ * The entry stays usable until it is consumed or expires, so a failure
+ * before signing (a price check, a scan that was unavailable) does not
+ * force the user to re-quote.
  */
 export function checkQuote(id: string | undefined, fingerprint: string): QuoteCheck {
   if (!id) return { ok: false, error: "Missing quote. Refresh the quote and try again." };
@@ -78,6 +79,23 @@ export function checkQuote(id: string | undefined, fingerprint: string): QuoteCh
     return { ok: false, error: "Quote does not match this request. Refresh the quote." };
   }
   return { ok: true, expectedOut: entry.expectedOut };
+}
+
+/**
+ * Use up a quote right before its transaction is signed. One quote, one
+ * transaction: a replay of the same request, or a variant with other
+ * options, cannot execute against it again.
+ *
+ * Returns a function that puts the quote back, for the one case where the
+ * wallet stops before signing anything (a Gas Station prompt): the user
+ * answers it and the same quote goes through.
+ */
+export function consumeQuote(id: string): () => void {
+  const entry = quotes.get(id);
+  quotes.delete(id);
+  return () => {
+    if (entry && !quotes.has(id)) quotes.set(id, entry);
+  };
 }
 
 /**

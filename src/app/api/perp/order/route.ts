@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hlOrder } from "@/lib/hyperliquid/cli";
 import { respond, respondBinError } from "@/lib/hyperliquid/route-helper";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import { badRequest, decimalAmount } from "@/lib/api/validation";
 import { z } from "zod";
 
@@ -24,7 +25,7 @@ const schema = z.object({
   confirm: z.boolean().optional().default(false),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("perp/order", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const params = schema.parse(body);
@@ -42,4 +43,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return respondBinError(error, "Order failed");
   }
-});
+}, { recentMs: 0 }));

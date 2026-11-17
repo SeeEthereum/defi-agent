@@ -3,6 +3,7 @@ import { walletSend } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { z } from "zod";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   apiError,
   badRequest,
@@ -19,7 +20,7 @@ const schema = z.object({
   contractToken: tokenAddress.optional(),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("wallet/send", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { amount, recipient, chain, contractToken } = schema.parse(body);
@@ -41,4 +42,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("wallet/send", error, "Transfer failed");
   }
-});
+}));

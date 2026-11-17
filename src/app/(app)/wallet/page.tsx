@@ -25,6 +25,7 @@ import { LineIcon, type LineIconName } from "@/components/line-icon";
 import { CountUp, Empty, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { toast } from "sonner";
+import { userFacingError } from "@/lib/api/send-state";
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -36,19 +37,6 @@ function normalizeAmount(raw: string): string {
 function isValidAmount(raw: string): boolean {
   const normalized = normalizeAmount(raw);
   return DECIMAL_AMOUNT_RE.test(normalized) && Number(normalized) > 0;
-}
-
-function userFacingError(detail: unknown, fallback: string): string {
-  const message =
-    typeof detail === "string"
-      ? detail
-      : detail instanceof Error
-        ? detail.message
-        : "";
-  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
-    return message;
-  }
-  return fallback;
 }
 
 interface TxEntry {

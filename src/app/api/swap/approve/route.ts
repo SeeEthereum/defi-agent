@@ -5,6 +5,7 @@ import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   tokenAddress,
   baseUnitAmount,
@@ -18,7 +19,7 @@ const schema = z.object({
   chain: z.string().min(1),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("swap/approve", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { token, amount, chain } = schema.parse(body);
@@ -105,4 +106,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("swap/approve", error, "Approve failed");
   }
-});
+}, { recentMs: 0 }));

@@ -5,6 +5,7 @@ import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
 import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi } from "@/lib/fluid/abis";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   decimalAmount,
   chainId as chainIdSchema,
@@ -43,7 +44,7 @@ function txHashOf(data: unknown): `0x${string}` | null {
   return null;
 }
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("earn/approve", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fTokenSymbol, amount, chainIndex: chainId } = schema.parse(body);
@@ -114,4 +115,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("earn/approve", error, "Approve failed");
   }
-});
+}, { recentMs: 0 }));

@@ -13,6 +13,7 @@ import { TokenIcon } from "@/components/token-icon";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, Metric, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
 import type { FluidMarket, FluidUserPosition } from "@/lib/fluid/resolver";
+import { userFacingError } from "@/lib/api/send-state";
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -24,19 +25,6 @@ function normalizeAmount(raw: string): string {
 function isValidAmount(raw: string): boolean {
   const normalized = normalizeAmount(raw);
   return DECIMAL_AMOUNT_RE.test(normalized) && Number(normalized) > 0;
-}
-
-function userFacingError(detail: unknown, fallback: string): string {
-  const message =
-    typeof detail === "string"
-      ? detail
-      : detail instanceof Error
-        ? detail.message
-        : "";
-  if (/logged out/i.test(message) || /insufficient funds/i.test(message)) {
-    return message;
-  }
-  return fallback;
 }
 
 const CHAIN_TABS = [

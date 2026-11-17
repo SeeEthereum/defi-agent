@@ -18,6 +18,7 @@ import { CHAINS } from "@/lib/chains";
 import { getAddress } from "viem";
 import { checkRecipient } from "@/lib/near-intents/recipient";
 import type { GasStationConfirming } from "@/lib/okx/types";
+import { isStaleQuote } from "@/lib/api/send-state";
 
 const CHAIN_LIST = Object.values(CHAINS);
 const NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -334,7 +335,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
         startPolling(data.data.depositAddress);
       } else if (data.requiresGasStation) {
         setGasStation(data.gasStation);
-      } else if (res.status === 409 && data.code !== "already_started") {
+      } else if (isStaleQuote(data)) {
         resetQuote();
         setError(`${data.error ?? "The quote changed."} Get a new quote to continue.`);
       } else {

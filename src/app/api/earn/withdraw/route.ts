@@ -11,6 +11,7 @@ import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
 import { getPublicClient } from "@/lib/fluid/client";
 import { erc20Abi } from "@/lib/fluid/abis";
 import { withSession } from "@/lib/session/session";
+import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import {
   decimalAmount,
   chainId as chainIdSchema,
@@ -28,7 +29,7 @@ const schema = z.object({
   shares: z.string().regex(/^[0-9]+$/).optional(),
 });
 
-export const POST = withSession(async (request: NextRequest) => {
+export const POST = withSession(guardDuplicates("earn/withdraw", async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { fTokenSymbol, amount, chainIndex: chainId, isAll, shares } =
@@ -127,4 +128,4 @@ export const POST = withSession(async (request: NextRequest) => {
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("earn/withdraw", error, "Withdraw failed");
   }
-});
+}));
