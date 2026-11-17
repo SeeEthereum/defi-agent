@@ -21,6 +21,7 @@ import { TokenIcon } from "@/components/token-icon";
 import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
 import { CountUp, Empty, Metric, Panel, Skeleton } from "@/components/premium";
+import { ValueChart } from "@/components/portfolio/value-chart";
 
 
 interface PnlOverview {
@@ -310,6 +311,9 @@ export default function DashboardPage() {
       </section>
 
       {isEmpty && <FirstSteps address={walletAddress} />}
+
+      {/* ───────── Value over time ───────── */}
+      {!isEmpty && <ValueChart index={1} />}
 
       {/* ───────── Facts ───────── */}
       {!isEmpty && (

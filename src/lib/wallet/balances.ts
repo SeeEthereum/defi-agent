@@ -14,7 +14,9 @@
  */
 
 import { invalidate, memoTTL } from "@/lib/cache";
+import { CHAINS } from "@/lib/chains";
 import { walletBalance } from "@/lib/okx/cli";
+import { recordValue } from "@/lib/portfolio/history";
 
 const TTL_MS = 10_000;
 
@@ -24,9 +26,11 @@ interface TokenAsset {
   [key: string]: unknown;
 }
 
-interface AllBalances {
+export interface AllBalances {
   details?: Array<{ tokenAssets?: TokenAsset[] }>;
   totalValueUsd?: string;
+  /** The active account, as `wallet balance` reports it. */
+  accountId?: string;
   [key: string]: unknown;
 }
 
@@ -34,9 +38,35 @@ function key(sid: string): string {
   return `wallet-balance-all|${sid}`;
 }
 
-/** Every chain's balances for this session, shared for a few seconds. */
+/**
+ * Every chain's balances for this session, shared for a few seconds.
+ * Each fresh reading also goes into the value history (lib/portfolio/history).
+ */
 export async function allBalances(sid: string): Promise<AllBalances> {
-  return memoTTL(key(sid), TTL_MS, async () => (await walletBalance()).data as AllBalances);
+  return memoTTL(key(sid), TTL_MS, async () => {
+    const all = (await walletBalance()).data as AllBalances;
+    if (all && typeof all.accountId === "string" && all.accountId) {
+      const { total, byChain } = supportedTotals(all);
+      recordValue(all.accountId, total, byChain);
+    }
+    return all;
+  });
+}
+
+/**
+ * The dashboard's total: the six supported chains only, the same sum the
+ * page shows (OKX's own totalValueUsd also counts chains albicocca does not
+ * offer). By chainIndex.
+ */
+export function supportedTotals(all: AllBalances): { total: number; byChain: Record<string, number> } {
+  const byChain: Record<string, number> = {};
+  let total = 0;
+  for (const chain of Object.values(CHAINS)) {
+    const value = Number(chainSlice(all, String(chain.chainIndex)).totalValueUsd) || 0;
+    byChain[String(chain.chainIndex)] = value;
+    total += value;
+  }
+  return { total, byChain };
 }
 
 /** One chain's slice, in the shape `wallet balance --chain X` printed. */

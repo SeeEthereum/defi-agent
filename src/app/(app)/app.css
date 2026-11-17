@@ -258,6 +258,31 @@
   & .alloc-legend .muted { color: var(--muted-foreground); text-align: right; }
   @media (max-width: 960px) { & .dash-hero { grid-template-columns: minmax(0, 1fr); } }
 
+  /* value over time (components/portfolio/value-chart) */
+  & .vchart { position: relative; border-radius: 12px; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+  & .vchart:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+  & .vchart svg { display: block; overflow: visible; }
+  & .vchart-tick { fill: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+  & .vchart-tip {
+    position: absolute; top: -8px; transform: translate(-50%, -100%); display: grid; gap: 1px; padding: 6px 10px; border-radius: 10px;
+    background: var(--popover); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    font-size: 12px; color: var(--muted-foreground); white-space: nowrap; pointer-events: none; text-align: center;
+  }
+  & .vchart-tip strong { font-size: 14px; font-weight: 600; color: var(--foreground); }
+  & .vchart-head { margin: 0 0 14px; font-size: 15px; }
+  & .vchart-head .muted { color: var(--muted-foreground); font-size: 13px; }
+  & .vchart-foot { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted-foreground); }
+  & .vchart-table { margin-top: 10px; font-size: 13px; }
+  & .vchart-table summary { cursor: pointer; color: var(--muted-foreground); width: fit-content; }
+  & .vchart-table summary:hover { color: var(--foreground); }
+  & .vchart-table-scroll { max-height: 260px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 12px; }
+  & .vchart-table table { width: 100%; border-collapse: collapse; }
+  & .vchart-table th, & .vchart-table td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  & .vchart-table th { position: sticky; top: 0; background: var(--card); font-weight: 500; color: var(--muted-foreground); }
+  & .vchart-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  & .vchart-table th:last-child { text-align: right; }
+  & .vchart-table tr:last-child td { border-bottom: 0; }
+
   /* first visit with an empty wallet: three numbered steps */
   & .first-steps { list-style: none; margin: 0; padding: 0; display: grid; }
   & .first-steps > li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 16px; padding: 18px 0; border-top: 1px solid var(--border); }
