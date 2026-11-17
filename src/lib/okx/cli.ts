@@ -5,6 +5,7 @@ import fs from "fs";
 import type { CliResult, GasStationConfirming, GasStationToken } from "./types";
 import { appendBuilderCode } from "./builder-code";
 import { withOnchainosLock } from "./lock";
+import { withProcessSlot } from "./process-pool";
 import { currentSession, ensureSessionHome, onchainosEnv, sessionHomeExists } from "@/lib/session/session";
 import { markOutcomeUnknown } from "@/lib/api/duplicate-guard";
 import { UNKNOWN_OUTCOME_MESSAGE } from "@/lib/api/send-state";
@@ -224,7 +225,8 @@ export async function runCli<T = unknown>(
     throw new OkxCliError(subcommands.join(" "), null, "Not logged in. Please sign in first.");
   }
 
-  return withOnchainosLock(async () => {
+  // This session's turn first, then one of the global process slots.
+  return withOnchainosLock(() => withProcessSlot(async () => {
     const cmdArgs = buildCliArgs(subcommands, args);
     if (isLogin) ensureSessionHome(session);
 
@@ -451,7 +453,7 @@ export async function runCli<T = unknown>(
         detail || fallback
       );
     }
-  });
+  }));
 }
 
 // Auth commands

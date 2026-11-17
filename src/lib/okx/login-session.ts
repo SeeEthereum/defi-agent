@@ -45,12 +45,36 @@ const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 const logins = new Map<string, { session: LoginSession; child: ChildProcess | null }>();
 
+/**
+ * Login polls that may run at once across all sessions. Each one is a
+ * process that can live for 10 minutes, and starting one needs nothing but
+ * a fresh cookie, so without a ceiling they could exhaust the instance.
+ */
+export const MAX_PENDING_LOGINS = 20;
+
+function isRunning(child: ChildProcess | null): boolean {
+  return child != null && child.exitCode === null && child.signalCode === null;
+}
+
+/**
+ * Whether this session may start a login now. Its own running poll does not
+ * count: starting again replaces it.
+ */
+export function canStartLogin(): boolean {
+  const sid = currentSession().sid;
+  let running = 0;
+  for (const [owner, entry] of logins) {
+    if (owner !== sid && isRunning(entry.child)) running += 1;
+  }
+  return running < MAX_PENDING_LOGINS;
+}
+
 /** Abort any in-flight login poll (called before starting a new one). */
 export function cancelLoginPoll(): void {
   const entry = logins.get(currentSession().sid);
   if (!entry) return;
   const c = entry.child;
-  if (c && c.exitCode === null && c.signalCode === null) {
+  if (c && isRunning(c)) {
     c.kill("SIGTERM");
     setTimeout(() => {
       if (c.exitCode === null && c.signalCode === null) c.kill("SIGKILL");

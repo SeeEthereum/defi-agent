@@ -85,6 +85,8 @@ const SAFE_MESSAGE_PATTERNS = [
   /slippage/i,
   /quota/i,
   /did not answer in time/i,
+  /wallet service is busy/i,
+  /too many wallet requests/i,
 ];
 
 /**

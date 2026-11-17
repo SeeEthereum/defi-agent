@@ -20,10 +20,32 @@
 
 import { currentSession } from "@/lib/session/session";
 
+/**
+ * Calls one session may have running or waiting at once. A page load needs
+ * a handful; a script looping a route would otherwise queue without end,
+ * each waiter holding a request open.
+ */
+export const MAX_QUEUED_PER_SESSION = 12;
+
+export const SESSION_BUSY_MESSAGE =
+  "Too many wallet requests at once from this browser. Wait a few seconds and try again.";
+
+export class SessionBusyError extends Error {
+  constructor() {
+    super(SESSION_BUSY_MESSAGE);
+    this.name = "SessionBusyError";
+  }
+}
+
 const locks = new Map<string, Promise<void>>();
+const depth = new Map<string, number>();
 
 export function withOnchainosLock<T>(fn: () => Promise<T>): Promise<T> {
   const key = currentSession().home;
+  const queued = depth.get(key) ?? 0;
+  if (queued >= MAX_QUEUED_PER_SESSION) return Promise.reject(new SessionBusyError());
+  depth.set(key, queued + 1);
+
   const prev = locks.get(key) ?? Promise.resolve();
   let release!: () => void;
   const tail = new Promise<void>((resolve) => {
@@ -33,5 +55,8 @@ export function withOnchainosLock<T>(fn: () => Promise<T>): Promise<T> {
   return prev.then(fn).finally(() => {
     release();
     if (locks.get(key) === tail) locks.delete(key);
+    const left = (depth.get(key) ?? 1) - 1;
+    if (left <= 0) depth.delete(key);
+    else depth.set(key, left);
   });
 }

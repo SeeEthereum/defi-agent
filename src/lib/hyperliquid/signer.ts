@@ -16,6 +16,7 @@ import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 import { withOnchainosLock } from "@/lib/okx/lock";
+import { withProcessSlot } from "@/lib/okx/process-pool";
 import { onchainosEnv, sessionHomeExists } from "@/lib/session/session";
 
 const execFileAsync = promisify(execFile);
@@ -129,7 +130,7 @@ export class OnchainosWallet {
     // fall back to arbitrum, which is where HL settles.
     const chain = chainIdToOnchainosChain(params.domain.chainId);
 
-    return withOnchainosLock(async () => {
+    return withOnchainosLock(() => withProcessSlot(async () => {
       if (!sessionHomeExists()) {
         throw new OnchainosSignerError("Not logged in. Please sign in first.");
       }
@@ -189,6 +190,6 @@ export class OnchainosWallet {
         );
       }
       return sig as `0x${string}`;
-    });
+    }));
   }
 }
