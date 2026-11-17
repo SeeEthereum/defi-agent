@@ -46,6 +46,8 @@ interface WalletToken {
   balanceUsd: string;
 }
 
+const NO_WALLET_TOKENS: WalletToken[] = [];
+
 function getNativeToken(chain: string): TokenInfo {
   const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
   return {
@@ -154,6 +156,11 @@ function clampSlippage(raw: string): string {
 
 const QUOTE_TTL_MS = 30_000;
 
+/** True once a quote is older than its TTL. Called from handlers, never during render. */
+function quoteHasExpired(arrivedAt: number): boolean {
+  return Date.now() - arrivedAt >= QUOTE_TTL_MS;
+}
+
 function friendlyError(raw: string): { title: string; message: string } {
   const lower = raw.toLowerCase();
 
@@ -256,10 +263,7 @@ function TokenSelector({
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (query.length < 1) {
-      setResults([]);
-      return;
-    }
+    if (query.length < 1) return;
     timerRef.current = setTimeout(() => {
       search(query);
     }, 500);
@@ -268,10 +272,16 @@ function TokenSelector({
     };
   }, [query, search]);
 
+  // An empty query drops the old results right away, in the same update.
+  const updateQuery = useCallback((q: string) => {
+    setQuery(q);
+    if (q.length < 1) setResults([]);
+  }, []);
+
   const close = useCallback(() => {
     setOpen(false);
-    setQuery("");
-  }, []);
+    updateQuery("");
+  }, [updateQuery]);
 
   const pick = (t: TokenInfo) => {
     onSelect(t);
@@ -305,7 +315,7 @@ function TokenSelector({
         onClose={close}
         title={label === "From" ? "Pay with" : "Receive"}
         query={query}
-        onQuery={setQuery}
+        onQuery={updateQuery}
         placeholder="Search a name or paste an address"
       >
         {query.length === 0 && (
@@ -375,7 +385,11 @@ export default function SwapPage() {
   const [amount, setAmount] = useState("");
   const [quote, setQuote] = useState<StoredQuote | null>(null);
   const [quoteStale, setQuoteStale] = useState(false);
-  const [priceImpactAck, setPriceImpactAck] = useState(false);
+  // The price-impact acceptance belongs to one quote: it is stored with that
+  // quote's identity, so a fresh quote is never covered by an older OK.
+  const [priceImpactAckFor, setPriceImpactAckFor] = useState<string | null>(null);
+  const quoteIdentity = quote ? `${quote.key}@${quote.arrivedAt}` : null;
+  const priceImpactAck = quoteIdentity != null && priceImpactAckFor === quoteIdentity;
   const [quoteLoading, setQuoteLoading] = useState(false);
   const quoteAbortRef = useRef<AbortController | null>(null);
   const skipClearQuoteErrorRef = useRef(false);
@@ -390,8 +404,16 @@ export default function SwapPage() {
   const [gasLevel, setGasLevel] = useState<"slow" | "average" | "fast">("average");
   const [mevProtection, setMevProtection] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [walletTokens, setWalletTokens] = useState<WalletToken[]>([]);
-  const [balanceLoading, setBalanceLoading] = useState(false);
+  // Balances and trending tokens are stored with the chain they were fetched
+  // for. While a new chain loads, nothing from the previous chain is shown
+  // (a native-token balance from Arbitrum must never read as "available" on
+  // Base), and a late answer for an old chain cannot overwrite the new one.
+  const [walletFetch, setWalletFetch] = useState<{ chain: string; tokens: WalletToken[] } | null>(null);
+  const balanceChainIndex = authenticated
+    ? Object.values(CHAINS).find((c) => c.swapName === chain)?.chainIndex ?? null
+    : null;
+  const walletTokens = walletFetch && walletFetch.chain === chain ? walletFetch.tokens : NO_WALLET_TOKENS;
+  const balanceLoading = balanceChainIndex != null && walletFetch?.chain !== chain;
 
   // Trending tokens
   interface TrendingToken {
@@ -406,19 +428,24 @@ export default function SwapPage() {
     marketCap: string;
     logo: string;
   }
-  const [trendingTokens, setTrendingTokens] = useState<TrendingToken[]>([]);
-  const [trendingLoading, setTrendingLoading] = useState(false);
+  const [trendingFetch, setTrendingFetch] = useState<{ chain: string; tokens: TrendingToken[] } | null>(null);
+  // Trending needs a session too: signed out, the page shows "Sign in first".
+  const trendingChain = authenticated
+    ? Object.values(CHAINS).find((c) => c.swapName === chain)?.swapName ?? null
+    : null;
+  const trendingTokens: TrendingToken[] = trendingFetch && trendingFetch.chain === chain ? trendingFetch.tokens : [];
+  const trendingLoading = trendingChain != null && trendingFetch?.chain !== chain;
 
   // Fetch wallet balances when chain changes
   useEffect(() => {
-    if (!authenticated) return;
-    const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
-    if (!chainConfig) return;
-    setBalanceLoading(true);
-    fetch(`/api/wallet/balances?chain=${chainConfig.chainIndex}`)
+    if (balanceChainIndex == null) return;
+    fetch(`/api/wallet/balances?chain=${balanceChainIndex}`)
       .then((r) => r.json())
       .then((data) => {
-        if (!data.success) return;
+        if (!data.success) {
+          setWalletFetch({ chain, tokens: [] });
+          return;
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = data.data as any;
         const assets: WalletToken[] = [];
@@ -445,27 +472,22 @@ export default function SwapPage() {
         }
         // Sort by USD value descending
         assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
-        setWalletTokens(assets);
+        setWalletFetch({ chain, tokens: assets });
       })
-      .catch(() => setWalletTokens([]))
-      .finally(() => setBalanceLoading(false));
-  }, [chain, authenticated]);
+      .catch(() => setWalletFetch({ chain, tokens: [] }));
+  }, [chain, balanceChainIndex]);
 
   // Fetch trending tokens on chain change
   useEffect(() => {
-    const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
-    if (!chainConfig) return;
-    setTrendingLoading(true);
-    fetch(`/api/tokens/trending?chain=${chainConfig.swapName}&timeFrame=4`)
+    if (trendingChain == null) return;
+    fetch(`/api/tokens/trending?chain=${trendingChain}&timeFrame=4`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.data)) {
-          setTrendingTokens(data.data);
-        }
+        // A failed answer shows nothing rather than another chain's tokens.
+        setTrendingFetch({ chain, tokens: data.success && Array.isArray(data.data) ? data.data : [] });
       })
-      .catch(() => setTrendingTokens([]))
-      .finally(() => setTrendingLoading(false));
-  }, [chain]);
+      .catch(() => setTrendingFetch({ chain, tokens: [] }));
+  }, [chain, trendingChain]);
 
   // MEV protection is only available on Ethereum, BSC, Base
   const mevSupportedChains = ["ethereum", "bsc", "base"];
@@ -517,10 +539,6 @@ export default function SwapPage() {
       quoteAbortRef.current?.abort();
     };
   }, []);
-
-  useEffect(() => {
-    setPriceImpactAck(false);
-  }, [quote?.key, quote?.arrivedAt]);
 
   const handleQuote = useCallback(async () => {
     const preserveError = skipClearQuoteErrorRef.current;
@@ -604,9 +622,10 @@ export default function SwapPage() {
   const amountInvalid = amount.trim() !== "" && !amountWei;
   const currentQuoteKey = quoteInputKey(fromToken, toToken, chain, amount);
   const liveQuote = quote && quote.key === currentQuoteKey ? quote : null;
-  const quoteExpired =
-    liveQuote != null &&
-    (quoteStale || Date.now() - liveQuote.arrivedAt >= QUOTE_TTL_MS);
+  // The expiry timer above flips quoteStale when the TTL runs out; render only
+  // reads that flag. handleSwap re-checks the clock itself, so a throttled
+  // background tab whose timer fires late still cannot swap on a stale quote.
+  const quoteExpired = liveQuote != null && quoteStale;
   const liveSlippage = clampSlippage(slippage);
 
   const handleSwap = async () => {
@@ -614,6 +633,12 @@ export default function SwapPage() {
     if (!amountWei) return;
     if (!liveQuote || liveQuote.key !== currentQuoteKey) return;
     if (quoteExpired) return;
+    if (quoteHasExpired(liveQuote.arrivedAt)) {
+      // Same as the expiry timer: mark it stale and fetch a fresh quote.
+      setQuoteStale(true);
+      void handleQuote();
+      return;
+    }
     const impact = parsePriceImpact(liveQuote.data);
     if (impact != null && impact > 10) return;
     if (impact != null && impact >= 3 && impact <= 10 && !priceImpactAck) return;
@@ -1163,7 +1188,7 @@ export default function SwapPage() {
             </div>
           )}
           {priceImpactNeedsAck && !priceImpactAck && !priceImpactTooHigh && (
-            <button type="button" onClick={() => setPriceImpactAck(true)} className="note warn ack">
+            <button type="button" onClick={() => setPriceImpactAckFor(quoteIdentity)} className="note warn ack">
               <LineIcon name="alert" size={16} />
               <span>
                 This swap moves the price by {livePriceImpact!.toFixed(2)}%. You get noticeably less than the market rate. Tap to accept and&nbsp;continue.

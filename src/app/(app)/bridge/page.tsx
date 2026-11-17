@@ -5,7 +5,7 @@
  * The Confidential tab hands over to the NEAR Intents panel.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { Fade, NumberDisplay } from "@/components/motion";
@@ -36,6 +36,9 @@ interface WalletToken {
   balance: string;
   balanceUsd: string;
 }
+
+const NO_BRIDGE_TOKENS: BridgeTokenInfo[] = [];
+const NO_WALLET_ASSETS: WalletToken[] = [];
 
 interface QuoteData {
   tool: string;
@@ -277,15 +280,25 @@ export default function BridgePage() {
   const [fromToken, setFromToken] = useState<BridgeTokenInfo | null>(null);
   const [toToken, setToToken] = useState<BridgeTokenInfo | null>(null);
   const [amount, setAmount] = useState("");
-  const [fromTokens, setFromTokens] = useState<BridgeTokenInfo[]>([]);
-  const [toTokens, setToTokens] = useState<BridgeTokenInfo[]>([]);
-  const [tokensLoading, setTokensLoading] = useState(false);
-  const [walletAssets, setWalletAssets] = useState<WalletToken[]>([]);
-  const [walletAssetsLoading, setWalletAssetsLoading] = useState(false);
+  // Token lists and wallet assets are stored with the chains they were fetched
+  // for, so a chain switch never shows the old chain's tokens or balances and
+  // a late answer for an old pair cannot overwrite the current one.
+  const tokensKey = `${fromChainIndex}:${toChainIndex}`;
+  const [tokenLists, setTokenLists] = useState<{ key: string; from: BridgeTokenInfo[]; to: BridgeTokenInfo[] } | null>(null);
+  const fromTokens = tokenLists?.key === tokensKey ? tokenLists.from : NO_BRIDGE_TOKENS;
+  const toTokens = tokenLists?.key === tokensKey ? tokenLists.to : NO_BRIDGE_TOKENS;
+  const tokensLoading = tokenLists?.key !== tokensKey;
+  const assetsChain = walletAddress ? CHAIN_LIST.find((c) => c.chainIndex === fromChainIndex)?.chainIndex ?? null : null;
+  const assetsKey = assetsChain != null ? `${walletAddress}:${assetsChain}` : null;
+  const [assetsFetch, setAssetsFetch] = useState<{ key: string; assets: WalletToken[] } | null>(null);
+  const walletAssets = assetsKey != null && assetsFetch?.key === assetsKey ? assetsFetch.assets : NO_WALLET_ASSETS;
+  const walletAssetsLoading = assetsKey != null && assetsFetch?.key !== assetsKey;
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [quoteKey, setQuoteKey] = useState<string | null>(null);
   const [quoteReceivedAt, setQuoteReceivedAt] = useState<number | null>(null);
-  const [quoteExpired, setQuoteExpired] = useState(false);
+  // Holds the quoteReceivedAt whose 60 s ran out; a newer quote has a newer
+  // timestamp, so it starts fresh without any reset.
+  const [expiredQuoteAt, setExpiredQuoteAt] = useState<number | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
@@ -302,87 +315,77 @@ export default function BridgePage() {
     fromToken && toToken
       ? makeQuoteKey(fromChainIndex, toChainIndex, fromToken, toToken, amount)
       : null;
-  currentKeyRef.current = liveQuoteKey;
+  // Async quote handlers compare against this to drop answers for old inputs.
+  // Written in a layout effect: refs must not change during render, and the
+  // layout effect runs in the same commit, before any later answer arrives.
+  useLayoutEffect(() => {
+    currentKeyRef.current = liveQuoteKey;
+  }, [liveQuoteKey]);
 
   const parsedAmountWei = fromToken ? toWei(amount, fromToken.decimals) : null;
   const invalidAmount = amount.trim() !== "" && parsedAmountWei === null;
+
+  const quoteExpired = quote != null && quoteReceivedAt != null && expiredQuoteAt === quoteReceivedAt;
 
   const clearQuote = useCallback(() => {
     setQuote(null);
     setQuoteKey(null);
     setQuoteReceivedAt(null);
-    setQuoteExpired(false);
   }, []);
 
-  // Fetch wallet balances for source chain
-  const fetchWalletAssets = useCallback(async () => {
-    if (!walletAddress) return;
-    setWalletAssetsLoading(true);
-    try {
-      const chainConfig = CHAIN_LIST.find((c) => c.chainIndex === fromChainIndex);
-      if (!chainConfig) return;
-      const res = await fetch(`/api/wallet/balances?chain=${chainConfig.chainIndex}`);
-      const data = await res.json();
-      const raw = data.data;
-      const tokenList = raw?.details?.[0]?.tokenAssets ?? raw?.tokenAssets ?? (Array.isArray(raw) ? raw : []);
-      const assets: WalletToken[] = [];
-      for (const t of tokenList) {
-        const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
-        if (bal <= 0) continue;
-        assets.push({
-          symbol: t.symbol ?? t.tokenSymbol ?? "?",
-          address: t.tokenAddress || t.tokenContractAddress || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-          decimals: Number(t.decimal ?? t.decimals ?? 18),
-          balance: t.balance ?? t.holdingAmount ?? "0",
-          balanceUsd: t.usdValue ? String(t.usdValue) : t.tokenPrice ? String(bal * parseFloat(t.tokenPrice)) : "0",
-        });
-      }
-      assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
-      setWalletAssets(assets);
-    } catch {
-      setWalletAssets([]);
-    } finally {
-      setWalletAssetsLoading(false);
-    }
-  }, [fromChainIndex, walletAddress]);
-
+  // Fetch wallet balances for the source chain
   useEffect(() => {
-    fetchWalletAssets();
-  }, [fetchWalletAssets]);
-
-  // Fetch LI.FI tokens for both chains
-  const fetchTokens = useCallback(async () => {
-    setTokensLoading(true);
-    setFromToken(null);
-    setToToken(null);
-    clearQuote();
-    try {
-      const res = await fetch(
-        `/api/bridge/tokens?fromChain=${fromChainIndex}&toChain=${toChainIndex}`
-      );
-      const data = await res.json();
-      if (data.success && data.data) {
-        const srcTokens: BridgeTokenInfo[] =
-          data.data[String(fromChainIndex)] ?? [];
-        const dstTokens: BridgeTokenInfo[] =
-          data.data[String(toChainIndex)] ?? [];
-        setFromTokens(srcTokens);
-        setToTokens(dstTokens);
-      } else {
-        setFromTokens([]);
-        setToTokens([]);
+    if (assetsKey == null || assetsChain == null) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/wallet/balances?chain=${assetsChain}`);
+        const data = await res.json();
+        const raw = data.data;
+        const tokenList = raw?.details?.[0]?.tokenAssets ?? raw?.tokenAssets ?? (Array.isArray(raw) ? raw : []);
+        const assets: WalletToken[] = [];
+        for (const t of tokenList) {
+          const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
+          if (bal <= 0) continue;
+          assets.push({
+            symbol: t.symbol ?? t.tokenSymbol ?? "?",
+            address: t.tokenAddress || t.tokenContractAddress || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            decimals: Number(t.decimal ?? t.decimals ?? 18),
+            balance: t.balance ?? t.holdingAmount ?? "0",
+            balanceUsd: t.usdValue ? String(t.usdValue) : t.tokenPrice ? String(bal * parseFloat(t.tokenPrice)) : "0",
+          });
+        }
+        assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
+        setAssetsFetch({ key: assetsKey, assets });
+      } catch {
+        setAssetsFetch({ key: assetsKey, assets: [] });
       }
-    } catch {
-      setFromTokens([]);
-      setToTokens([]);
-    } finally {
-      setTokensLoading(false);
-    }
-  }, [fromChainIndex, toChainIndex, clearQuote]);
+    })();
+  }, [assetsKey, assetsChain]);
 
+  // Fetch LI.FI tokens for both chains. Clearing the picked tokens and the
+  // quote happens in the chain handlers below, where the change is made.
   useEffect(() => {
-    fetchTokens();
-  }, [fetchTokens]);
+    const key = `${fromChainIndex}:${toChainIndex}`;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/bridge/tokens?fromChain=${fromChainIndex}&toChain=${toChainIndex}`
+        );
+        const data = await res.json();
+        if (data.success && data.data) {
+          const srcTokens: BridgeTokenInfo[] =
+            data.data[String(fromChainIndex)] ?? [];
+          const dstTokens: BridgeTokenInfo[] =
+            data.data[String(toChainIndex)] ?? [];
+          setTokenLists({ key, from: srcTokens, to: dstTokens });
+        } else {
+          setTokenLists({ key, from: [], to: [] });
+        }
+      } catch {
+        setTokenLists({ key, from: [], to: [] });
+      }
+    })();
+  }, [fromChainIndex, toChainIndex]);
 
   // Cleanup poll and in-flight quote on unmount
   useEffect(() => {
@@ -394,26 +397,24 @@ export default function BridgePage() {
   }, []);
 
   useEffect(() => {
-    if (!quote || quoteReceivedAt == null) {
-      setQuoteExpired(false);
-      return;
-    }
+    if (!quote || quoteReceivedAt == null) return;
     const remaining = 60_000 - (Date.now() - quoteReceivedAt);
-    if (remaining <= 0) {
-      setQuoteExpired(true);
-      return;
-    }
-    setQuoteExpired(false);
-    const id = window.setTimeout(() => setQuoteExpired(true), remaining);
+    const id = window.setTimeout(() => setExpiredQuoteAt(quoteReceivedAt), Math.max(0, remaining));
     return () => window.clearTimeout(id);
   }, [quote, quoteReceivedAt]);
 
-  // When source chain changes and equals dest chain, swap dest
+  // When the source chain changes and equals the destination, swap them.
+  // A real chain change means new token lists, so the picked tokens no longer
+  // apply. (Flipping keeps them, swapped, since each still belongs to its chain.)
   const handleFromChainChange = (chainIndex: number) => {
     if (chainIndex === toChainIndex) {
       setToChainIndex(fromChainIndex);
     }
     setFromChainIndex(chainIndex);
+    if (chainIndex !== fromChainIndex) {
+      setFromToken(null);
+      setToToken(null);
+    }
     clearQuote();
     setError(null);
     setBridgeResult(null);
@@ -425,6 +426,10 @@ export default function BridgePage() {
       setFromChainIndex(toChainIndex);
     }
     setToChainIndex(chainIndex);
+    if (chainIndex !== toChainIndex) {
+      setFromToken(null);
+      setToToken(null);
+    }
     clearQuote();
     setError(null);
     setBridgeResult(null);
@@ -568,7 +573,6 @@ export default function BridgePage() {
         });
         setQuoteKey(requestKey);
         setQuoteReceivedAt(Date.now());
-        setQuoteExpired(false);
       } else {
         setError(mapBackendError(data.error || "Failed to get bridge quote"));
       }

@@ -153,7 +153,10 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteKey, setQuoteKey] = useState<string | null>(null);
   const [quoteAt, setQuoteAt] = useState<number | null>(null);
-  const [quoteExpired, setQuoteExpired] = useState(false);
+  // The quoteAt whose TTL ran out. A newer quote has a newer quoteAt, so it
+  // starts fresh without a reset.
+  const [expiredQuoteAt, setExpiredQuoteAt] = useState<number | null>(null);
+  const quoteExpired = quoteAt != null && expiredQuoteAt === quoteAt;
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [executing, setExecuting] = useState(false);
@@ -234,12 +237,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
   useEffect(() => {
     if (quoteAt == null) return;
     const remaining = QUOTE_TTL_MS - (Date.now() - quoteAt);
-    if (remaining <= 0) {
-      setQuoteExpired(true);
-      return;
-    }
-    setQuoteExpired(false);
-    const id = window.setTimeout(() => setQuoteExpired(true), remaining);
+    const id = window.setTimeout(() => setExpiredQuoteAt(quoteAt), Math.max(0, remaining));
     return () => window.clearTimeout(id);
   }, [quoteAt]);
 
@@ -247,7 +245,6 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
     setQuote(null);
     setQuoteKey(null);
     setQuoteAt(null);
-    setQuoteExpired(false);
     setConfirmed(false);
   };
 
@@ -315,6 +312,11 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
 
   const execute = async () => {
     if (!activeQuote || !toToken || !confirmed || quoteExpired) return;
+    // The timer can fire late in a background tab: check the clock here too.
+    if (quoteAt != null && Date.now() - quoteAt >= QUOTE_TTL_MS) {
+      setExpiredQuoteAt(quoteAt);
+      return;
+    }
     setExecuting(true);
     setError(null);
     try {

@@ -21,7 +21,7 @@
  * internal mechanism terms (7702 / delegation / relayer) out of the copy.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Modal } from "@/components/motion/modal";
 import type { GasStationConfirming, GasStationToken } from "@/lib/okx/types";
 
@@ -72,10 +72,14 @@ export function GasStationModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // A new prompt starts clean. Reset while rendering (React's "adjust state
+  // when a prop changes" pattern) so the old pick never shows for a frame.
+  const [shownFor, setShownFor] = useState({ open, chain, payload });
+  if (shownFor.open !== open || shownFor.chain !== chain || shownFor.payload !== payload) {
+    setShownFor({ open, chain, payload });
     setSelected(null);
     setError(null);
-  }, [open, chain, payload]);
+  }
 
   if (!payload) return null;
 
