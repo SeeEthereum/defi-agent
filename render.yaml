@@ -39,6 +39,17 @@ services:
       # names. Without it both live in memory and reset on every restart.
       - key: DATABASE_URL
         sync: false
+      # Sentry error monitoring (lib/monitoring). Off while the DSN is unset.
+      # The DSN is read at build time too, so redeploy after setting it.
+      - key: NEXT_PUBLIC_SENTRY_DSN
+        sync: false
+      # Optional: upload source maps for readable browser stack traces.
+      - key: SENTRY_AUTH_TOKEN
+        sync: false
+      - key: SENTRY_ORG
+        sync: false
+      - key: SENTRY_PROJECT
+        sync: false
       # Optional overrides; defaults are gpt-6.1-sol and gpt-6-luna.
       # - key: OPENAI_MODEL
       # - key: OPENAI_GUARD_MODEL

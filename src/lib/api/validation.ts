@@ -17,6 +17,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { SUPPORTED_CHAIN_IDS } from "@/lib/chains";
 import { OkxCliError, walletAddresses } from "@/lib/okx/cli";
+import { reportServerError } from "@/lib/monitoring/report";
 
 export const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -90,6 +91,7 @@ const SAFE_MESSAGE_PATTERNS = [
  */
 export function publicErrorMessage(scope: string, error: unknown, fallback: string): string {
   console.error(`[${scope}]`, error);
+  reportServerError(scope, error);
   const raw = error instanceof Error ? error.message : "";
   // Drop the "onchainos wallet send failed: " style prefix — the user does
   // not need the internal command name, only what went wrong.

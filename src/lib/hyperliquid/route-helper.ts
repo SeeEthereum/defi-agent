@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { HlResult } from "./cli";
+import { reportServerError } from "@/lib/monitoring/report";
 
 // ── Shared zod validators ───────────────────────────────────────────────────
 // Most HL routes take numeric values as JSON strings (the native SDK also
@@ -64,6 +65,7 @@ export function respondBinError(error: unknown, fallback: string): NextResponse 
   console.error("[perp] route error:", error);
   const message = error instanceof Error ? error.message : "";
   const visible = ACTIONABLE_HL_MESSAGE.test(message);
+  if (!visible) reportServerError("perp", error);
   void fallback;
   return NextResponse.json(
     { success: false, error: visible ? message : "Hyperliquid request failed" },
