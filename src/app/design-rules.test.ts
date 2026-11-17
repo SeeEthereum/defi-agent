@@ -42,12 +42,14 @@ describe("addresses, titles and logo do not change", () => {
     }
   });
 
-  it("keeps the search title and description", () => {
+  it("keeps the search title and description, without em dashes", () => {
     const layout = read("src/app/layout.tsx");
-    expect(layout).toContain('title: "albicocca — ask your wallet"');
+    expect(layout).toContain('const TITLE = "albicocca: ask your wallet";');
     expect(layout).toContain(
-      "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it — sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase."
+      "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it. Sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase."
     );
+    const code = layout.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/[—–]|&mdash;|&ndash;/);
   });
 
   it("keeps the wordmark and its apricot-to-pink dot", () => {

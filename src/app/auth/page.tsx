@@ -23,7 +23,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CoreIcon } from "@/components/line-icon-core";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { typeset as t } from "@/lib/typeset";
-import { DISCLAIMER_KEY, RiskCards } from "@/components/risk-disclaimer";
+import { DISCLAIMER_KEY, RiskDisclaimer } from "@/components/risk-disclaimer";
 
 // How often to ask the server whether the browser login landed. The route
 // reads in-memory state (no CLI spawn), so this stays cheap.
@@ -53,10 +53,6 @@ export default function AuthPage() {
   // Set from the click handler: localStorage writes don't fire `storage` in
   // the same tab, so the store alone wouldn't notice the acceptance.
   const [justAccepted, setJustAccepted] = useState(false);
-  const [ticked, setTicked] = useState(false);
-  // Consent opens once every card has been on screen.
-  const [allSeen, setAllSeen] = useState(false);
-  const markAllSeen = useCallback(() => setAllSeen(true), []);
 
   const [step, setStep] = useState<"idle" | "awaiting">("idle");
   const [loginUrl, setLoginUrl] = useState("");
@@ -71,6 +67,8 @@ export default function AuthPage() {
   const acceptDisclaimer = () => {
     localStorage.setItem(DISCLAIMER_KEY, "true");
     setJustAccepted(true);
+    // The sign-in step is shorter: start it at the top, not mid-page.
+    window.scrollTo(0, 0);
   };
 
   const startLogin = async () => {
@@ -126,7 +124,9 @@ export default function AuthPage() {
           // holds the logged-out result. Revalidate before routing so the app
           // shell doesn't render its "Connect Wallet" state first.
           await mutate("/api/auth/status");
-          router.push("/ai");
+          // The dashboard: a new wallet gets its first steps there (address,
+          // how to add funds), and the assistant is one tap away.
+          router.push("/");
         } else if (data.data.phase === "error") {
           clearInterval(id);
           setError(data.data.error || "Sign-in failed. Please try again.");
@@ -186,39 +186,24 @@ export default function AuthPage() {
         {!accepted ? (
           <section className="auth-col" aria-labelledby="auth-title">
             <span className="label">Before you start</span>
-            <h1 id="auth-title" className="h2">Read this first.</h1>
-            <p className="sec-lead">
-              {t("albicocca moves real money on public chains. Take a minute with the risks before you get a wallet.")}
-            </p>
+            <h1 id="auth-title" className="h2">
+              Three things <span className="soft">to&nbsp;know.</span>
+            </h1>
+            <p className="sec-lead">{t("albicocca moves real money on public chains. Read these before you get a wallet.")}</p>
 
             <div className="bezel auth-card">
               <div className="core">
-                <RiskCards onAllSeen={markAllSeen} />
+                <RiskDisclaimer />
 
-                <label htmlFor="auth-disclaimer-accept" className="consent" data-disabled={!allSeen}>
-                  <input
-                    id="auth-disclaimer-accept"
-                    type="checkbox"
-                    checked={ticked}
-                    disabled={!allSeen}
-                    aria-describedby="consent-hint"
-                    onChange={(e) => setTicked(e.target.checked)}
-                  />
-                  <span>
-                    I have read the disclaimer above and understand the risks of swapping, bridging, lending, using AI-assisted actions, and managing a wallet whose keys cannot be&nbsp;exported.
-                  </span>
-                </label>
-
-                <p id="consent-hint" className="auth-note" aria-live="polite">
-                  {allSeen ? "You have seen every card." : "Swipe through every card to continue."}
-                </p>
-
-                <button type="button" className="btn btn--primary btn--lg auth-cta" onClick={acceptDisclaimer} disabled={!ticked || !allSeen}>
-                  Accept &amp; continue
+                <button type="button" className="btn btn--primary btn--lg auth-cta" onClick={acceptDisclaimer} aria-describedby="consent-note">
+                  I understand, continue
                   <span className="well" aria-hidden="true">
                     <CoreIcon name="arrow-right" size={18} />
                   </span>
                 </button>
+                <p id="consent-note" className="auth-note">
+                  {t("By continuing you accept these risks and the full terms above.")}
+                </p>
               </div>
             </div>
           </section>

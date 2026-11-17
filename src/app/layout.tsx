@@ -23,12 +23,23 @@ const geistMono = localFont({
   preload: false,
 });
 
+// Search and link-preview copy. Plain words, no em dashes (house rule).
+const TITLE = "albicocca: ask your wallet";
+const DESCRIPTION =
+  "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it. Sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase.";
+
 export const metadata: Metadata = {
   // Absolute base for the share image; Render sets RENDER_EXTERNAL_URL.
   metadataBase: new URL(process.env.RENDER_EXTERNAL_URL ?? "http://localhost:3000"),
-  title: "albicocca — ask your wallet",
-  description:
-    "An onchain agent with a wallet built in. Swap, bridge, earn and trade across six chains by asking for it — sign in with Google, Apple or email, keys held in OKX's secure enclave, no seed phrase.",
+  title: TITLE,
+  description: DESCRIPTION,
+  applicationName: "albicocca",
+  // Link previews in social apps read these. The image comes from
+  // opengraph-image.tsx and twitter-image.tsx.
+  openGraph: { type: "website", siteName: "albicocca", title: TITLE, description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
+  // The name under the icon when added to an iPhone home screen.
+  appleWebApp: { title: "albicocca" },
 };
 
 export const viewport: Viewport = {

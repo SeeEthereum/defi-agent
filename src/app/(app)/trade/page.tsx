@@ -311,7 +311,9 @@ export default function TradePage() {
   const [orderCoin, setOrderCoin] = useState("BTC");
   const [orderSize, setOrderSize] = useState("");
   const [orderPrice, setOrderPrice] = useState("");
-  const [orderLeverage, setOrderLeverage] = useState(10);
+  // Start low: at 2x a position is liquidated by a move of about 50% against
+  // it, at 10x by about 10%. The slider raises it up to the market's maximum.
+  const [orderLeverage, setOrderLeverage] = useState(2);
   const [orderSlPx, setOrderSlPx] = useState("");
   const [orderTpPx, setOrderTpPx] = useState("");
   const [orderPreview, setOrderPreview] = useState<BoundOrderPreview | null>(null);

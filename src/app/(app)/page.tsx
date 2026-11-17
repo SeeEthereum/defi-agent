@@ -3,10 +3,12 @@
 /**
  * Dashboard: one figure (total value), one strip of facts, two lists.
  * Navigation lives in the island, so this page no longer repeats it as cards.
+ * An empty wallet gets three first steps instead of the facts and holdings.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useAllChainBalances } from "@/hooks/use-balances";
 import { useFluidMarkets } from "@/hooks/use-fluid-markets";
@@ -48,6 +50,117 @@ function fluidAsset(m: { chainIndex: number; symbol: string; underlyingSymbol: s
 function greeting(): string {
   const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+/** OKX names accounts "Account 1", "Account 2"…: a cold default, so the greeting goes without it. */
+function friendlyName(name: string | null): string | null {
+  const n = name?.trim();
+  return n && !/^Account \d+$/.test(n) ? n : null;
+}
+
+/**
+ * Allocation colours: each chain's own, except Optimism's red, which next to
+ * money reads as a loss. Chain colours stay as they are everywhere else.
+ */
+const ALLOC_COLORS: Record<number, string> = { ...CHAIN_COLORS, 10: "var(--muted-foreground)" };
+
+const NETWORK_NAMES = Object.values(CHAINS).map((c) => c.name);
+
+// Two of the assistant's own suggestions, so the same words wait on its first screen.
+const FIRST_QUESTIONS = ["Show my portfolio balance", "What are the best Fluid APRs right now?"];
+
+/** First visit with nothing in the wallet: the address, how to fund it, what to ask. */
+function FirstSteps({ address }: { address: string | null }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+
+  const copy = async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1600);
+    } catch {
+      toast.error("Copy blocked by the browser. Select the address instead.");
+    }
+  };
+
+  return (
+    <Panel index={1} title="Add funds to start" sub="Your wallet is ready and empty. Three steps to your first&nbsp;request.">
+      <ol className="first-steps">
+        <li>
+          <span className="n num" aria-hidden="true">
+            1
+          </span>
+          <div>
+            <h3>Copy your address</h3>
+            <p>One address for every network listed below.</p>
+            {address ? (
+              <div className="first-addr">
+                <code className="num">{address}</code>
+                <div className="page-actions">
+                  <button type="button" className="btn btn--sm btn--primary" onClick={copy}>
+                    <LineIcon name={copied ? "check" : "copy"} size={15} />
+                    {copied ? "Copied" : "Copy address"}
+                  </button>
+                  <Link href="/wallet?tab=receive" className="btn btn--sm">
+                    QR code
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="first-addr">
+                <Skeleton height={44} />
+              </div>
+            )}
+          </div>
+        </li>
+        <li>
+          <span className="n num" aria-hidden="true">
+            2
+          </span>
+          <div>
+            <h3>Send crypto to it</h3>
+            <p>On an exchange or another wallet, choose Withdraw or Send, paste the address and pick one of these networks:</p>
+            <ul className="first-nets" aria-label="Supported networks">
+              {NETWORK_NAMES.map((n) => (
+                <li key={n} className="chip">
+                  {n}
+                </li>
+              ))}
+            </ul>
+            <p className="muted">Funds sent on another network may not reach this&nbsp;wallet.</p>
+          </div>
+        </li>
+        <li>
+          <span className="n num" aria-hidden="true">
+            3
+          </span>
+          <div>
+            <h3>Ask the assistant</h3>
+            <p>Once the funds arrive, ask in plain words. For example:</p>
+            <ul className="first-asks">
+              {FIRST_QUESTIONS.map((q) => (
+                <li key={q}>
+                  <Link href="/ai">
+                    <span>&ldquo;{q}&rdquo;</span>
+                    <LineIcon name="arrow-up-right" size={15} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </li>
+      </ol>
+    </Panel>
+  );
 }
 
 export default function DashboardPage() {
@@ -119,6 +232,11 @@ export default function DashboardPage() {
     .filter((c) => c.value > 0)
     .sort((a, b) => b.value - a.value);
 
+  // Nothing of value, and every chain answered: a first visit, not a failed load.
+  const balancesFailed = Object.values(balancesByChain).some((b) => b.error);
+  const isEmpty = !balLoading && !balancesFailed && totalUsd < 0.01;
+  const name = friendlyName(accountName);
+
   const topMarkets = [...markets].sort((a, b) => b.totalAprPercent - a.totalAprPercent).slice(0, 5);
   const bestApy = topMarkets[0]?.totalAprPercent ?? null;
   const hasTrades = pnl != null && (num(pnl.totalTrades) > 0 || num(pnl.totalPnl) !== 0);
@@ -132,7 +250,8 @@ export default function DashboardPage() {
           <div className="dash-hero">
             <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
               <p id="total-label" className="page-lede" style={{ fontSize: 16 }}>
-                {greeting()}, {accountName || "trader"}. Total value
+                {greeting()}
+                {name ? `, ${name}` : ""}. Total value
               </p>
               <p className="hero-figure" aria-live="polite">
                 {balLoading ? (
@@ -171,13 +290,13 @@ export default function DashboardPage() {
               <div className="alloc" aria-label="Value by chain">
                 <div className="alloc-bar" aria-hidden="true">
                   {allocation.map((c) => (
-                    <span key={c.chainIndex} style={{ flexGrow: Math.max(c.value / totalUsd, 0.015), background: CHAIN_COLORS[c.chainIndex] }} />
+                    <span key={c.chainIndex} style={{ flexGrow: Math.max(c.value / totalUsd, 0.015), background: ALLOC_COLORS[c.chainIndex] }} />
                   ))}
                 </div>
                 <ul className="alloc-legend">
                   {allocation.map((c) => (
                     <li key={c.chainIndex}>
-                      <span className="sw" style={{ background: CHAIN_COLORS[c.chainIndex] }} aria-hidden="true" />
+                      <span className="sw" style={{ background: ALLOC_COLORS[c.chainIndex] }} aria-hidden="true" />
                       <span>{c.name}</span>
                       <span className="num">{formatUsd(c.value)}</span>
                       <span className="num muted">{formatPercent((c.value / totalUsd) * 100, { decimals: 1 })}</span>
@@ -190,79 +309,85 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {isEmpty && <FirstSteps address={walletAddress} />}
+
       {/* ───────── Facts ───────── */}
-      <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
-        <Metric label="Chains with funds" value={balLoading ? "…" : allocation.length} sub={`of ${Object.keys(CHAINS).length} supported`} />
-        <Metric label="Assets held" value={balLoading ? "…" : tokens.length} sub="across all chains" />
-        <Metric
-          label="Best Fluid yield"
-          value={marketsLoading ? "…" : bestApy != null ? formatPercent(bestApy) : "n/a"}
-          sub={topMarkets[0] && bestAsset ? `${bestAsset.symbol} on ${chainName(topMarkets[0].chainIndex) ?? topMarkets[0].chainName}` : undefined}
-        />
-        <Metric
-          label="Trading PnL"
-          value={pnl == null ? "…" : hasTrades ? <span className={num(pnl.totalPnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>{formatUsd(pnl.totalPnl, { sign: true })}</span> : "n/a"}
-          sub={pnl == null ? undefined : hasTrades ? `${num(pnl.totalTrades)} trades, ${formatPercent(num(pnl.winRate) * 100, { decimals: 1 })} won` : "No DEX trades yet on Ethereum, Base or BNB Chain"}
-        />
-      </div>
+      {!isEmpty && (
+        <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
+          <Metric label="Chains with funds" value={balLoading ? "…" : allocation.length} sub={`of ${Object.keys(CHAINS).length} supported`} />
+          <Metric label="Assets held" value={balLoading ? "…" : tokens.length} sub="across all chains" />
+          <Metric
+            label="Best Fluid yield"
+            value={marketsLoading ? "…" : bestApy != null ? formatPercent(bestApy) : "n/a"}
+            sub={topMarkets[0] && bestAsset ? `${bestAsset.symbol} on ${chainName(topMarkets[0].chainIndex) ?? topMarkets[0].chainName}` : undefined}
+          />
+          <Metric
+            label="Trading PnL"
+            value={pnl == null ? "…" : hasTrades ? <span className={num(pnl.totalPnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>{formatUsd(pnl.totalPnl, { sign: true })}</span> : "n/a"}
+            sub={pnl == null ? undefined : hasTrades ? `${num(pnl.totalTrades)} trades, ${formatPercent(num(pnl.winRate) * 100, { decimals: 1 })} won` : "No trades yet"}
+          />
+        </div>
+      )}
 
       {/* ───────── Lists ───────── */}
       <div className="bento">
-        <Panel
-          className="span-7"
-          index={2}
-          title="Holdings"
-          sub="Largest positions by value"
-          action={
-            <Link href="/wallet" className="chip">
-              All balances <LineIcon name="arrow-up-right" size={13} />
-            </Link>
-          }
-        >
-          {balLoading ? (
-            <div style={{ display: "grid", gap: 12 }}>
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} height={60} />
-              ))}
-            </div>
-          ) : holdings.length === 0 ? (
-            <Empty
-              icon="wallet"
-              title="Nothing here yet"
-              text="Send crypto to your address on any supported chain, then ask the assistant what to do with it."
-              action={
-                <Link href="/wallet?tab=receive" className="btn btn--sm">
-                  Show my address
-                </Link>
-              }
-            />
-          ) : (
-            <ul className="rows">
-              {holdings.map((t, i) => (
-                <li key={`${t.chainIndex}-${t.symbol}-${i}`}>
-                  <div className="row">
-                    <TokenIcon symbol={t.symbol} size={36} chainIndex={t.chainIndex} />
-                    <div style={{ minWidth: 0 }}>
-                      <div className="t">{t.symbol}</div>
-                      <div className="sub">{t.chainName}</div>
-                    </div>
-                    <div className="end">
-                      <div className="num" style={{ fontSize: 15 }}>
-                        {formatUsd(t.usdValue)}
+        {!isEmpty && (
+          <Panel
+            className="span-7"
+            index={2}
+            title="Holdings"
+            sub="Largest positions by value"
+            action={
+              <Link href="/wallet" className="chip">
+                All balances <LineIcon name="arrow-up-right" size={13} />
+              </Link>
+            }
+          >
+            {balLoading ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} height={60} />
+                ))}
+              </div>
+            ) : holdings.length === 0 ? (
+              <Empty
+                icon="wallet"
+                title="Nothing here yet"
+                text="Send crypto to your address on any supported chain, then ask the assistant what to do with it."
+                action={
+                  <Link href="/wallet?tab=receive" className="btn btn--sm">
+                    Show my address
+                  </Link>
+                }
+              />
+            ) : (
+              <ul className="rows">
+                {holdings.map((t, i) => (
+                  <li key={`${t.chainIndex}-${t.symbol}-${i}`}>
+                    <div className="row">
+                      <TokenIcon symbol={t.symbol} size={36} chainIndex={t.chainIndex} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t">{t.symbol}</div>
+                        <div className="sub">{t.chainName}</div>
                       </div>
-                      <div className="sub num">
-                        {formatAmount(t.balance)} {t.symbol}
+                      <div className="end">
+                        <div className="num" style={{ fontSize: 15 }}>
+                          {formatUsd(t.usdValue)}
+                        </div>
+                        <div className="sub num">
+                          {formatAmount(t.balance)} {t.symbol}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        )}
 
         <Panel
-          className="span-5"
+          className={isEmpty ? "span-12" : "span-5"}
           index={3}
           title="Earn on Fluid"
           sub="Highest supply yields right now"
@@ -292,7 +417,7 @@ export default function DashboardPage() {
                         <div className="t">{asset.symbol}</div>
                         <div className="sub">{asset.chainName ?? m.chainName}</div>
                       </div>
-                      <span className="glp pos">{formatPercent(m.totalAprPercent)}</span>
+                      <span className="glp apr">{formatPercent(m.totalAprPercent)}</span>
                     </Link>
                   </li>
                 );

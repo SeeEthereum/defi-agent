@@ -164,6 +164,8 @@
   & .glp.pos { background: var(--gain-soft); color: var(--gain-ink); }
   & .glp.neg { background: var(--loss-soft); color: var(--loss-ink); }
   & .glp.flat { background: var(--shell); color: var(--muted-foreground); }
+  /* A yield is a rate on offer, not a gain you made: the one accent, never the gain colour. */
+  & .glp.apr { background: var(--brand-soft); color: var(--brand); }
   & .chip { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 12px; border-radius: 999px; background: var(--shell); border: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
 
   /* buttons */
@@ -255,6 +257,24 @@
   & .alloc-legend .sw { width: 9px; height: 9px; border-radius: 3px; }
   & .alloc-legend .muted { color: var(--muted-foreground); text-align: right; }
   @media (max-width: 960px) { & .dash-hero { grid-template-columns: minmax(0, 1fr); } }
+
+  /* first visit with an empty wallet: three numbered steps */
+  & .first-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+  & .first-steps > li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 16px; padding: 18px 0; border-top: 1px solid var(--border); }
+  & .first-steps > li:first-child { border-top: 0; padding-top: 2px; }
+  & .first-steps > li:last-child { padding-bottom: 0; }
+  & .first-steps .n { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--brand); font-size: 13px; }
+  & .first-steps h3 { font-size: 16px; font-weight: 500; letter-spacing: -0.015em; line-height: 30px; }
+  & .first-steps p { margin-top: 2px; font-size: 14px; line-height: 1.55; color: var(--text-2); max-width: 62ch; }
+  & .first-steps p.muted { margin-top: 10px; font-size: 13px; color: var(--muted-foreground); }
+  & .first-addr { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 12px; }
+  & .first-addr code { min-width: 0; max-width: 100%; padding: 10px 14px; border-radius: 14px; background: var(--shell); border: 1px solid var(--border); font-size: 14px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+  & .first-nets { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  & .first-asks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; }
+  & .first-asks a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 4px; border-top: 1px solid var(--border); font-size: 14.5px; color: var(--foreground); transition: color 0.3s var(--spring); }
+  & .first-asks li:last-child a { border-bottom: 1px solid var(--border); }
+  & .first-asks a svg { flex-shrink: 0; color: var(--muted-foreground); transition: transform 0.45s var(--spring), color 0.3s var(--spring); }
+  & .first-asks a:hover svg { color: var(--brand); transform: translate(2px, -2px); }
   & .skel-text { display: inline-block; color: transparent; border-radius: 0.12em; }
 }
 @media (max-width: 520px) {
@@ -535,7 +555,7 @@
   & .select--chip .input { min-height: 40px; padding: 0 40px 0 16px; border-radius: 999px; font-size: 14px; }
   & .select--chip::after { right: 15px; }
   & .ticket-head .chip { min-height: 40px; padding: 0 14px; font-size: 13px; }
-  & .dot-on { width: 6px; height: 6px; border-radius: 50%; background: var(--gain); }
+  & .dot-on { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 
   & .swap-settings { display: grid; gap: 18px; padding: 16px; border-radius: 20px; background: var(--shell); border: 1px solid var(--border); }
   & .set-block { display: grid; gap: 10px; }
@@ -553,7 +573,7 @@
   & .seg-input.on { border-color: var(--primary); }
   & .switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; border: 0; border-radius: 999px; background: var(--surface-3); cursor: pointer; transition: background-color 0.3s var(--spring); }
   & .switch span { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--foreground); transition: transform 0.4s var(--spring); }
-  & .switch[aria-checked="true"] { background: var(--gain); }
+  & .switch[aria-checked="true"] { background: var(--brand); }
   & .switch[aria-checked="true"] span { transform: translateX(20px); background: #fff; }
   & .switch:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -651,8 +671,8 @@
   & .two-steps .dot .spin { width: 12px; height: 12px; }
   & .two-steps [data-state="busy"] { color: var(--warn-ink); }
   & .two-steps [data-state="busy"] .dot { border-color: currentColor; }
-  & .two-steps [data-state="done"] { color: var(--gain-ink); }
-  & .two-steps [data-state="done"] .dot { background: var(--gain-soft); border-color: transparent; }
+  & .two-steps [data-state="done"] { color: var(--foreground); }
+  & .two-steps [data-state="done"] .dot { background: var(--surface-3); border-color: transparent; }
   & .msg-note > .btn { align-self: center; }
 
   & .mkt-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
@@ -663,9 +683,11 @@
   & .mkt-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) 72px 72px 84px 96px; gap: 14px; padding: 0 var(--app-pad) 8px; font-size: 12.5px; color: var(--muted-foreground); }
   & .mkt-head span:nth-child(1) { grid-column: 1 / 3; }
   & .mkt-head span:nth-child(n + 2) { text-align: right; }
+  /* No market pays rewards: the column goes, the others keep their widths. */
+  & .mkt-row--full.no-rewards, & .mkt-head.no-rewards { grid-template-columns: 36px minmax(0, 1fr) 84px 96px; }
   & .panel-head .pills { max-width: 100%; }
   @media (max-width: 640px) {
-    & .mkt-row--full { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+    & .mkt-row--full, & .mkt-row--full.no-rewards { grid-template-columns: auto minmax(0, 1fr) auto auto; }
     & .mkt-row .col-x, & .mkt-head { display: none; }
     & .mkt-row { gap: 10px; }
   }
@@ -726,8 +748,8 @@
   & .lev::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); border: 4px solid var(--card); }
   & .lev:active::-webkit-slider-thumb { transform: scale(1.15); }
   & .lev:disabled { opacity: 0.5; cursor: not-allowed; }
-  & .side-cta.long { background: var(--gain); border-color: var(--gain); color: #0e0e0d; }
-  & .side-cta.short { background: var(--loss); border-color: var(--loss); color: #fff; }
+  /* The order button is the plain primary for both sides: the direction shows in
+     the Long / Short switch above it and in the button's own words. */
   & .quick { display: flex; gap: 6px; }
   & .quick .chip:disabled { opacity: 0.5; cursor: default; }
   @media (max-width: 520px) {

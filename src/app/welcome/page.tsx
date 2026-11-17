@@ -68,7 +68,8 @@ export default function WelcomePage() {
           <section className="hero" aria-labelledby="hero-title">
             <div className="hero-core">
               <div className="hero-art" aria-hidden="true">
-                <Image src={lightRoom} alt="" fill priority quality={60} sizes="(max-width: 760px) 60vw, (max-width: 1080px) 90vw, 75vw" />
+                {/* Phones never show the photo (landing.css): a 1vw slot makes them preload the smallest variant, not a full one. */}
+                <Image src={lightRoom} alt="" fill priority quality={60} sizes="(max-width: 760px) 1vw, (max-width: 1080px) 90vw, 75vw" />
               </div>
 
               <div className="hero-copy">

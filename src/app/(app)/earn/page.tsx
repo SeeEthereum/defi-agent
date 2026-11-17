@@ -238,7 +238,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
             <TokenIcon symbol={asset.symbol} size={40} chainIndex={market.chainIndex} />
             <div>
               <span className="muted">Estimated yield</span>
-              <span className="num text-gain-ink">{formatPercent(market.totalAprPercent)}</span>
+              <span className="num">{formatPercent(market.totalAprPercent)}</span>
             </div>
           </div>
 
@@ -447,7 +447,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
             {apy !== undefined && (
               <div>
                 <dt>Current yield</dt>
-                <dd className="num text-gain-ink">{formatPercent(apy)}</dd>
+                <dd className="num">{formatPercent(apy)}</dd>
               </div>
             )}
           </dl>
@@ -537,6 +537,9 @@ export default function EarnPage() {
     .filter((m) => activeChain === "all" || String(m.chainIndex) === activeChain)
     .sort((a, b) => b.totalAprPercent - a.totalAprPercent);
   const best = [...markets].sort((a, b) => b.totalAprPercent - a.totalAprPercent)[0];
+  // Fluid's rewards are 0% on most markets: the column shows only when one pays.
+  const showRewards = visibleMarkets.some((m) => m.rewardsRatePercent > 0);
+  const rewardsCls = showRewards ? "" : " no-rewards";
   const bestAsset = best ? assetOf(best) : null;
 
   return (
@@ -546,7 +549,7 @@ export default function EarnPage() {
       <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
         <Metric
           label="Best yield now"
-          value={isLoading ? "…" : best ? <span className="text-gain-ink">{formatPercent(best.totalAprPercent)}</span> : "n/a"}
+          value={isLoading ? "…" : best ? formatPercent(best.totalAprPercent) : "n/a"}
           sub={best && bestAsset ? `${bestAsset.symbol} on ${networkName(best.chainIndex)}` : undefined}
         />
         <Metric label="Markets" value={isLoading ? "…" : markets.length} sub={`on ${CHAIN_TABS.length - 1} chains`} />
@@ -577,7 +580,7 @@ export default function EarnPage() {
                         <div className="num">
                           {formatAmount(pos.underlyingAssetsUi)} {asset.symbol}
                         </div>
-                        {apy !== undefined && <div className="sub num text-gain-ink">{formatPercent(apy)} a year</div>}
+                        {apy !== undefined && <div className="sub num">{formatPercent(apy)} a year</div>}
                       </div>
                       <WithdrawDialog
                         position={pos}
@@ -619,10 +622,11 @@ export default function EarnPage() {
           <Empty icon="trending-up" title="No markets here" text="Fluid has no market on this chain right now." />
         ) : (
           <>
-            <div className="mkt-head" aria-hidden="true">
+            <div className={`mkt-head${rewardsCls}`} aria-hidden="true">
               <span>Asset</span>
-              <span>Supply</span>
-              <span>Rewards</span>
+              {/* Without rewards, supply and yield are the same number: show it once. */}
+              {showRewards && <span>Supply</span>}
+              {showRewards && <span>Rewards</span>}
               <span>Yield</span>
               <span />
             </div>
@@ -631,15 +635,15 @@ export default function EarnPage() {
                 const asset = assetOf(market);
                 return (
                   <li key={`${market.chainIndex}-${market.fTokenAddress}`}>
-                    <div className="row mkt-row mkt-row--full">
+                    <div className={`row mkt-row mkt-row--full${rewardsCls}`}>
                       <TokenIcon symbol={asset.symbol} size={36} chainIndex={market.chainIndex} />
                       <div style={{ minWidth: 0 }}>
                         <div className="t">{asset.symbol}</div>
                         <div className="sub">{networkName(market.chainIndex)}</div>
                       </div>
-                      <span className="num col-x">{formatPercent(market.supplyRatePercent)}</span>
-                      <span className="num col-x">{formatPercent(market.rewardsRatePercent)}</span>
-                      <span className="glp pos">{formatPercent(market.totalAprPercent)}</span>
+                      {showRewards && <span className="num col-x">{formatPercent(market.supplyRatePercent)}</span>}
+                      {showRewards && <span className="num col-x">{formatPercent(market.rewardsRatePercent)}</span>}
+                      <span className="glp apr">{formatPercent(market.totalAprPercent)}</span>
                       <SupplyDialog market={market} walletAddress={walletAddress ?? ""} />
                     </div>
                   </li>

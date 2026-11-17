@@ -5,7 +5,7 @@
  * sit in one bar; results are rows with the figures aligned, not loose cards.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { CHAINS } from "@/lib/chains";
 import { LineIcon } from "@/components/line-icon";
 import { TokenIcon } from "@/components/token-icon";
@@ -60,43 +60,72 @@ function Loading() {
   );
 }
 
+// A list from the API, or the reason there is none.
+type Loaded<T> = { list: T[] } | { error: string };
+
+// The default views, loaded on arrival: the server caches OKX's market data,
+// so opening the page costs one cheap request, and it never looks empty.
+const DEFAULT_CHAIN = "ethereum";
+const DEFAULT_WALLET_TYPE = ""; // all wallet types
+const DEFAULT_TIME_FRAME = "3"; // 7D
+const DEFAULT_SORT = "1"; // by profit
+
 // ── Smart Money Signals ──────────────────────────────────────────────────────
 
+async function requestSignals(chain: string, walletType: string): Promise<Loaded<SignalItem>> {
+  try {
+    const params = new URLSearchParams({ chain });
+    if (walletType) params.set("walletType", walletType);
+    const res = await fetch(`/api/signals?${params.toString()}`);
+    const data = await res.json();
+    if (!data.success) return { error: data.error || "Could not load signals" };
+    const raw = data.data;
+    const list: SignalItem[] = Array.isArray(raw)
+      ? raw
+      : raw?.signals ?? raw?.results ?? raw?.data ?? (raw ? [raw] : []);
+    return { list };
+  } catch {
+    return { error: "Could not reach the server" };
+  }
+}
+
 function SignalsTab() {
-  const [chain, setChain] = useState("ethereum");
-  const [walletType, setWalletType] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [chain, setChain] = useState(DEFAULT_CHAIN);
+  const [walletType, setWalletType] = useState(DEFAULT_WALLET_TYPE);
+  // True from the start: the default view is on its way (effect below).
+  const [loading, setLoading] = useState(true);
   const [signals, setSignals] = useState<SignalItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
+
+  const apply = useCallback((r: Loaded<SignalItem>) => {
+    if ("error" in r) setError(r.error);
+    else {
+      setSignals(r.list);
+      setFetched(true);
+    }
+    setLoading(false);
+  }, []);
 
   const handleFetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSignals([]);
     setFetched(false);
-    try {
-      const params = new URLSearchParams({ chain });
-      if (walletType) params.set("walletType", walletType);
+    apply(await requestSignals(chain, walletType));
+  }, [chain, walletType, apply]);
 
-      const res = await fetch(`/api/signals?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) {
-        const raw = data.data;
-        const list: SignalItem[] = Array.isArray(raw)
-          ? raw
-          : raw?.signals ?? raw?.results ?? raw?.data ?? (raw ? [raw] : []);
-        setSignals(list);
-        setFetched(true);
-      } else {
-        setError(data.error || "Could not load signals");
-      }
-    } catch {
-      setError("Could not reach the server");
-    } finally {
-      setLoading(false);
-    }
-  }, [chain, walletType]);
+  // First visit: the default view loads by itself. State is set only when
+  // the answer arrives, never during the effect.
+  useEffect(() => {
+    let live = true;
+    void requestSignals(DEFAULT_CHAIN, DEFAULT_WALLET_TYPE).then((r) => {
+      if (live) apply(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, [apply]);
 
   return (
     <Panel
@@ -136,7 +165,7 @@ function SignalsTab() {
           </p>
         </div>
       ) : !fetched ? (
-        <Empty icon="signal" title="Pick a chain and a wallet type" text="Then press Show signals. Nothing loads until you ask." />
+        <Empty icon="signal" title="Pick a chain and a wallet type" text="Then press Show signals." />
       ) : signals.length === 0 ? (
         <Empty icon="signal" title="No signals right now" text="Try another chain or wallet type." />
       ) : (
@@ -218,40 +247,59 @@ const SORTS = [
   { value: "5", label: "By return" },
 ];
 
+async function requestLeaderboard(chain: string, timeFrame: string, sortBy: string): Promise<Loaded<LeaderboardEntry>> {
+  try {
+    const params = new URLSearchParams({ chain, timeFrame, sortBy });
+    const res = await fetch(`/api/leaderboard?${params.toString()}`);
+    const data = await res.json();
+    if (!data.success) return { error: data.error || "Could not load the leaderboard" };
+    const raw = data.data;
+    const list: LeaderboardEntry[] = Array.isArray(raw)
+      ? raw
+      : raw?.leaderboard ?? raw?.results ?? raw?.data ?? (raw ? [raw] : []);
+    return { list };
+  } catch {
+    return { error: "Could not reach the server" };
+  }
+}
+
 function LeaderboardTab() {
-  const [chain, setChain] = useState("ethereum");
-  const [timeFrame, setTimeFrame] = useState("3");
-  const [sortBy, setSortBy] = useState("1");
-  const [loading, setLoading] = useState(false);
+  const [chain, setChain] = useState(DEFAULT_CHAIN);
+  const [timeFrame, setTimeFrame] = useState(DEFAULT_TIME_FRAME);
+  const [sortBy, setSortBy] = useState(DEFAULT_SORT);
+  // True from the start: the default ranking is on its way (effect below).
+  const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
+
+  const apply = useCallback((r: Loaded<LeaderboardEntry>) => {
+    if ("error" in r) setError(r.error);
+    else {
+      setEntries(r.list);
+      setFetched(true);
+    }
+    setLoading(false);
+  }, []);
 
   const handleFetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     setEntries([]);
     setFetched(false);
-    try {
-      const params = new URLSearchParams({ chain, timeFrame, sortBy });
-      const res = await fetch(`/api/leaderboard?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) {
-        const raw = data.data;
-        const list: LeaderboardEntry[] = Array.isArray(raw)
-          ? raw
-          : raw?.leaderboard ?? raw?.results ?? raw?.data ?? (raw ? [raw] : []);
-        setEntries(list);
-        setFetched(true);
-      } else {
-        setError(data.error || "Could not load the leaderboard");
-      }
-    } catch {
-      setError("Could not reach the server");
-    } finally {
-      setLoading(false);
-    }
-  }, [chain, timeFrame, sortBy]);
+    apply(await requestLeaderboard(chain, timeFrame, sortBy));
+  }, [chain, timeFrame, sortBy, apply]);
+
+  // Opening the tab loads the default ranking (this component mounts then).
+  useEffect(() => {
+    let live = true;
+    void requestLeaderboard(DEFAULT_CHAIN, DEFAULT_TIME_FRAME, DEFAULT_SORT).then((r) => {
+      if (live) apply(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, [apply]);
 
   return (
     <Panel

@@ -1,33 +1,47 @@
-"use client";
-
 /**
- * RiskDisclaimer: the risk and custody terms every user accepts before they
- * get a wallet, shown as cards you swipe through (sign-in page).
+ * RiskDisclaimer: what every user accepts before they get a wallet (sign-in
+ * page). Three points a newcomer reads in twenty seconds, with the full
+ * terms one tap away in a native <details> (works without JavaScript, opens
+ * with the keyboard, read in order by screen readers).
  *
- * Legal wording is the approved wording. Only punctuation was changed to the
- * house rules (no em dashes, typographic quotes); the cards group the same
- * clauses by subject. The accepted flag lives in localStorage under
- * DISCLAIMER_KEY and is what the (app) layout checks before letting anyone in.
+ * The full terms are the approved wording. Only punctuation was changed to
+ * the house rules (no em dashes, typographic quotes). The accepted flag lives
+ * in localStorage under DISCLAIMER_KEY and is what the (app) layout checks
+ * before letting anyone in.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CoreIcon } from "@/components/line-icon-core";
+import { typeset as t } from "@/lib/typeset";
 
 export const DISCLAIMER_KEY = "defi-agent-disclaimer-accepted";
+
+/** The summary: custody, losses, and the protections only the user controls. */
+export const RISK_POINTS: Array<{ title: string; body: string }> = [
+  {
+    title: "Who can sign for you",
+    body: "Your key stays in OKX's secure enclave. While you are signed in, our server holds a session that can ask it to sign, used only for what you confirm. It is deleted when you sign out or after 30 minutes idle.",
+  },
+  {
+    title: "You can lose money",
+    body: "Prices move fast, and trades, bridges and loans can go wrong. Nothing here is financial advice, including what the assistant suggests.",
+  },
+  {
+    title: "Your OKX protections",
+    body: "Spending limits and approval codes are OKX's own protections. You set them in your OKX account, and only you can change them.",
+  },
+];
 
 interface Clause {
   label?: string;
   body: React.ReactNode;
 }
-interface Card {
+interface Section {
   title: string;
-  important?: boolean;
   intro?: React.ReactNode;
   clauses: Clause[];
   outro?: React.ReactNode;
 }
 
-export const RISK_CARDS: Card[] = [
+export const RISK_TERMS: Section[] = [
   {
     title: "What you accept",
     intro: (
@@ -164,7 +178,6 @@ export const RISK_CARDS: Card[] = [
   },
   {
     title: "Key custody",
-    important: true,
     intro: (
       <>
         Your wallet is powered by <strong>OKX Agentic Wallet</strong>. Private
@@ -251,153 +264,51 @@ export const RISK_CARDS: Card[] = [
   },
 ];
 
-/**
- * The cards, with native scroll snapping (swipe, trackpad, arrow keys) and
- * Previous / Next buttons. `onAllSeen` fires once every card has been on
- * screen, so consent can wait until the whole text was shown.
- */
-export function RiskCards({ onAllSeen }: { onAllSeen: () => void }) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [current, setCurrent] = useState(0);
-  const seen = useRef(new Set<number>());
-  const reported = useRef(false);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const cards = Array.from(track.children) as HTMLElement[];
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const i = cards.indexOf(
-            (e.target as HTMLElement).parentElement as HTMLElement,
-          );
-          setCurrent(i);
-          // The track takes the height of the card in view, so a short card
-          // does not sit above an empty block sized for the longest one.
-          track.style.height = `${cards[i].offsetHeight}px`;
-          seen.current.add(i);
-          if (!reported.current && seen.current.size === cards.length) {
-            reported.current = true;
-            onAllSeen();
-          }
-        }
-      },
-      { root: track, threshold: 0.6 },
-    );
-    // Observe a 1px line at the top of each card: its visibility depends only
-    // on the horizontal position, not on the track's current height.
-    cards.forEach((c) => {
-      const line = c.querySelector(".risk-sentinel");
-      if (line) io.observe(line);
-    });
-    // Until now only the first card had a height (see .risk:not([data-ready])),
-    // so fixing the track to it here does not move anything on screen.
-    track.style.height = `${cards[0].offsetHeight}px`;
-    track.parentElement?.setAttribute("data-ready", "true");
-    // Re-measure when the width changes (rotation, window resize).
-    const ro = new ResizeObserver(() => {
-      const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
-      if (cards[i]) track.style.height = `${cards[i].offsetHeight}px`;
-    });
-    ro.observe(track);
-    return () => {
-      io.disconnect();
-      ro.disconnect();
-    };
-  }, [onAllSeen]);
-
-  const go = useCallback((i: number) => {
-    const track = trackRef.current;
-    const card = track?.children[i] as HTMLElement | undefined;
-    if (!track || !card) return;
-    track.scrollTo({
-      left: card.offsetLeft - track.offsetLeft,
-      behavior: "smooth",
-    });
-  }, []);
-
-  const last = RISK_CARDS.length - 1;
-
+/** The three points, numbered, then the full terms behind one tap. */
+export function RiskDisclaimer() {
   return (
-    <div
-      className="risk"
-      aria-roledescription="carousel"
-      aria-label="Risk disclaimer"
-    >
-      <div className="risk-head">
-        <div className="risk-progress" aria-hidden="true">
-          {RISK_CARDS.map((c, i) => (
-            <span
-              key={c.title}
-              data-state={i < current ? "done" : i === current ? "on" : "off"}
-            />
+    <div className="risk">
+      <ol className="risk-points">
+        {RISK_POINTS.map((p, i) => (
+          <li key={p.title}>
+            <span className="risk-n" aria-hidden="true">
+              {i + 1}
+            </span>
+            <div>
+              <h2>{p.title}</h2>
+              <p>{t(p.body)}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <details className="risk-full">
+        <summary>
+          <span>Read the full terms</span>
+          <svg className="risk-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </summary>
+        <div className="risk-sections">
+          {RISK_TERMS.map((s) => (
+            <section key={s.title} aria-label={s.title}>
+              <h3 className="risk-title">{s.title}</h3>
+              {s.intro && <p className="risk-intro">{s.intro}</p>}
+              {s.clauses.length > 0 && (
+                <ul className="risk-clauses">
+                  {s.clauses.map((c, k) => (
+                    <li key={k}>
+                      {c.label && <h4>{c.label}</h4>}
+                      <p>{c.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {s.outro && <p className="risk-outro">{s.outro}</p>}
+            </section>
           ))}
         </div>
-
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={() => go(current - 1)}
-          disabled={current === 0}
-          aria-label="Previous card"
-        >
-          <CoreIcon name="arrow-right" size={16} className="flip" />
-        </button>
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={() => go(current + 1)}
-          disabled={current === last}
-          aria-label="Next card"
-        >
-          <CoreIcon name="arrow-right" size={16} />
-        </button>
-      </div>
-      <p className="sr-only" aria-live="polite">
-        {`${RISK_CARDS[current].title}, card ${current + 1} of ${RISK_CARDS.length}`}
-      </p>
-
-      <div
-        ref={trackRef}
-        className="risk-track"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowRight") {
-            e.preventDefault();
-            go(Math.min(last, current + 1));
-          } else if (e.key === "ArrowLeft") {
-            e.preventDefault();
-            go(Math.max(0, current - 1));
-          }
-        }}
-      >
-        {RISK_CARDS.map((card, i) => (
-          <section
-            key={card.title}
-            className="risk-card"
-            aria-roledescription="slide"
-            aria-label={`${card.title}, ${i + 1} of ${RISK_CARDS.length}`}
-          >
-            <span className="risk-sentinel" aria-hidden="true" />
-            {card.important && <span className="risk-flag">Important</span>}
-            <h2 className="risk-title">{card.title}</h2>
-            {card.intro && <p className="risk-intro">{card.intro}</p>}
-            {card.clauses.length > 0 && (
-              <ul className="risk-clauses">
-                {card.clauses.map((c, k) => (
-                  <li key={k}>
-                    {c.label && <h3>{c.label}</h3>}
-                    <p>{c.body}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {card.outro && <p className="risk-outro">{card.outro}</p>}
-          </section>
-        ))}
-      </div>
+      </details>
     </div>
   );
 }
