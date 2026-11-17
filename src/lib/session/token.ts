@@ -15,7 +15,11 @@ export const SID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const DEV_SECRET = "albicocca-dev-only-session-secret-do-not-use-in-prod";
 
-function sessionSecret(): string {
+/**
+ * The server secret behind session cookies (and, derived from it, the key
+ * that seals each session's keyring identity: ./keyring-seal).
+ */
+export function sessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
   if (secret && secret.length >= 32) return secret;
   if (process.env.NODE_ENV === "production") {

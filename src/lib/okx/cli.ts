@@ -6,6 +6,7 @@ import type { CliResult, GasStationConfirming, GasStationToken } from "./types";
 import { appendBuilderCode } from "./builder-code";
 import { withOnchainosLock } from "./lock";
 import { withProcessSlot } from "./process-pool";
+import { SealedSessionError, withUnsealedIdentity } from "@/lib/session/keyring-seal";
 import { currentSession, ensureSessionHome, onchainosEnv, sessionHomeExists } from "@/lib/session/session";
 import { markOutcomeUnknown } from "@/lib/api/duplicate-guard";
 import { UNKNOWN_OUTCOME_MESSAGE } from "@/lib/api/send-state";
@@ -231,13 +232,16 @@ export async function runCli<T = unknown>(
     if (isLogin) ensureSessionHome(session);
 
     try {
-      const { stdout } = await execFileAsync(ONCHAINOS_BIN, cmdArgs, {
-        timeout: 30_000,
-        // SIGTERM alone leaves a wedged binary holding this session's lock.
-        killSignal: "SIGKILL",
-        maxBuffer: 8 * 1024 * 1024,
-        env: onchainosEnv(session),
-      });
+      // The keyring identity is on disk in the clear only while the call runs.
+      const { stdout } = await withUnsealedIdentity(session, () =>
+        execFileAsync(ONCHAINOS_BIN, cmdArgs, {
+          timeout: 30_000,
+          // SIGTERM alone leaves a wedged binary holding this session's lock.
+          killSignal: "SIGKILL",
+          maxBuffer: 8 * 1024 * 1024,
+          env: onchainosEnv(session),
+        })
+      );
 
       let parsed: T | undefined;
       try {
@@ -326,7 +330,13 @@ export async function runCli<T = unknown>(
     } catch (error: unknown) {
       // Typed signals from the success path above, not exec failures:
       // propagate untouched so the route can ask the user.
-      if (error instanceof GasStationConfirmingError || error instanceof RiskConfirmingError) throw error;
+      if (
+        error instanceof GasStationConfirmingError ||
+        error instanceof RiskConfirmingError ||
+        error instanceof SealedSessionError
+      ) {
+        throw error;
+      }
 
       const err = error as {
         code?: string | number | null;

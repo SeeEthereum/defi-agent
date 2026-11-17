@@ -17,7 +17,8 @@ import path from "path";
 import fs from "fs";
 import { withOnchainosLock } from "@/lib/okx/lock";
 import { withProcessSlot } from "@/lib/okx/process-pool";
-import { onchainosEnv, sessionHomeExists } from "@/lib/session/session";
+import { currentSession, onchainosEnv, sessionHomeExists } from "@/lib/session/session";
+import { withUnsealedIdentity } from "@/lib/session/keyring-seal";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,7 +138,7 @@ export class OnchainosWallet {
       let stdout = "";
       let stderr = "";
       try {
-        const result = await execFileAsync(
+        const result = await withUnsealedIdentity(currentSession(), () => execFileAsync(
           ONCHAINOS_BIN,
           [
             "wallet",
@@ -157,7 +158,7 @@ export class OnchainosWallet {
             maxBuffer: 4 * 1024 * 1024,
             env: onchainosEnv(),
           }
-        );
+        ));
         stdout = result.stdout;
         stderr = result.stderr;
       } catch (err: unknown) {

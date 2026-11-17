@@ -1,5 +1,6 @@
 import { execFile, type ChildProcess } from "child_process";
 import { currentSession, onchainosEnv } from "@/lib/session/session";
+import { holdUnsealedIdentity } from "@/lib/session/keyring-seal";
 import { ONCHAINOS_BIN } from "./cli";
 
 /**
@@ -104,44 +105,53 @@ export function startLoginPoll(authSessionId: string, loginUrl: string): LoginSe
   };
   logins.set(user.sid, entry);
 
-  entry.child = execFile(
-    ONCHAINOS_BIN,
-    ["wallet", "login", "--phase", "poll", "--session-id", authSessionId],
-    {
-      timeout: POLL_TIMEOUT_MS,
-      env: onchainosEnv(user),
-    },
-    (error, stdout) => {
-      // A newer login superseded this one — drop the stale result.
-      if (logins.get(user.sid)?.session !== session) return;
-      const current = logins.get(user.sid);
-      if (current) current.child = null;
+  // The poll can run for minutes beside other calls of this session; the
+  // keyring identity stays unsealed until it ends (see keyring-seal).
+  const release = holdUnsealedIdentity(user);
+  try {
+    entry.child = execFile(
+      ONCHAINOS_BIN,
+      ["wallet", "login", "--phase", "poll", "--session-id", authSessionId],
+      {
+        timeout: POLL_TIMEOUT_MS,
+        env: onchainosEnv(user),
+      },
+      (error, stdout) => {
+        release();
+        // A newer login superseded this one — drop the stale result.
+        if (logins.get(user.sid)?.session !== session) return;
+        const current = logins.get(user.sid);
+        if (current) current.child = null;
 
-      if (error) {
-        session.phase = "error";
-        session.error =
-          error.killed || (error as { signal?: string }).signal
-            ? "Login timed out. Please start again."
-            : error.message;
-        return;
-      }
-
-      // The CLI reports failures in-band as { ok: false, error }.
-      try {
-        const json = JSON.parse(stdout);
-        if (json.ok === false) {
+        if (error) {
           session.phase = "error";
-          session.error = json.error ?? "Login failed. Please try again.";
+          session.error =
+            error.killed || (error as { signal?: string }).signal
+              ? "Login timed out. Please start again."
+              : error.message;
           return;
         }
-      } catch {
-        // Non-JSON stdout on a zero exit — treat as success and let
-        // `wallet status` be the source of truth.
-      }
 
-      session.phase = "done";
-    }
-  );
+        // The CLI reports failures in-band as { ok: false, error }.
+        try {
+          const json = JSON.parse(stdout);
+          if (json.ok === false) {
+            session.phase = "error";
+            session.error = json.error ?? "Login failed. Please try again.";
+            return;
+          }
+        } catch {
+          // Non-JSON stdout on a zero exit — treat as success and let
+          // `wallet status` be the source of truth.
+        }
+
+        session.phase = "done";
+      }
+    );
+  } catch (error) {
+    release();
+    throw error;
+  }
 
   return session;
 }
