@@ -47,6 +47,7 @@ interface WalletToken {
 }
 
 const NO_WALLET_TOKENS: WalletToken[] = [];
+const NO_SEARCH_RESULTS: TokenSearchResult[] = [];
 
 function getNativeToken(chain: string): TokenInfo {
   const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
@@ -228,42 +229,44 @@ function TokenSelector({
   walletTokens?: WalletToken[];
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TokenSearchResult[]>([]);
   const [open, setOpen] = useState(false);
-  const [searching, setSearching] = useState(false);
+  // Results are stored with the query and chain they answer; until the answer
+  // for what is typed now arrives, the picker reads "Searching…" (that covers
+  // the 500 ms wait before the request too). Only the latest request may
+  // store its answer, so a slow reply for an older query cannot replace it.
+  const [found, setFound] = useState<{ q: string; chain: string; results: TokenSearchResult[] } | null>(null);
+  const latestRequestRef = useRef("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const answered = found != null && found.q === query && found.chain === chain;
+  const results = answered ? found.results : NO_SEARCH_RESULTS;
+  const searching = query.length > 0 && !answered;
 
   const search = useCallback(
     async (q: string) => {
-      if (q.length < 1) {
-        setResults([]);
-        return;
-      }
-      setSearching(true);
+      const request = `${chain}|${q}`;
+      latestRequestRef.current = request;
+      let list: TokenSearchResult[] = [];
       try {
         const res = await fetch(
           `/api/tokens/search?q=${encodeURIComponent(q)}&chain=${encodeURIComponent(chain)}`
         );
         const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          setResults(data.data);
-        } else if (data.success && data.data?.tokens) {
-          setResults(data.data.tokens);
-        } else {
-          setResults([]);
-        }
+        if (data.success && Array.isArray(data.data)) list = data.data;
+        else if (data.success && data.data?.tokens) list = data.data.tokens;
       } catch {
-        setResults([]);
-      } finally {
-        setSearching(false);
+        // A failed search shows "No tokens found" for this query.
       }
+      if (latestRequestRef.current === request) setFound({ q, chain, results: list });
     },
     [chain]
   );
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (query.length < 1) return;
+    if (query.length < 1) {
+      latestRequestRef.current = "";
+      return;
+    }
     timerRef.current = setTimeout(() => {
       search(query);
     }, 500);
@@ -272,16 +275,10 @@ function TokenSelector({
     };
   }, [query, search]);
 
-  // An empty query drops the old results right away, in the same update.
-  const updateQuery = useCallback((q: string) => {
-    setQuery(q);
-    if (q.length < 1) setResults([]);
-  }, []);
-
   const close = useCallback(() => {
     setOpen(false);
-    updateQuery("");
-  }, [updateQuery]);
+    setQuery("");
+  }, []);
 
   const pick = (t: TokenInfo) => {
     onSelect(t);
@@ -315,7 +312,7 @@ function TokenSelector({
         onClose={close}
         title={label === "From" ? "Pay with" : "Receive"}
         query={query}
-        onQuery={updateQuery}
+        onQuery={setQuery}
         placeholder="Search a name or paste an address"
       >
         {query.length === 0 && (

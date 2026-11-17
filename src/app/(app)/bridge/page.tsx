@@ -8,6 +8,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
+import { bridgeCost, formatBridgeCost, formatCostShare } from "@/lib/bridge/cost";
+import { searchTokens } from "@/lib/token-search";
 import { Fade, NumberDisplay } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
@@ -48,6 +50,8 @@ interface QuoteData {
   fromToken: BridgeTokenInfo;
   executionDuration: number;
   quoteId: string;
+  /** USD value of the amount sent, when LI.FI prices it. */
+  fromAmountUSD?: string;
   /** LI.FI's router/bridge contract that needs ERC-20 allowance. Absent for native tokens. */
   approvalAddress?: string;
   feeCosts: Array<{
@@ -221,13 +225,9 @@ function TokenChoice({
     setQuery("");
   }, []);
 
-  const filtered = query
-    ? tokens.filter(
-        (t) =>
-          t.symbol.toLowerCase().includes(query.toLowerCase()) ||
-          t.name.toLowerCase().includes(query.toLowerCase())
-      )
-    : tokens.slice(0, 50);
+  // Exact symbol first, then symbols that start with the query, then the rest
+  // (see lib/token-search). A pasted contract address matches too.
+  const filtered = query ? searchTokens(tokens, query) : tokens.slice(0, 50);
 
   return (
     <>
@@ -251,7 +251,7 @@ function TokenChoice({
         )}
         <LineIcon name="chevron-down" size={15} />
       </button>
-      <Picker open={open} onClose={close} title={title} query={query} onQuery={setQuery} placeholder="Search a name or symbol">
+      <Picker open={open} onClose={close} title={title} query={query} onQuery={setQuery} placeholder="Search a name, a symbol or an address">
         {filtered.length === 0 && <p className="picker-hint">No tokens found.</p>}
         {filtered.map((t, i) => (
           <PickRow
@@ -570,6 +570,7 @@ export default function BridgePage() {
           approvalAddress: q.estimate?.approvalAddress,
           feeCosts: q.estimate?.feeCosts ?? [],
           gasCosts: q.estimate?.gasCosts ?? [],
+          fromAmountUSD: q.estimate?.fromAmountUSD,
         });
         setQuoteKey(requestKey);
         setQuoteReceivedAt(Date.now());
@@ -721,14 +722,10 @@ export default function BridgePage() {
       ? fromWei(activeQuote.toAmountMin, activeQuote.toToken.decimals)
       : null;
 
-  const totalFeeUsd = activeQuote
-    ? [
-        ...(activeQuote.feeCosts ?? []),
-        ...(activeQuote.gasCosts ?? []),
-      ]
-        .reduce((sum, c) => sum + parseFloat(c.amountUSD ?? "0"), 0)
-        .toFixed(2)
+  const quoteCost = activeQuote
+    ? bridgeCost(activeQuote.feeCosts, activeQuote.gasCosts, activeQuote.fromAmountUSD)
     : null;
+  const quoteCostShare = quoteCost ? formatCostShare(quoteCost) : null;
 
   const estimatedMinutes = activeQuote
     ? Math.ceil(activeQuote.executionDuration / 60)
@@ -946,7 +943,10 @@ export default function BridgePage() {
                     </div>
                     <div>
                       <dt>Fees and gas</dt>
-                      <dd className="num">{totalFeeUsd != null ? `$${totalFeeUsd}` : "Unknown"}</dd>
+                      <dd className="num">
+                        {quoteCost ? formatBridgeCost(quoteCost) : "Not given"}
+                        {quoteCostShare && <span className="text-warn-ink">, {quoteCostShare} of the amount</span>}
+                      </dd>
                     </div>
                     <div>
                       <dt>Arrives at</dt>

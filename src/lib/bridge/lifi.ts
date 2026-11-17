@@ -43,6 +43,8 @@ export interface BridgeQuote {
     fromAmount: string;
     toAmount: string;
     toAmountMin: string;
+    fromAmountUSD?: string;
+    toAmountUSD?: string;
     approvalAddress?: string;
     executionDuration: number;
     feeCosts?: Array<{
