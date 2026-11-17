@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { marketPrice } from "@/lib/okx/cli";
+import { marketPrice } from "@/lib/okx/market-data";
 import { memoTTL, cacheKey } from "@/lib/cache";
 import { currentSession, withSession } from "@/lib/session/session";
 import { rateLimit } from "@/lib/api/rate-limit";

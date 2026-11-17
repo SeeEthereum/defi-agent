@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { securityDappScan } from "@/lib/okx/cli";
+import { securityDappScan } from "@/lib/okx/market-data";
 import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 import { apiError, badRequest } from "@/lib/api/validation";

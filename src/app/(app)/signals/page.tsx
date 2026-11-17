@@ -6,7 +6,6 @@
  */
 
 import { useState, useCallback } from "react";
-import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { LineIcon } from "@/components/line-icon";
 import { TokenIcon } from "@/components/token-icon";
@@ -424,17 +423,9 @@ function LeaderboardTab() {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+// Public data from OKX's API (lib/okx/market-data): no sign-in needed.
 export default function SignalsPage() {
-  const { authenticated } = useAuth();
   const [tab, setTab] = useState<"signals" | "leaderboard">("signals");
-
-  if (!authenticated) {
-    return (
-      <div className="page">
-        <Empty icon="signal" title="Sign in first" text="Connect your wallet to see smart money signals." />
-      </div>
-    );
-  }
 
   return (
     <div className="page">

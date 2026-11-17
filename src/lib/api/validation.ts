@@ -87,6 +87,11 @@ const SAFE_MESSAGE_PATTERNS = [
   /did not answer in time/i,
   /wallet service is busy/i,
   /too many wallet requests/i,
+  /market data is temporarily unavailable/i,
+  /OKX did not answer/i,
+  /OKX is busy/i,
+  /no price data found/i,
+  /please sign in again/i,
 ];
 
 /**

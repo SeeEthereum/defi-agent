@@ -782,14 +782,10 @@ export async function securityTxScan(params: {
   return runCli(["security", "tx-scan"], args);
 }
 
-// Token commands
-export async function tokenSearch(query: string, chains?: string) {
-  const args: Record<string, string | boolean> = { query };
-  if (chains) args.chains = chains;
-  return runCli(["token", "search"], args);
-}
+// ── Portfolio PnL (premium market tier, under the user's own login) ─────────
+// Public market data (prices, charts, search, signals, leaderboards, scans,
+// gas) comes from OKX's REST API instead: see ./market-data.
 
-// Market / Portfolio PnL commands
 export async function marketPortfolioOverview(chain: string, address: string) {
   return runCli(["market", "portfolio-overview"], { chain, address });
 }
@@ -798,39 +794,6 @@ export async function marketPortfolioRecentPnl(chain: string, address: string, l
   const args: Record<string, string | boolean> = { chain, address };
   if (limit) args.limit = limit;
   return runCli(["market", "portfolio-recent-pnl"], args);
-}
-
-export async function marketPortfolioDexHistory(params: {
-  chain: string;
-  address: string;
-  begin: string;
-  end: string;
-  limit?: string;
-  txType?: string;
-}) {
-  const args: Record<string, string | boolean> = {
-    chain: params.chain,
-    address: params.address,
-    begin: params.begin,
-    end: params.end,
-  };
-  if (params.limit) args.limit = params.limit;
-  if (params.txType) args["tx-type"] = params.txType;
-  return runCli(["market", "portfolio-dex-history"], args);
-}
-
-export async function tokenHotTokens(params?: {
-  chain?: string;
-  rankBy?: string;
-  timeFrame?: string;
-  riskFilter?: string;
-}) {
-  const args: Record<string, string | boolean> = {};
-  if (params?.chain) args.chain = params.chain;
-  if (params?.rankBy) args["rank-by"] = params.rankBy;
-  if (params?.timeFrame) args["time-frame"] = params.timeFrame;
-  if (params?.riskFilter) args["risk-filter"] = params.riskFilter;
-  return runCli(["token", "hot-tokens"], args);
 }
 
 // Swap commands
@@ -874,14 +837,13 @@ export async function swapExecute(params: {
 
 // ── Security commands ────────────────────────────────────────────────────────
 
-export async function securityTokenScan(params?: {
-  tokens?: string;
-  address?: string;
-  chain?: string;
-}) {
+/**
+ * Scan the tokens the signed-in user holds (all accounts' wallet assets).
+ * Needs their login, so it stays on the CLI; a scan of given tokens or of
+ * any address goes through ./market-data.
+ */
+export async function securityScanMyTokens(params?: { chain?: string }) {
   const args: Record<string, string | boolean> = {};
-  if (params?.tokens) args.tokens = params.tokens;
-  if (params?.address) args.address = params.address;
   if (params?.chain) args.chain = params.chain;
   return runCli(["security", "token-scan"], args);
 }
@@ -897,150 +859,4 @@ export async function securityApprovals(params: {
   if (params.limit) args.limit = params.limit;
   if (params.cursor) args.cursor = params.cursor;
   return runCli(["security", "approvals"], args);
-}
-
-export async function securityDappScan(domain: string) {
-  return runCli(["security", "dapp-scan"], { domain });
-}
-
-// ── Market commands ──────────────────────────────────────────────────────────
-
-export async function marketPrice(params: {
-  address: string;
-  chain: string;
-}) {
-  return runCli(["market", "price"], {
-    address: params.address,
-    chain: params.chain,
-  });
-}
-
-export async function marketKline(params: {
-  address: string;
-  chain: string;
-  bar?: string;
-  limit?: string;
-}) {
-  const args: Record<string, string | boolean> = {
-    address: params.address,
-    chain: params.chain,
-  };
-  if (params.bar) args.bar = params.bar;
-  if (params.limit) args.limit = params.limit;
-  return runCli(["market", "kline"], args);
-}
-
-export async function marketIndex(params: {
-  address: string;
-  chain: string;
-}) {
-  return runCli(["market", "index"], {
-    address: params.address,
-    chain: params.chain,
-  });
-}
-
-// ── Signal commands ──────────────────────────────────────────────────────────
-
-export async function signalList(params: {
-  chain: string;
-  walletType?: string;
-  minAmountUsd?: string;
-  maxAmountUsd?: string;
-  minAddressCount?: string;
-  tokenAddress?: string;
-  minMarketCapUsd?: string;
-  maxMarketCapUsd?: string;
-  minLiquidityUsd?: string;
-  maxLiquidityUsd?: string;
-}) {
-  const args: Record<string, string | boolean> = { chain: params.chain };
-  if (params.walletType) args["wallet-type"] = params.walletType;
-  if (params.minAmountUsd) args["min-amount-usd"] = params.minAmountUsd;
-  if (params.maxAmountUsd) args["max-amount-usd"] = params.maxAmountUsd;
-  if (params.minAddressCount) args["min-address-count"] = params.minAddressCount;
-  if (params.tokenAddress) args["token-address"] = params.tokenAddress;
-  if (params.minMarketCapUsd) args["min-market-cap-usd"] = params.minMarketCapUsd;
-  if (params.maxMarketCapUsd) args["max-market-cap-usd"] = params.maxMarketCapUsd;
-  if (params.minLiquidityUsd) args["min-liquidity-usd"] = params.minLiquidityUsd;
-  if (params.maxLiquidityUsd) args["max-liquidity-usd"] = params.maxLiquidityUsd;
-  return runCli(["signal", "list"], args);
-}
-
-export async function signalChains() {
-  return runCli(["signal", "chains"]);
-}
-
-// ── Gateway commands ─────────────────────────────────────────────────────────
-
-export async function gatewayGas(chain: string) {
-  return runCli(["gateway", "gas"], { chain });
-}
-
-export async function gatewaySimulate(params: {
-  from: string;
-  to: string;
-  data: string;
-  chain: string;
-  amount?: string;
-}) {
-  const args: Record<string, string | boolean> = {
-    from: params.from,
-    to: params.to,
-    data: params.data,
-    chain: params.chain,
-  };
-  if (params.amount) args.amount = params.amount;
-  return runCli(["gateway", "simulate"], args);
-}
-
-// ── Address tracker commands ─────────────────────────────────────────────────
-
-export async function addressTrackerActivities(params: {
-  trackerType: string;
-  walletAddress?: string;
-  tradeType?: string;
-  chain?: string;
-  minVolume?: string;
-  maxVolume?: string;
-  minMarketCap?: string;
-  maxMarketCap?: string;
-}) {
-  const args: Record<string, string | boolean> = {
-    "tracker-type": params.trackerType,
-  };
-  if (params.walletAddress) args["wallet-address"] = params.walletAddress;
-  if (params.tradeType) args["trade-type"] = params.tradeType;
-  if (params.chain) args.chain = params.chain;
-  if (params.minVolume) args["min-volume"] = params.minVolume;
-  if (params.maxVolume) args["max-volume"] = params.maxVolume;
-  if (params.minMarketCap) args["min-market-cap"] = params.minMarketCap;
-  if (params.maxMarketCap) args["max-market-cap"] = params.maxMarketCap;
-  // `tracker activities`, NOT `market address-tracker-activities` — the latter
-  // never existed on any CLI version we've shipped (verified against v3.3.11
-  // and v4.6.0: "unrecognized subcommand"), so this route returned an
-  // OkxCliError on every call. The flags below are unchanged: `tracker
-  // activities` accepts exactly this set.
-  return runCli(["tracker", "activities"], args);
-}
-
-// ── Leaderboard commands ─────────────────────────────────────────────────────
-
-export async function leaderboardList(params: {
-  chain: string;
-  timeFrame: string;
-  sortBy: string;
-  walletType?: string;
-}) {
-  const args: Record<string, string | boolean> = {
-    chain: params.chain,
-    "time-frame": params.timeFrame,
-    "sort-by": params.sortBy,
-  };
-  if (params.walletType) args["wallet-type"] = params.walletType;
-  return runCli(["leaderboard", "list"], args);
-}
-
-export async function leaderboardSupportedChains() {
-  return runCli(["leaderboard", "supported-chains"]);
 }

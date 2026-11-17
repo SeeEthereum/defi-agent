@@ -11,7 +11,15 @@
 
 import * as Sentry from "@sentry/nextjs";
 
-const EXPECTED = [/not logged in/i, /not available in your region/i, /insufficient/i, /slippage/i, /no active session/i];
+// A paused market tier is reported once, by lib/okx/openapi, not by every route.
+const EXPECTED = [
+  /not logged in/i,
+  /not available in your region/i,
+  /insufficient/i,
+  /slippage/i,
+  /no active session/i,
+  /market data is temporarily unavailable/i,
+];
 
 const THROTTLE_MS = 60_000;
 const lastSent = new Map<string, number>();

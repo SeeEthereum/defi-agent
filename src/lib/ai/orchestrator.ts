@@ -10,7 +10,8 @@ import { z } from "zod";
 import { AI_TOOLS } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { MAIN_EFFORT, MAIN_MODEL } from "./models";
-import { walletBalance, tokenSearch, walletAddresses, walletHistory, securityTokenScan, securityApprovals, securityDappScan, marketPrice, signalList, gatewayGas, gasStationStatus, leaderboardList, addressTrackerActivities } from "@/lib/okx/cli";
+import { walletBalance, walletAddresses, walletHistory, securityApprovals, securityScanMyTokens, gasStationStatus } from "@/lib/okx/cli";
+import { tokenSearch, securityTokenScan, securityDappScan, marketPrice, signalList, gatewayGas, leaderboardList, addressTrackerActivities } from "@/lib/okx/market-data";
 import { getFluidMarkets, getUserPositions } from "@/lib/fluid/resolver";
 import { dexQuote } from "@/lib/okx/dex-api";
 import { bridgeQuote } from "@/lib/bridge/lifi";
@@ -278,7 +279,10 @@ export async function executeToolCall(
       const tokens = input.tokens as string | undefined;
       const address = input.address as string | undefined;
       const chain = input.chain as string | undefined;
-      const result = await securityTokenScan({ tokens, address, chain });
+      // Neither given: the user's own tokens, which needs their login (CLI).
+      const result = tokens || address
+        ? await securityTokenScan({ tokens, address, chain })
+        : await securityScanMyTokens({ chain });
       return result.data;
     }
     case "get_approvals": {

@@ -8,81 +8,21 @@
  * Docs: https://web3.okx.com/it/onchainos/dev-docs/home/run-your-first-dapp
  */
 
-import { createHmac } from "crypto";
-
-const BASE_URL = "https://web3.okx.com";
-
-// ── Auth helpers ──────────────────────────────────────────────────────────────
-
-function getCredentials() {
-  const apiKey = process.env.OKX_API_KEY;
-  const secretKey = process.env.OKX_SECRET_KEY;
-  const passphrase = process.env.OKX_PASSPHRASE;
-  const projectId = process.env.OKX_PROJECT_ID;
-
-  if (!apiKey || !secretKey || !passphrase || !projectId) {
-    throw new Error(
-      "Missing OKX API credentials. Set OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE, OKX_PROJECT_ID."
-    );
-  }
-
-  return { apiKey, secretKey, passphrase, projectId };
-}
-
-function getHeaders(
-  method: "GET" | "POST",
-  requestPath: string,
-  queryString = "",
-  body = ""
-): Record<string, string> {
-  const { apiKey, secretKey, passphrase, projectId } = getCredentials();
-  const timestamp = new Date().toISOString();
-
-  // Signature: timestamp + method + requestPath + queryString (GET) or body (POST)
-  const stringToSign =
-    timestamp + method + requestPath + (method === "GET" ? queryString : body);
-
-  const sign = createHmac("sha256", secretKey)
-    .update(stringToSign)
-    .digest("base64");
-
-  return {
-    "Content-Type": "application/json",
-    "OK-ACCESS-KEY": apiKey,
-    "OK-ACCESS-SIGN": sign,
-    "OK-ACCESS-TIMESTAMP": timestamp,
-    "OK-ACCESS-PASSPHRASE": passphrase,
-    "OK-ACCESS-PROJECT": projectId,
-  };
-}
+import { okxGet } from "./openapi";
 
 // ── Generic API caller ────────────────────────────────────────────────────────
 
-interface OkxApiResponse<T = unknown> {
-  code: string;
-  msg?: string;
-  data: T[];
-}
-
-async function dexGet<T = unknown>(
-  path: string,
-  params: Record<string, string>
-): Promise<T> {
-  const requestPath = `/api/v6/${path}`;
-  const queryString = "?" + new URLSearchParams(params).toString();
-  const headers = getHeaders("GET", requestPath, queryString);
-
-  const url = `${BASE_URL}${requestPath}${queryString}`;
-  const res = await fetch(url, { headers, method: "GET" });
-  const json = (await res.json()) as OkxApiResponse<T>;
-
-  if (json.code !== "0") {
-    throw new Error(
-      `OKX DEX API error (${path}): ${json.msg || `code ${json.code}`}`
-    );
+/**
+ * GET an aggregator path and return the first item of `data`. Signing,
+ * the 10 s timeout and error handling live in ./openapi, shared with the
+ * market data. The DEX API is not part of OKX's metered market tiers.
+ */
+async function dexGet<T = unknown>(path: string, params: Record<string, string>): Promise<T> {
+  const data = await okxGet<T[]>(`/api/v6/${path}`, params);
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`OKX DEX API returned no data (${path})`);
   }
-
-  return json.data[0];
+  return data[0];
 }
 
 // ── Public API functions ──────────────────────────────────────────────────────

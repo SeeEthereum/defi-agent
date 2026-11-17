@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gatewayGas } from "@/lib/okx/cli";
+import { gatewayGas } from "@/lib/okx/market-data";
 import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 import { apiError, badRequest, chainId } from "@/lib/api/validation";

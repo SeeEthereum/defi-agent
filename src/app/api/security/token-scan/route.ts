@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { securityTokenScan } from "@/lib/okx/cli";
+import { securityScanMyTokens } from "@/lib/okx/cli";
+import { securityTokenScan } from "@/lib/okx/market-data";
 import { withSession } from "@/lib/session/session";
 import { z } from "zod";
 import {
@@ -49,8 +50,9 @@ export const GET = withSession(async (request: NextRequest) => {
 
     const chain = parsed.chain !== undefined ? String(parsed.chain) : undefined;
 
+    // The user's own tokens need their login, so that scan stays on the CLI.
     if (!parsed.tokens && !parsed.address) {
-      const result = await securityTokenScan({ chain });
+      const result = await securityScanMyTokens({ chain });
       return NextResponse.json({ success: true, data: result.data });
     }
 
