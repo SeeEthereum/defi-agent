@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { useAuth } from "@/hooks/use-auth";
+import { InstallAppItem } from "@/components/pwa/install-app";
 import { MORE_NAV, PRIMARY_NAV, isActive } from "./nav";
 import { useDismiss } from "./use-dismiss";
 
@@ -69,6 +70,7 @@ export function AccountMenu() {
               <span className="num">{copied ? "Copied" : shortAddress(walletAddress)}</span>
             </button>
           )}
+          <InstallAppItem className="item" role="menuitem" iconSize={16} onSelect={() => setOpen(false)} />
           <button type="button" role="menuitem" className="item danger" onClick={signOut}>
             <LineIcon name="exit" size={16} />
             Sign out

@@ -101,10 +101,22 @@ describe("security headers", () => {
     const config = typeof nextConfig === "function" ? null : nextConfig;
     expect(config?.headers).toBeTypeOf("function");
     const rules = await config!.headers!();
-    expect(rules).toHaveLength(1);
     expect(rules[0].source).toBe("/:path*");
     const keys = rules[0].headers.map((h) => h.key);
     expect(keys).toEqual(expect.arrayContaining(["Content-Security-Policy", "X-Frame-Options", "Permissions-Policy"]));
     expect(config?.poweredByHeader).toBe(false);
+  });
+
+  it("serves the service worker uncached, after the global rule and without loosening it", async () => {
+    const config = typeof nextConfig === "function" ? null : nextConfig;
+    const rules = await config!.headers!();
+    expect(rules.map((r) => r.source)).toEqual(["/:path*", "/sw.js"]);
+    const sw = Object.fromEntries(rules[1].headers.map((h) => [h.key, h.value]));
+    expect(sw["Cache-Control"]).toMatch(/no-cache/);
+    expect(sw["Content-Type"]).toMatch(/^application\/javascript/);
+    // The later rule wins per key: it must not replace the security headers.
+    for (const key of Object.keys(sw)) {
+      expect(["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options"]).not.toContain(key);
+    }
   });
 });

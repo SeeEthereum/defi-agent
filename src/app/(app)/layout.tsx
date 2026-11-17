@@ -12,6 +12,8 @@ import { askRiskConfirmation, RiskConfirmHost } from "@/components/risk-confirm"
 import { confirmRiskIfAsked } from "@/lib/api/risk-retry";
 import { answerWalletPrompts } from "@/lib/api/approval-code-retry";
 import { askApprovalCode, ApprovalCodeHost } from "@/components/approval-code-prompt";
+import { InstallStepsHost } from "@/components/pwa/install-app";
+import { OfflineBanner } from "@/components/pwa/offline-banner";
 import "./app.css";
 
 // Derive the disclaimer state from localStorage via useSyncExternalStore so
@@ -162,6 +164,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <AppMasthead />
           <main id="main" tabIndex={-1}>
             <div className="wrap">
+              <OfflineBanner />
               {authState.signedOutReason === "idle" && (
                 <p className="note warn idle-note" role="status">
                   <span>
@@ -197,6 +200,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <AppDock />
           <RiskConfirmHost />
           <ApprovalCodeHost />
+          <InstallStepsHost />
         </div>
       </MotionConfig>
     </AuthContext>

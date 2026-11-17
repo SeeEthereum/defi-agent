@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Toaster } from "@/components/ui/sonner";
 import { DEFAULT_THEME, THEME_SCRIPT } from "@/lib/theme";
+import { INSTALL_SCRIPT } from "@/lib/pwa/install";
+import { ServiceWorkerRegistration } from "@/components/pwa/service-worker";
+import { ThemeColorSync } from "@/components/theme-color";
 import "./globals.css";
 
 // Geist and Geist Mono (SIL Open Font License, see fonts/LICENSE-Geist.txt),
@@ -38,13 +41,14 @@ export const metadata: Metadata = {
   // opengraph-image.tsx and twitter-image.tsx.
   openGraph: { type: "website", siteName: "albicocca", title: TITLE, description: DESCRIPTION },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
-  // The name under the icon when added to an iPhone home screen.
-  appleWebApp: { title: "albicocca" },
+  // The name under the icon when added to an iPhone home screen. Opens
+  // full screen from there (the manifest says the same to other browsers).
+  appleWebApp: { title: "albicocca", capable: true, statusBarStyle: "default" },
 };
 
-export const viewport: Viewport = {
-  themeColor: "#0e0e0d",
-};
+// No themeColor here: THEME_SCRIPT writes the tag with the colour of the
+// stored theme (lib/theme.ts), and ThemeColorSync follows later switches.
+export const viewport: Viewport = {};
 
 export default function RootLayout({
   children,
@@ -62,10 +66,13 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: INSTALL_SCRIPT }} />
       </head>
       <body className="min-h-full bg-background text-foreground">
         {children}
         <Toaster />
+        <ThemeColorSync />
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

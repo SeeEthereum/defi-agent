@@ -63,9 +63,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // No session for the health check (uptime monitors, Render) or the
-  // public metadata files: they need no cookie, and none is set.
+  // No session for the health check (uptime monitors, Render), the public
+  // metadata files or the service worker and its offline page: they need
+  // no cookie, and none is set.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?|css|js)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|sw\\.js|offline\\.html|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?|css|js)$).*)",
   ],
 };

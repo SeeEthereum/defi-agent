@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Offline · albicocca</title>
+<script>
+  // Same preference and key as the app (lib/theme.ts).
+  (function () {
+    try {
+      var t = localStorage.getItem("albicocca-theme");
+      if (t === "light" || t === "dark" || t === "auto") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e0d; --fg: #f2f1ec; --muted: #9d9c95; --line: rgba(255, 255, 255, 0.08);
+    --btn: #f2f1ec; --btn-fg: #0e0e0d;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f3ef; --fg: #1a1a18; --muted: #6f6e69; --line: rgba(26, 26, 24, 0.09);
+    --btn: #1a1a18; --btn-fg: #f4f3ef;
+  }
+  @media (prefers-color-scheme: light) {
+    :root[data-theme="auto"] {
+      color-scheme: light;
+      --bg: #f4f3ef; --fg: #1a1a18; --muted: #6f6e69; --line: rgba(26, 26, 24, 0.09);
+      --btn: #1a1a18; --btn-fg: #f4f3ef;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; padding: 24px 16px;
+    background: var(--bg); color: var(--fg);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 380px; text-align: center; }
+  .mark { display: inline-flex; align-items: center; gap: 1px; font-weight: 700; font-size: 22px; letter-spacing: -0.045em; line-height: 1; }
+  .mark svg { margin: 2px 1px 0; }
+  h1 { margin: 40px 0 10px; font-size: 26px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 600; }
+  p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  button {
+    margin-top: 20px; min-height: 48px; padding: 0 26px; border: 0; border-radius: 999px;
+    background: var(--btn); color: var(--btn-fg); font: inherit; font-weight: 500; cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid #ff8a3d; outline-offset: 3px; }
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <span class="mark" role="img" aria-label="albicocca">
+    <span aria-hidden="true">albic</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ff7a1a"/>
+          <stop offset="1" stop-color="#ff2d75"/>
+        </linearGradient>
+      </defs>
+      <circle cx="12" cy="12" r="10" fill="url(#g)"/>
+    </svg>
+    <span aria-hidden="true">cca</span>
+  </span>
+  <h1>You're offline</h1>
+  <p>albicocca needs a connection to show your wallet and to sign anything. Check your Wi-Fi or mobile data.</p>
+  <button type="button" id="retry">Try again</button>
+  <p class="note">This page reloads by itself when the connection is back.</p>
+</main>
+<script>
+  // Served by the service worker in place of the page that could not load,
+  // so a reload asks for that page again.
+  document.getElementById("retry").addEventListener("click", function () { location.reload(); });
+  window.addEventListener("online", function () { location.reload(); });
+</script>
+</body>
+</html>

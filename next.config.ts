@@ -136,6 +136,15 @@ const nextConfig: NextConfig = {
           sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
         }),
       },
+      {
+        // The service worker (public/sw.js): never from a cache, so a fix
+        // reaches every installed app on its next page load.
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
     ];
   },
   turbopack: {

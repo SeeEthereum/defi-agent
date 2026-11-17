@@ -49,7 +49,10 @@ export type LineIconName =
   | "sliders"
   | "search"
   | "x"
-  | "pencil";
+  | "pencil"
+  | "install"
+  | "share"
+  | "add-square";
 
 const PATHS: Record<LineIconName, React.ReactNode> = {
   ...CORE_PATHS,
@@ -251,6 +254,30 @@ const PATHS: Record<LineIconName, React.ReactNode> = {
     <>
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
       <path d="M14 3v5h5" />
+    </>
+  ),
+  /* Arrow into a tray: put the app on the device. */
+  install: (
+    <>
+      <path d="M12 4v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </>
+  ),
+  /* iOS's Share button: a box with an arrow out of the top. */
+  share: (
+    <>
+      <path d="M12 3v12" />
+      <path d="m8 7 4-4 4 4" />
+      <path d="M8 11H6.5A1.5 1.5 0 0 0 5 12.5v7A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H16" />
+    </>
+  ),
+  /* iOS's "Add to Home Screen": a plus in a rounded square. */
+  "add-square": (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="4" />
+      <path d="M12 8.5v7" />
+      <path d="M8.5 12h7" />
     </>
   ),
 };

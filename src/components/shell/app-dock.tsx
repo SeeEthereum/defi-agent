@@ -9,6 +9,7 @@ import { ThemeSwitch } from "@/components/theme-switch";
 import { DOCK_NAV, MORE_NAV, PRIMARY_NAV, isActive } from "./nav";
 import { useDismiss } from "./use-dismiss";
 import { signOut } from "./app-masthead";
+import { InstallAppItem } from "@/components/pwa/install-app";
 
 const PILL_SPRING = { type: "spring" as const, stiffness: 420, damping: 36, mass: 0.8 };
 
@@ -35,6 +36,7 @@ export function AppDock() {
               {item.label}
             </Link>
           ))}
+          <InstallAppItem className="item" iconSize={18} onSelect={close} />
           <button type="button" className="item" onClick={signOut}>
             <LineIcon name="exit" size={18} />
             Sign out
