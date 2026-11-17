@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
+import { formatPercent } from "@/lib/format";
 
 const SPRING = { type: "spring" as const, stiffness: 420, damping: 36, mass: 0.8 };
 
@@ -207,11 +208,14 @@ export function Empty({
 }
 
 /** Gain/loss pill for a percentage. */
-export function Change({ value, digits = 2 }: { value: number | null | undefined; digits?: number }) {
+/**
+ * A percentage change: "+3.2%", "-1.45%", "< 0.01%" for crumbs (never
+ * "+0.00%"). `digits` caps the decimals; by default they follow the size.
+ */
+export function Change({ value, digits }: { value: number | null | undefined; digits?: number }) {
   if (value == null || !Number.isFinite(value)) return <span className="glp flat">n/a</span>;
   const cls = value > 0 ? "pos" : value < 0 ? "neg" : "flat";
-  const sign = value > 0 ? "+" : "";
-  return <span className={`glp ${cls}`}>{`${sign}${value.toFixed(digits)}%`}</span>;
+  return <span className={`glp ${cls}`}>{formatPercent(value, { sign: true, decimals: digits })}</span>;
 }
 
 export function Skeleton({ height = 16, width = "100%" }: { height?: number; width?: number | string }) {

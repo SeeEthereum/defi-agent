@@ -10,12 +10,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Fade, NumberDisplay } from "@/components/motion";
+import { Fade } from "@/components/motion";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, Panel } from "@/components/premium";
 import { CHAINS } from "@/lib/chains";
-import { getAddress } from "viem";
+import { formatUnits, getAddress } from "viem";
+import { TokenIcon } from "@/components/token-icon";
+import { formatAmount, formatUsd } from "@/lib/format";
+import { displayToken } from "@/lib/tokens/display";
 import { checkRecipient } from "@/lib/near-intents/recipient";
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { isStaleQuote } from "@/lib/api/send-state";
@@ -54,6 +57,8 @@ interface Execution {
   amountOutFormatted: string;
   fromChain: number;
   toChain: number;
+  /** Display symbols, kept for the status note after the form resets. */
+  fromSymbol: string;
   toSymbol: string;
 }
 
@@ -97,11 +102,22 @@ function toBaseUnits(amount: string, decimals: number): string | null {
   }
 }
 
-function fromBaseUnits(value: string, decimals: number): string {
-  const s = value.padStart(decimals + 1, "0");
-  const intPart = s.slice(0, s.length - decimals) || "0";
-  const frac = s.slice(s.length - decimals).slice(0, 6).replace(/0+$/, "");
-  return frac ? `${intPart}.${frac}` : intPart;
+/** A base-unit amount at full precision, for display only. */
+function fromBaseUnits(value: string, decimals: number): string | null {
+  const d = Number(decimals);
+  if (typeof value !== "string" || !/^\d+$/.test(value) || !Number.isInteger(d) || d < 0) return null;
+  return formatUnits(BigInt(value), d);
+}
+
+/** "About 40 s", "About 3 min". */
+function secondsLabel(seconds: number): string {
+  const s = Math.max(1, Math.round(Number(seconds) || 0));
+  return s < 60 ? `About ${s} s` : `About ${Math.ceil(s / 60)} min`;
+}
+
+/** The symbol people know ("ETH", "USDT"), from the token's own fields. */
+function tokenSymbol(symbol: string, address: string, chainIndex: number): string {
+  return displayToken({ symbol, address, chainIndex }).symbol;
 }
 
 function chainName(chainIndex: number): string {
@@ -195,6 +211,9 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
   const toAddress = pickDefault(toTokens, toAddr);
   const fromToken = fromTokens.find((t) => t.address === fromAddress) ?? null;
   const toToken = toTokens.find((t) => t.address === toAddress) ?? null;
+  // Symbols as people know them (the list may carry chain-specific spellings).
+  const fromSymbol = fromToken ? tokenSymbol(fromToken.symbol, fromToken.address, fromToken.chainIndex) : "";
+  const toSymbol = toToken ? tokenSymbol(toToken.symbol, toToken.address, toToken.chainIndex) : "";
 
   // ── Balance of the selected source token ────────────────────────────────
   useEffect(() => {
@@ -328,7 +347,13 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
       });
       const data = await res.json();
       if (data.success) {
-        setExecution({ ...data.data, fromChain, toChain, toSymbol: toToken.symbol });
+        setExecution({
+          ...data.data,
+          fromChain,
+          toChain,
+          fromSymbol,
+          toSymbol,
+        });
         setStatus(null);
         resetQuote();
         setAmount("");
@@ -409,6 +434,9 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                   </option>
                 ))}
               </ChipSelect>
+              {fromToken && (
+                <TokenIcon symbol={fromSymbol} size={24} chainIndex={fromChain} className="self-center" />
+              )}
               <ChipSelect
                 id="conf-from-token"
                 label="Token to send"
@@ -423,14 +451,14 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 {fromTokens.length === 0 && <option value="">Loading…</option>}
                 {fromTokens.map((t) => (
                   <option key={t.address} value={t.address}>
-                    {t.symbol}
+                    {tokenSymbol(t.symbol, t.address, t.chainIndex)}
                   </option>
                 ))}
               </ChipSelect>
             </div>
             {balance !== null && (
               <span className="leg-bal">
-                <span className="num">{Number(balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                <span className="num">{formatAmount(balance)}</span> available
                 {Number(balance) > 0 && (
                   <button type="button" className="max" onClick={handleMax}>
                     Max
@@ -456,17 +484,17 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 setError(null);
               }}
             />
-            <span className="leg-sym">{fromToken?.symbol}</span>
+            <span className="leg-sym">{fromSymbol}</span>
           </div>
           <div className="leg-foot">
             {amount.trim() !== "" && amountBase === null ? (
               <span className="err">Enter a valid amount</span>
             ) : insufficient ? (
               <span className="err">
-                Not enough {fromToken?.symbol} on {chainName(fromChain)}.
+                Not enough {fromSymbol} on {chainName(fromChain)}.
               </span>
             ) : (
-              <span className="num">{payUsd != null ? `$${payUsd.toFixed(2)}` : "\u00a0"}</span>
+              <span className="num">{payUsd != null ? formatUsd(payUsd) : "\u00a0"}</span>
             )}
           </div>
         </div>
@@ -496,6 +524,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                   </option>
                 ))}
               </ChipSelect>
+              {toToken && <TokenIcon symbol={toSymbol} size={24} chainIndex={toChain} className="self-center" />}
               <ChipSelect
                 id="conf-to-token"
                 label="Token to receive"
@@ -509,7 +538,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 {toTokens.length === 0 && <option value="">Loading…</option>}
                 {toTokens.map((t) => (
                   <option key={t.address} value={t.address}>
-                    {t.symbol}
+                    {tokenSymbol(t.symbol, t.address, t.chainIndex)}
                   </option>
                 ))}
               </ChipSelect>
@@ -550,7 +579,7 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
             <div className="conf-out">
               <span className="muted">Recipient gets</span>
               <span className="num">
-                <NumberDisplay value={activeQuote.amountOutFormatted} decimals={6} minDecimals={0} /> {toToken?.symbol}
+                {formatAmount(activeQuote.amountOutFormatted)} {toSymbol}
               </span>
               <span className="muted">on {chainName(toChain)}</span>
             </div>
@@ -558,26 +587,26 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
               <div>
                 <dt>You send</dt>
                 <dd className="num">
-                  {activeQuote.amountInFormatted} {fromToken?.symbol} on {chainName(fromChain)}
+                  {formatAmount(activeQuote.amountInFormatted)} {fromSymbol} on {chainName(fromChain)}
                 </dd>
               </div>
               {minOut && (
                 <div>
                   <dt>Minimum received</dt>
                   <dd className="num">
-                    {minOut} {toToken?.symbol}
+                    {formatAmount(minOut)} {toSymbol}
                   </dd>
                 </div>
               )}
               {costUsd !== null && (
                 <div>
                   <dt>Cost, fees and spread</dt>
-                  <dd className="num">{costUsd < 0.01 ? "under $0.01" : `$${costUsd.toFixed(2)}`}</dd>
+                  <dd className="num">{formatUsd(costUsd)}</dd>
                 </div>
               )}
               <div>
                 <dt>Time</dt>
-                <dd>About {Math.max(1, Math.round(activeQuote.timeEstimate))} s after your deposit confirms</dd>
+                <dd>{secondsLabel(activeQuote.timeEstimate)} after your deposit confirms</dd>
               </div>
               <div>
                 <dt>Recipient</dt>
@@ -616,8 +645,8 @@ export function ConfidentialPanel({ walletAddress }: { walletAddress: string }) 
                 <strong>{statusText.title}</strong>
                 <p>
                   {statusText.body}
-                  {status?.status === "SUCCESS" && status.amountOutFormatted && ` ${status.amountOutFormatted} ${execution.toSymbol} on ${chainName(execution.toChain)}.`}
-                  {status?.status === "REFUNDED" && status.refundedAmountFormatted && ` Refunded: ${status.refundedAmountFormatted}.`}
+                  {status?.status === "SUCCESS" && status.amountOutFormatted && ` ${formatAmount(status.amountOutFormatted)} ${execution.toSymbol} on ${chainName(execution.toChain)}.`}
+                  {status?.status === "REFUNDED" && status.refundedAmountFormatted && ` Refunded: ${formatAmount(status.refundedAmountFormatted)} ${execution.fromSymbol} on ${chainName(execution.fromChain)}.`}
                 </p>
                 <p className="conf-links">
                   {execution.txHash && (

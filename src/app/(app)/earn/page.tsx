@@ -13,7 +13,11 @@ import { TokenIcon } from "@/components/token-icon";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, Metric, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
 import type { FluidMarket, FluidUserPosition } from "@/lib/fluid/resolver";
+import { isNativeUnderlying } from "@/lib/fluid/constants";
 import { userFacingError } from "@/lib/api/send-state";
+import { getChainByIndex } from "@/lib/chains";
+import { formatAmount, formatPercent } from "@/lib/format";
+import { chainName, displayToken } from "@/lib/tokens/display";
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -35,7 +39,36 @@ const CHAIN_TABS = [
   { id: "137", label: "Polygon" },
 ] as const;
 
-const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 137: "Polygon" };
+/** "Arbitrum", or "Unknown network" for a chain we do not list. */
+function networkName(chainIndex: number): string {
+  return chainName(chainIndex) ?? "Unknown network";
+}
+
+/**
+ * The asset as people know it. Fluid lends WETH / WPOL, but deposits and
+ * withdrawals here use the chain's own coin (depositNative), so it reads
+ * ETH / POL. Display only: requests still carry the fToken symbol.
+ */
+function assetOf(m: { chainIndex: number; symbol: string; underlyingSymbol: string }) {
+  return displayToken({ symbol: m.underlyingSymbol, chainIndex: m.chainIndex, isNative: isNativeUnderlying(m.chainIndex, m.symbol) });
+}
+
+/** The explorer page of a transaction, or null without a valid hash or a known explorer. */
+function txUrl(chainIndex: number, hash: string): string | null {
+  const explorer = getChainByIndex(chainIndex)?.explorer;
+  return explorer && /^0x[0-9a-fA-F]{64}$/.test(hash) ? `${explorer}/tx/${hash}` : null;
+}
+
+/** "View transaction ↗" on the chain's explorer, in place of the hash. */
+function TxLink({ chainIndex, hash }: { chainIndex: number; hash: string }) {
+  const href = txUrl(chainIndex, hash);
+  if (!href) return null;
+  return (
+    <a className="tx-link" href={href} target="_blank" rel="noopener noreferrer">
+      View transaction <LineIcon name="arrow-up-right" size={13} />
+    </a>
+  );
+}
 
 const RPC_URLS: Record<number, string> = {
   1: "https://ethereum-rpc.publicnode.com",
@@ -90,6 +123,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
   const amountValid = isValidAmount(amount);
   const walletReady = EVM_ADDRESS_RE.test(walletAddress);
   const supplyAmountId = `supply-amount-${market.chainIndex}-${market.fTokenAddress}`;
+  const asset = assetOf(market);
 
   const handleApprove = async () => {
     if (approveRef.current) return;
@@ -198,18 +232,18 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
       <button type="button" className="btn btn--sm btn--primary" onClick={() => setOpen(true)}>
         Supply
       </button>
-      <Sheet open={open} onClose={close} title={`Supply ${market.underlyingSymbol} on ${market.chainName}`}>
+      <Sheet open={open} onClose={close} title={`Supply ${asset.symbol} on ${networkName(market.chainIndex)}`}>
         <div className="sheet-body">
           <div className="yield-hero">
-            <TokenIcon symbol={market.underlyingSymbol} size={40} />
+            <TokenIcon symbol={asset.symbol} size={40} chainIndex={market.chainIndex} />
             <div>
               <span className="muted">Estimated yield</span>
-              <span className="num text-gain-ink">{market.totalAprPercent.toFixed(2)}%</span>
+              <span className="num text-gain-ink">{formatPercent(market.totalAprPercent)}</span>
             </div>
           </div>
 
           <div className="field">
-            <label htmlFor={supplyAmountId}>Amount in {market.underlyingSymbol}</label>
+            <label htmlFor={supplyAmountId}>Amount in {asset.symbol}</label>
             <input
               id={supplyAmountId}
               type="text"
@@ -245,8 +279,8 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
             <p className="note warn">
               <span className="spin" aria-hidden="true" />
               <span>
-                Waiting for the approval to confirm on-chain
-                {approveTxHash && <span className="num"> ({approveTxHash.slice(0, 8)}…)</span>}
+                Waiting for the approval to confirm on-chain.{" "}
+                <TxLink chainIndex={market.chainIndex} hash={approveTxHash} />
               </span>
             </p>
           )}
@@ -262,9 +296,9 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
               <LineIcon name="check" size={16} />
               <div>
                 <strong>Supplied</strong>
-                {depositTxHash && (
-                  <p className="num">
-                    {depositTxHash.slice(0, 10)}…{depositTxHash.slice(-8)}
+                {txUrl(market.chainIndex, depositTxHash) && (
+                  <p>
+                    <TxLink chainIndex={market.chainIndex} hash={depositTxHash} />
                   </p>
                 )}
               </div>
@@ -279,7 +313,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
                   <span className="spin" aria-hidden="true" /> Approving…
                 </>
               ) : (
-                `Approve ${amount || "0"} ${market.underlyingSymbol}`
+                `Approve ${amount || "0"} ${asset.symbol}`
               )}
             </button>
           ) : step === "waiting_approve" ? (
@@ -298,7 +332,7 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
                 <p className="note gain">
                   <LineIcon name="check" size={16} />
                   <span>
-                    Approved in <span className="num">{approveTxHash.slice(0, 8)}…{approveTxHash.slice(-6)}</span>
+                    Approval confirmed. <TxLink chainIndex={market.chainIndex} hash={approveTxHash} />
                   </span>
                 </p>
               )}
@@ -308,14 +342,14 @@ function SupplyDialog({ market, walletAddress }: SupplyDialogProps) {
                     <span className="spin" aria-hidden="true" /> Supplying…
                   </>
                 ) : (
-                  `Supply ${amount} ${market.underlyingSymbol}`
+                  `Supply ${amount} ${asset.symbol}`
                 )}
               </button>
             </>
           )}
 
           <p className="hint">
-            The approval lets Fluid use your {market.underlyingSymbol}. The supply starts only after the approval is confirmed&nbsp;on-chain.
+            The approval lets Fluid use your {asset.symbol}. The supply starts only after the approval is confirmed&nbsp;on-chain.
           </p>
         </div>
       </Sheet>
@@ -342,6 +376,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
   const amountValid = isValidAmount(amount);
   const walletReady = EVM_ADDRESS_RE.test(walletAddress);
   const withdrawAmountId = `withdraw-amount-${position.chainIndex}-${position.fTokenAddress}`;
+  const asset = assetOf(position);
 
   const handleWithdraw = async (isAll = false) => {
     if (withdrawRef.current) return;
@@ -400,23 +435,19 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
       <button type="button" className="btn btn--sm" onClick={() => setOpen(true)}>
         Withdraw
       </button>
-      <Sheet open={open} onClose={close} title={`Withdraw ${position.underlyingSymbol} on ${CHAIN_NAMES[position.chainIndex] ?? `chain ${position.chainIndex}`}`}>
+      <Sheet open={open} onClose={close} title={`Withdraw ${asset.symbol} on ${networkName(position.chainIndex)}`}>
         <div className="sheet-body">
           <dl className="sum">
             <div>
               <dt>Available</dt>
               <dd className="num">
-                {parseFloat(maxAmount).toFixed(6)} {position.underlyingSymbol}
+                {formatAmount(maxAmount)} {asset.symbol}
               </dd>
-            </div>
-            <div>
-              <dt>Shares ({position.symbol})</dt>
-              <dd className="num">{(parseFloat(position.shares) / 10 ** position.underlyingDecimals).toFixed(6)}</dd>
             </div>
             {apy !== undefined && (
               <div>
                 <dt>Current yield</dt>
-                <dd className="num text-gain-ink">{apy.toFixed(2)}%</dd>
+                <dd className="num text-gain-ink">{formatPercent(apy)}</dd>
               </div>
             )}
           </dl>
@@ -426,9 +457,9 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
               <LineIcon name="check" size={16} />
               <div>
                 <strong>Withdrawal sent</strong>
-                {txHash && (
-                  <p className="num">
-                    {txHash.slice(0, 10)}…{txHash.slice(-8)}
+                {txUrl(position.chainIndex, txHash) && (
+                  <p>
+                    <TxLink chainIndex={position.chainIndex} hash={txHash} />
                   </p>
                 )}
               </div>
@@ -439,7 +470,7 @@ function WithdrawDialog({ position, walletAddress, apy, onSuccess }: WithdrawDia
           ) : (
             <>
               <div className="field">
-                <label htmlFor={withdrawAmountId}>Amount in {position.underlyingSymbol}</label>
+                <label htmlFor={withdrawAmountId}>Amount in {asset.symbol}</label>
                 <div className="input-wrap">
                   <input
                     id={withdrawAmountId}
@@ -506,6 +537,7 @@ export default function EarnPage() {
     .filter((m) => activeChain === "all" || String(m.chainIndex) === activeChain)
     .sort((a, b) => b.totalAprPercent - a.totalAprPercent);
   const best = [...markets].sort((a, b) => b.totalAprPercent - a.totalAprPercent)[0];
+  const bestAsset = best ? assetOf(best) : null;
 
   return (
     <div className="page">
@@ -514,8 +546,8 @@ export default function EarnPage() {
       <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
         <Metric
           label="Best yield now"
-          value={isLoading ? "…" : best ? <span className="text-gain-ink">{best.totalAprPercent.toFixed(2)}%</span> : "n/a"}
-          sub={best ? `${best.underlyingSymbol} on ${best.chainName}` : undefined}
+          value={isLoading ? "…" : best ? <span className="text-gain-ink">{formatPercent(best.totalAprPercent)}</span> : "n/a"}
+          sub={best && bestAsset ? `${bestAsset.symbol} on ${networkName(best.chainIndex)}` : undefined}
         />
         <Metric label="Markets" value={isLoading ? "…" : markets.length} sub={`on ${CHAIN_TABS.length - 1} chains`} />
         <Metric label="Your positions" value={positionsLoading ? "…" : positions.length} sub={positionsLoading ? undefined : positions.length ? "earning now" : "nothing supplied yet"} />
@@ -532,19 +564,20 @@ export default function EarnPage() {
             <ul className="rows wal-pad">
               {positions.map((pos) => {
                 const apy = getPositionApy(pos);
+                const asset = assetOf(pos);
                 return (
                   <li key={`${pos.chainIndex}-${pos.fTokenAddress}`}>
                     <div className="row mkt-row">
-                      <TokenIcon symbol={pos.underlyingSymbol} size={36} />
+                      <TokenIcon symbol={asset.symbol} size={36} chainIndex={pos.chainIndex} />
                       <div style={{ minWidth: 0 }}>
-                        <div className="t">{pos.underlyingSymbol}</div>
-                        <div className="sub">{CHAIN_NAMES[pos.chainIndex] ?? `Chain ${pos.chainIndex}`}</div>
+                        <div className="t">{asset.symbol}</div>
+                        <div className="sub">{networkName(pos.chainIndex)}</div>
                       </div>
                       <div className="end">
                         <div className="num">
-                          {parseFloat(pos.underlyingAssetsUi).toFixed(4)} {pos.underlyingSymbol}
+                          {formatAmount(pos.underlyingAssetsUi)} {asset.symbol}
                         </div>
-                        {apy !== undefined && <div className="sub num text-gain-ink">{apy.toFixed(2)}% a year</div>}
+                        {apy !== undefined && <div className="sub num text-gain-ink">{formatPercent(apy)} a year</div>}
                       </div>
                       <WithdrawDialog
                         position={pos}
@@ -594,21 +627,24 @@ export default function EarnPage() {
               <span />
             </div>
             <ul className="rows wal-pad">
-              {visibleMarkets.map((market) => (
-                <li key={`${market.chainIndex}-${market.fTokenAddress}`}>
-                  <div className="row mkt-row mkt-row--full">
-                    <TokenIcon symbol={market.underlyingSymbol} size={36} />
-                    <div style={{ minWidth: 0 }}>
-                      <div className="t">{market.underlyingSymbol}</div>
-                      <div className="sub">{market.chainName}</div>
+              {visibleMarkets.map((market) => {
+                const asset = assetOf(market);
+                return (
+                  <li key={`${market.chainIndex}-${market.fTokenAddress}`}>
+                    <div className="row mkt-row mkt-row--full">
+                      <TokenIcon symbol={asset.symbol} size={36} chainIndex={market.chainIndex} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t">{asset.symbol}</div>
+                        <div className="sub">{networkName(market.chainIndex)}</div>
+                      </div>
+                      <span className="num col-x">{formatPercent(market.supplyRatePercent)}</span>
+                      <span className="num col-x">{formatPercent(market.rewardsRatePercent)}</span>
+                      <span className="glp pos">{formatPercent(market.totalAprPercent)}</span>
+                      <SupplyDialog market={market} walletAddress={walletAddress ?? ""} />
                     </div>
-                    <span className="num col-x">{market.supplyRatePercent.toFixed(2)}%</span>
-                    <span className="num col-x">{market.rewardsRatePercent.toFixed(2)}%</span>
-                    <span className="glp pos">{market.totalAprPercent.toFixed(2)}%</span>
-                    <SupplyDialog market={market} walletAddress={walletAddress ?? ""} />
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}

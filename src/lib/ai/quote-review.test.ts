@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bridgeReview, minusPercent, readable, REVIEW_TTL_MS, swapReview } from "./quote-review";
+import { bridgeReview, exactAmount, minusPercent, readable, REVIEW_TTL_MS, swapReview } from "./quote-review";
 
 const NOW = 1_000_000;
 
@@ -13,12 +13,28 @@ const swapQuote = {
 };
 const swapParams = { amountDisplay: "1", fromSymbol: "ETH", toSymbol: "USDC" };
 
-describe("readable / minusPercent", () => {
-  it("formats base units without floating point", () => {
-    expect(readable("2512345678", 6)).toBe("2,512.345678");
+describe("exactAmount / readable / minusPercent", () => {
+  it("keeps every digit of base units, without floating point", () => {
+    expect(exactAmount("2512345678", 6)).toBe("2512.345678");
+    expect(exactAmount("1000000000000000000", 18)).toBe("1");
+    expect(exactAmount("1", 18)).toBe("0.000000000000000001");
+    expect(exactAmount("1.5", 6)).toBeNull();
+  });
+
+  it("formats base units as people read them, never rounding up", () => {
+    expect(readable("2512345678", 6)).toBe("2,512.3456");
     expect(readable("1000000000000000000", 18)).toBe("1");
     expect(readable("5", 6)).toBe("0.000005");
-    expect(readable("123456789012345678901234567890", 18)).toBe("123,456,789,012.345678");
+    // Four significant digits below 1, cut rather than rounded (0.00098765 → 0.0009876).
+    expect(readable("98765", 8)).toBe("0.0009876");
+    expect(readable("123456789012345678901234567890", 18)).toBe("123.46B");
+  });
+
+  it("shows dust as dust, not as 0, and a dash for a broken amount", () => {
+    expect(readable("1", 18)).toBe("< 0.00000001");
+    expect(readable("1200000000000", 18)).toBe("0.0000012");
+    expect(readable("0", 6)).toBe("0");
+    expect(readable("1.5", 6)).toBe("–");
   });
 
   it("takes slippage off in basis points, rounding down", () => {
@@ -34,8 +50,8 @@ describe("swapReview", () => {
     expect(review.expiresAt).toBe(NOW + REVIEW_TTL_MS);
     expect(review.rows).toEqual([
       { label: "You pay", value: "1 ETH" },
-      { label: "You receive", value: "2,512.345678 USDC (about $2,512.35)" },
-      { label: "Minimum received", value: "2,499.783949 USDC (slippage 0.5%)" },
+      { label: "You receive", value: "2,512.3456 USDC (about $2,512.35)" },
+      { label: "Minimum received", value: "2,499.7839 USDC (slippage 0.5%)" },
       { label: "Price impact", value: "0.12%" },
       { label: "Route", value: "Uniswap V3" },
     ]);
@@ -45,7 +61,35 @@ describe("swapReview", () => {
 
   it("uses the card's slippage for the minimum", () => {
     const review = swapReview(swapQuote, { ...swapParams, slippage: "1" }, NOW)!;
-    expect(review.rows[2].value).toBe("2,487.222221 USDC (slippage 1%)");
+    expect(review.rows[2].value).toBe("2,487.2222 USDC (slippage 1%)");
+  });
+
+  it("names tokens as people know them: USD₮0 is USDT, ARB_ETH is ETH", () => {
+    const review = swapReview(
+      {
+        ...swapQuote,
+        fromToken: { tokenSymbol: "ARB_ETH", tokenContractAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", decimal: "18" },
+        toToken: { tokenSymbol: "USD₮0", decimal: "6", tokenUnitPrice: "1" },
+      },
+      { ...swapParams, chain: "arbitrum" },
+      NOW
+    )!;
+    expect(review.rows[0].value).toBe("1 ETH");
+    expect(review.rows[1].value).toBe("2,512.3456 USDT (about $2,512.35)");
+  });
+
+  it("shows the chain's own coin for a native token on BNB Chain", () => {
+    const review = swapReview(
+      { ...swapQuote, fromToken: { tokenSymbol: "ETH", tokenContractAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", decimal: "18" } },
+      { ...swapParams, chain: "bsc" },
+      NOW
+    )!;
+    expect(review.rows[0].value).toBe("1 BNB");
+  });
+
+  it("shows a tiny output instead of 0, valued from the exact amount", () => {
+    const review = swapReview({ ...swapQuote, toTokenAmount: "5" }, swapParams, NOW)!;
+    expect(review.rows[1].value).toBe("0.000005 USDC (less than $0.01)");
   });
 
   it("warns from 3% price impact and blocks above 10%", () => {
@@ -92,6 +136,17 @@ describe("bridgeReview", () => {
       { label: "Provider", value: "Across" },
     ]);
     expect(review.warning).toBeNull();
+  });
+
+  it("cleans LI.FI's token symbols", () => {
+    const usdt0 = {
+      ...bridgeQuote,
+      action: { fromToken: { symbol: "USDC", decimals: 6 }, toToken: { symbol: "USD₮0", decimals: 6, chainId: 42161 } },
+      estimate: { ...bridgeQuote.estimate, toAmount: "99500000", toAmountMin: "99000000" },
+    };
+    const review = bridgeReview(usdt0, params, NOW)!;
+    expect(review.rows[1].value).toBe("99.5 USDT");
+    expect(review.rows[2].value).toBe("99 USDT");
   });
 
   it("warns when fees take 5% or more of a small transfer", () => {

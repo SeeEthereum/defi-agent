@@ -11,7 +11,19 @@ import { useAuth } from "@/hooks/use-auth";
 import { Fade } from "@/components/motion";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, Metric, PageHead, Panel, PillTabs, Segmented, Sheet, Skeleton } from "@/components/premium";
+import { TokenIcon } from "@/components/token-icon";
 import { FEATURED_MARKETS } from "@/lib/hyperliquid/markets";
+import { MISSING, formatAmount, formatPrice, formatUsd } from "@/lib/format";
+import {
+  coinLabel,
+  coinLogoUrl,
+  formatExactPrice,
+  formatLiquidation,
+  formatRoe,
+  fundPreviewRows,
+  leverageTypeLabel,
+  orderTypeLabel,
+} from "./display";
 
 // Hyperliquid brand colour: its logo only. The UI uses the app theme.
 const HL_GREEN = "#97FCE4";
@@ -127,25 +139,21 @@ type ApiResult<T> =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function PnlBadge({ value }: { value: string }) {
-  const n = parseFloat(value);
-  const pos = n >= 0;
-  return <span className={`glp ${pos ? "pos" : "neg"}`}>{`${pos ? "+" : "−"}${Math.abs(n).toFixed(2)} USDC`}</span>;
+/** Unrealized PnL in USDC as a signed dollar pill; "–" when unknown. */
+function PnlBadge({ value }: { value: string | undefined }) {
+  const n = value === undefined || value === "" ? NaN : Number(value);
+  if (!Number.isFinite(n)) return <span className="glp flat">{MISSING}</span>;
+  return <span className={`glp ${n > 0 ? "pos" : n < 0 ? "neg" : "flat"}`}>{formatUsd(n, { sign: true })}</span>;
 }
 
-function fmtUsd(v: string | number | undefined, digits = 2): string {
-  const n = typeof v === "string" ? parseFloat(v) : v ?? 0;
-  if (!Number.isFinite(n)) return "$0.00";
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+/** A Hyperliquid coin's logo: the icon set, else Hyperliquid's own, else letters. */
+function CoinIcon({ coin, size = 20 }: { coin: string; size?: number }) {
+  return <TokenIcon symbol={coin} size={size} logoUrl={coinLogoUrl(coin)} />;
 }
 
-function fmtPrice(v: string | number | undefined): string {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  if (n === undefined || !Number.isFinite(n)) return "n/a";
-  if (n >= 1000) return n.toFixed(2);
-  if (n >= 1) return n.toFixed(3);
-  if (n >= 0.01) return n.toFixed(4);
-  return n.toFixed(6);
+/** "Bitcoin" for BTC, or the ticker for coins outside the curated list. */
+function coinName(coin: string): string {
+  return coinLabel(coin) ?? coin;
 }
 
 const DECIMAL_RE = /^\d+(\.\d+)?$/;
@@ -612,7 +620,7 @@ export default function TradePage() {
     if (res.success) {
       setFundSuccess(
         fundMode === "deposit"
-          ? `Deposit of ${fundAmount} USDC sent. It arrives in 2 to 5 minutes.`
+          ? `Deposit of ${fundAmount} USDC sent. It usually arrives in about a minute.`
           : `Withdrawal of ${fundAmount} USDC sent. It arrives in 2 to 5 minutes, less the $1 fee.`
       );
       setFundPreview(null);
@@ -679,7 +687,7 @@ export default function TradePage() {
           <div>
             <strong>Fund your Arbitrum wallet</strong>
             <p>
-              You need at least $5 USDC on Arbitrum to start. You have {fmtUsd(quickstart.assets.arb_usdc_balance)}. Send USDC on Arbitrum&nbsp;to:
+              You need at least $5 USDC on Arbitrum to start. You have {formatUsd(quickstart.assets.arb_usdc_balance)}. Send USDC on Arbitrum&nbsp;to:
             </p>
             <p className="num conf-recipient">{quickstart.wallet}</p>
           </div>
@@ -690,7 +698,7 @@ export default function TradePage() {
           <div>
             <strong>Deposit USDC to Hyperliquid</strong>
             <p>
-              You have {fmtUsd(quickstart.assets.arb_usdc_balance)} on Arbitrum. Deposit it to start trading: minimum $5, it arrives in 2 to 5&nbsp;minutes.
+              You have {formatUsd(quickstart.assets.arb_usdc_balance)} on Arbitrum. Deposit it to start trading: minimum $5, it arrives in 2 to 5&nbsp;minutes.
             </p>
           </div>
           <button type="button" className="btn btn--sm btn--primary" onClick={() => openFund("deposit", String(Math.floor(quickstart.assets.arb_usdc_balance)))}>
@@ -718,10 +726,10 @@ export default function TradePage() {
       />
 
       <div className="metrics in" style={{ "--i": 1 } as React.CSSProperties}>
-        <Metric label="Account value" value={fmtUsd(quickstart?.assets.hl_account_value_usd ?? positions?.accountValue)} />
-        <Metric label="Withdrawable" value={fmtUsd(quickstart?.assets.hl_withdrawable_usd ?? positions?.withdrawable)} />
-        <Metric label="Margin used" value={fmtUsd(positions?.totalMarginUsed)} />
-        <Metric label="USDC on Arbitrum" value={fmtUsd(quickstart?.assets.arb_usdc_balance)} sub="Ready to deposit" />
+        <Metric label="Account value" value={formatUsd(quickstart?.assets.hl_account_value_usd ?? positions?.accountValue)} />
+        <Metric label="Withdrawable" value={formatUsd(quickstart?.assets.hl_withdrawable_usd ?? positions?.withdrawable)} />
+        <Metric label="Margin used" value={formatUsd(positions?.totalMarginUsed)} />
+        <Metric label="USDC on Arbitrum" value={formatUsd(quickstart?.assets.arb_usdc_balance)} sub="Ready to deposit" />
       </div>
 
       {/* Markets ticker */}
@@ -741,8 +749,11 @@ export default function TradePage() {
                 disabled={previewOpen}
                 onClick={() => setCoinAndClamp(p.coin)}
               >
-                <span className="c">{p.coin}</span>
-                <span className="num">{fmtPrice(p.price)}</span>
+                <span className="c" title={p.coin} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <CoinIcon coin={p.coin} size={16} />
+                  {p.label || coinName(p.coin)}
+                </span>
+                <span className="num">{formatPrice(p.price)}</span>
               </button>
             ))}
       </div>
@@ -848,7 +859,7 @@ export default function TradePage() {
 
 // ── Components ────────────────────────────────────────────────────────────────
 
-function Facts({ items }: { items: Array<[string, string]> }) {
+function Facts({ items }: { items: Array<[string, React.ReactNode]> }) {
   return (
     <dl className="facts">
       {items.map(([k, v]) => (
@@ -912,21 +923,24 @@ function PositionsTab({
         return (
           <article key={p.coin} className="pos" data-side={isLong ? "long" : "short"}>
             <header className="pos-head">
-              <span className="pos-coin">{p.coin}</span>
+              <span className="pos-coin" title={p.coin} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <CoinIcon coin={p.coin} size={24} />
+                {coinName(p.coin)}
+              </span>
               <span className={`side-tag ${isLong ? "long" : "short"}`}>
                 {isLong ? "Long" : "Short"} {p.leverage?.value ?? 1}×
               </span>
-              <span className="muted pos-type">{p.leverage?.type}</span>
+              {leverageTypeLabel(p.leverage?.type) && <span className="muted pos-type">{leverageTypeLabel(p.leverage?.type)}</span>}
               <PnlBadge value={p.unrealizedPnl} />
             </header>
             <Facts
               items={[
-                ["Size", `${p.size} ${p.coin}`],
-                ["Entry", fmtPrice(p.entryPrice)],
-                ["Liquidation", fmtPrice(p.liquidationPrice)],
-                ["Value", fmtUsd(p.positionValue)],
-                ["Margin", fmtUsd(p.marginUsed)],
-                ["Return", `${parseFloat(p.returnOnEquity).toFixed(2)}%`],
+                ["Size", `${formatAmount(p.size, { decimals: 6 })} ${p.coin}`],
+                ["Entry", formatPrice(p.entryPrice)],
+                ["Liquidation", formatLiquidation(p.liquidationPrice)],
+                ["Value", formatUsd(p.positionValue)],
+                ["Margin", formatUsd(p.marginUsed)],
+                ["Return", formatRoe(p.returnOnEquity)],
               ]}
             />
             {confirmingThis ? (
@@ -934,11 +948,11 @@ function PositionsTab({
                 <dl className="sum">
                   <div>
                     <dt>Mark price</dt>
-                    <dd className="num">{fmtPrice(mark)}</dd>
+                    <dd className="num">{formatPrice(mark)}</dd>
                   </div>
                   <div>
                     <dt>Estimated proceeds</dt>
-                    <dd className="num">{proceeds === null ? "n/a" : fmtUsd(proceeds)}</dd>
+                    <dd className="num">{proceeds === null ? MISSING : formatUsd(proceeds)}</dd>
                   </div>
                 </dl>
                 <p className="hint">An estimate, without fees and funding.</p>
@@ -1038,10 +1052,23 @@ function TradeTab(props: {
           <label htmlFor="trade-coin" className="sr-only">
             Market
           </label>
-          <select id="trade-coin" className="input" disabled={locked} value={props.coin} onChange={(e) => props.setCoin(e.target.value)}>
+          <span
+            aria-hidden="true"
+            style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "inline-flex", pointerEvents: "none" }}
+          >
+            <CoinIcon coin={props.coin} size={20} />
+          </span>
+          <select
+            id="trade-coin"
+            className="input"
+            style={{ paddingLeft: 40 }}
+            disabled={locked}
+            value={props.coin}
+            onChange={(e) => props.setCoin(e.target.value)}
+          >
             {FEATURED_MARKETS.map((m) => (
               <option key={m.coin} value={m.coin}>
-                {m.coin} · {m.label}
+                {m.label} ({m.coin})
               </option>
             ))}
           </select>
@@ -1062,7 +1089,7 @@ function TradeTab(props: {
       <div className="field">
         <div className="lbl">
           <label htmlFor="trade-size">Size in {props.coin}</label>
-          <span className="num muted">Mark {fmtPrice(props.mark)}</span>
+          <span className="num muted">Mark {formatPrice(props.mark)}</span>
         </div>
         <input
           id="trade-size"
@@ -1082,7 +1109,7 @@ function TradeTab(props: {
           <p className="err">Hyperliquid&rsquo;s minimum is $10. Increase the size.</p>
         ) : (
           <p className="hint">
-            Worth <span className="num">{fmtUsd(notional)}</span>
+            Worth <span className="num">{Number.isFinite(markN) ? formatUsd(notional) : MISSING}</span>
           </p>
         )}
       </div>
@@ -1100,7 +1127,7 @@ function TradeTab(props: {
             value={props.price}
             aria-invalid={props.price.trim() !== "" && !priceOk}
             onChange={(e) => props.setPrice(e.target.value)}
-            placeholder={fmtPrice(props.mark)}
+            placeholder={props.mark ?? "Price"}
           />
           {props.price.trim() !== "" && !priceOk && <p className="err">The price must be a positive number.</p>}
         </div>
@@ -1142,7 +1169,7 @@ function TradeTab(props: {
       <dl className="sum">
         <div>
           <dt>Estimated liquidation</dt>
-          <dd className="num">{fmtPrice(liq ?? undefined)}</dd>
+          <dd className="num">{formatPrice(liq)}</dd>
         </div>
       </dl>
 
@@ -1155,14 +1182,21 @@ function TradeTab(props: {
           <strong>Order preview</strong>
           <Facts
             items={[
-              ["Market", props.preview.params.coin],
+              [
+                "Market",
+                <span key="market" title={props.preview.params.coin} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <CoinIcon coin={props.preview.params.coin} size={16} />
+                  {coinName(props.preview.params.coin)}
+                </span>,
+              ],
               ["Side", props.preview.params.side === "buy" ? "Long" : "Short"],
+              // Size and prices exactly as they are sent, not rounded.
               ["Size", `${props.preview.params.size} ${props.preview.params.coin}`],
-              ["Type", props.preview.params.type === "limit" ? `Limit ${props.preview.params.price ?? ""}`.trim() : "Market"],
+              ["Type", props.preview.params.type === "limit" && props.preview.params.price ? `Limit at ${formatExactPrice(props.preview.params.price)}` : props.preview.params.type === "limit" ? "Limit" : "Market"],
               ["Leverage", `${props.preview.params.leverage}×`],
-              ["Liquidation", props.preview.estimatedLiq === null ? "n/a" : fmtPrice(props.preview.estimatedLiq)],
-              ["Take-profit", props.preview.params.tpPx ?? "None"],
-              ["Stop-loss", props.preview.params.slPx ?? "None"],
+              ["Liquidation", props.preview.estimatedLiq === null ? MISSING : formatPrice(props.preview.estimatedLiq)],
+              ["Take-profit", props.preview.params.tpPx ? formatExactPrice(props.preview.params.tpPx) : "None"],
+              ["Stop-loss", props.preview.params.slPx ? formatExactPrice(props.preview.params.slPx) : "None"],
             ]}
           />
           <p className="hint">Estimates, without fees and funding.</p>
@@ -1208,11 +1242,12 @@ function OrdersTab({ orders, onCancel }: { orders: OrderRow[]; onCancel: (coin: 
           <div className="row">
             <span className={`side-tag ${o.side === "buy" ? "long" : "short"}`}>{o.side === "buy" ? "Buy" : "Sell"}</span>
             <div style={{ minWidth: 0 }}>
-              <div className="t">
-                {o.coin} <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>{o.type ?? "limit"}</span>
+              <div className="t" title={o.coin} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <CoinIcon coin={o.coin} size={18} />
+                {coinName(o.coin)} <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>{orderTypeLabel(o)}</span>
               </div>
               <div className="sub num">
-                {o.size} at {fmtPrice(o.limitPrice)}
+                {formatAmount(o.size, { decimals: 6 })} {o.coin} at {formatExactPrice(o.limitPrice)}
               </div>
             </div>
             <button type="button" className="btn btn--sm" onClick={() => onCancel(o.coin, o.oid)}>
@@ -1244,12 +1279,8 @@ function FundModal(props: {
   const isDeposit = props.mode === "deposit";
   const maxBalance = isDeposit ? props.arbBalance : props.hlWithdrawable;
   const amountOk = isPositiveDecimal(props.amount);
-  const previewRows = props.preview
-    ? Object.entries(props.preview).map(([k, v]) => [
-        k.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()),
-        typeof v === "object" ? JSON.stringify(v) : String(v),
-      ] as [string, string])
-    : [];
+  // A curated summary of the preview; the raw payload never reaches the screen.
+  const previewRows = props.preview ? fundPreviewRows(props.mode, props.preview) : [];
 
   return (
     <Sheet open={props.open} onClose={props.onClose} title="Hyperliquid funds">
@@ -1272,7 +1303,7 @@ function FundModal(props: {
         <div className="field">
           <div className="lbl">
             <label htmlFor="fund-amount">Amount in USDC</label>
-            <span className="num muted">Up to {fmtUsd(maxBalance)}</span>
+            <span className="num muted">Up to {formatUsd(maxBalance)}</span>
           </div>
           <input
             id="fund-amount"
@@ -1294,6 +1325,8 @@ function FundModal(props: {
           </div>
         </div>
 
+        {/* The preview summary replaces these general terms once it is shown. */}
+        {!props.preview && (
         <dl className="sum">
           {isDeposit ? (
             <>
@@ -1320,9 +1353,10 @@ function FundModal(props: {
           )}
           <div>
             <dt>Time</dt>
-            <dd>2 to 5 minutes</dd>
+            <dd>{isDeposit ? "About a minute" : "2 to 5 minutes"}</dd>
           </div>
         </dl>
+        )}
 
         {props.success ? (
           <>

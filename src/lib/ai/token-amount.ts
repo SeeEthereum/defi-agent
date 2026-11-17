@@ -12,6 +12,7 @@ import { erc20Abi, formatUnits, parseUnits } from "viem";
 import { getChainByIndex } from "@/lib/chains";
 import { getPublicClient } from "@/lib/fluid/client";
 import { NATIVE_TOKEN } from "@/lib/api/validation";
+import { cleanSymbol } from "@/lib/tokens/display";
 
 export interface TokenInfo {
   decimals: number;
@@ -53,13 +54,24 @@ export async function tokenInfo(chainIndex: number, token: string): Promise<Toke
   // A symbol is only for display; some old tokens return bytes32 or nothing.
   const symbol = await client
     .readContract({ ...contract, functionName: "symbol" })
-    .then((s) => (typeof s === "string" && /^[\x20-\x7e]{1,20}$/.test(s) ? s : null))
+    .then(displaySymbol)
     .catch(() => null);
 
   const info = { decimals, symbol: symbol ?? `${address.slice(0, 6)}…${address.slice(-4)}` };
   if (cache.size >= MAX_CACHE) cache.clear();
   cache.set(key, info);
   return info;
+}
+
+/**
+ * A contract's symbol() made fit to print, or null. Tether's USD₮0 becomes
+ * USDT (lib/tokens/display); control characters, other non-ASCII text and
+ * absurd lengths are refused, so the card falls back to the address.
+ */
+export function displaySymbol(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 40 || /[\x00-\x1f\x7f]/.test(raw)) return null;
+  const clean = cleanSymbol(raw);
+  return /^[\x20-\x7e]{1,20}$/.test(clean) ? clean : null;
 }
 
 /**

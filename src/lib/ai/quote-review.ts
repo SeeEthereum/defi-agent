@@ -9,6 +9,9 @@
  */
 
 import { bridgeCost, formatBridgeCost, formatCostShare } from "@/lib/bridge/cost";
+import { getChainBySwapName } from "@/lib/chains";
+import { formatAmount, formatPercent, formatUsd, MISSING } from "@/lib/format";
+import { cleanSymbol, displayToken } from "@/lib/tokens/display";
 
 /** The server keeps a quote for 60 s; the card stops offering it a little earlier. */
 export const REVIEW_TTL_MS = 55_000;
@@ -42,14 +45,49 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/** Base units to "1,234.56", at most `maxFraction` decimals. */
-export function readable(base: string, decimals: number, maxFraction = 6): string {
-  if (!/^\d+$/.test(base) || !Number.isInteger(decimals) || decimals < 0) return base;
+function validBase(base: string, decimals: number): boolean {
+  return /^\d+$/.test(base) && Number.isInteger(decimals) && decimals >= 0;
+}
+
+/** Base units to the exact decimal, every digit kept: "2512.345678", "0.000000000000000001". */
+export function exactAmount(base: string, decimals: number): string | null {
+  if (!validBase(base, decimals)) return null;
   const padded = base.padStart(decimals + 1, "0");
-  const int = padded.slice(0, padded.length - decimals) || "0";
-  const frac = padded.slice(padded.length - decimals, padded.length - decimals + maxFraction).replace(/0+$/, "");
-  const grouped = BigInt(int).toLocaleString("en-US");
-  return frac ? `${grouped}.${frac}` : grouped;
+  const int = BigInt(padded.slice(0, padded.length - decimals) || "0").toString();
+  const frac = padded.slice(padded.length - decimals).replace(/0+$/, "");
+  return frac ? `${int}.${frac}` : int;
+}
+
+/**
+ * Cut base units down to the digits formatAmount shows (four decimals from
+ * 1, four significant digits below), so a shown amount, above all a
+ * minimum received, is never rounded up past the real one.
+ */
+function floorToShown(base: bigint, decimals: number): bigint {
+  const one = 10n ** BigInt(decimals);
+  const shownDecimals = base >= one ? 4 : decimals - base.toString().length + 4;
+  if (shownDecimals >= decimals) return base;
+  const unit = 10n ** BigInt(decimals - shownDecimals);
+  return (base / unit) * unit;
+}
+
+/** Base units as people read them: "2,512.3456", "0.000005", "< 0.00000001". */
+export function readable(base: string, decimals: number): string {
+  if (!validBase(base, decimals)) return MISSING;
+  return formatAmount(exactAmount(floorToShown(BigInt(base), decimals).toString(), decimals));
+}
+
+/** A token's symbol as people know it ("USD₮0" → "USDT", the chain's own coin for native), else the card's. */
+function symbolOf(token: Obj, chainIndex: number | null, fallback: unknown): string {
+  const raw = str(token.tokenSymbol) ?? str(token.symbol);
+  if (raw) {
+    return displayToken({
+      tokenSymbol: raw,
+      tokenContractAddress: str(token.tokenContractAddress) ?? str(token.address),
+      chainIndex: chainIndex ?? (token.chainId as number | string | undefined) ?? null,
+    }).symbol;
+  }
+  return cleanSymbol(str(fallback));
 }
 
 /** `base` minus `percent` percent, rounded down. */
@@ -60,8 +98,10 @@ export function minusPercent(base: string, percent: string): string {
   return ((BigInt(base) * (10_000n - bps)) / 10_000n).toString();
 }
 
-function usd(value: number): string {
-  return value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+/** " (about $2,512.35)" after an amount, or "" when the value is unknown or a crumb. */
+function aboutUsd(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return value < 0.01 ? " (less than $0.01)" : ` (about ${formatUsd(value)})`;
 }
 
 function quoteIdOf(data: Obj): string | null {
@@ -89,13 +129,15 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
   const toDecimals = Number(toToken.decimal);
   if (!quoteId || !toAmount || !/^\d+$/.test(toAmount) || !Number.isInteger(toDecimals)) return null;
 
-  const toSymbol = str(toToken.tokenSymbol) ?? str(params.toSymbol) ?? "";
-  const fromSymbol = str(fromToken.tokenSymbol) ?? str(params.fromSymbol) ?? "";
+  const chainIndex = getChainBySwapName(String(params.chain ?? ""))?.chainIndex ?? null;
+  const toSymbol = symbolOf(toToken, chainIndex, params.toSymbol);
+  const fromSymbol = symbolOf(fromToken, chainIndex, params.fromSymbol);
   const slippage = str(params.slippage) ?? "0.5";
   const received = readable(toAmount, toDecimals);
   const unitPrice = Number(toToken.tokenUnitPrice);
+  // The dollar value from the exact amount, not the rounded one on screen.
   const receivedUsd = Number.isFinite(unitPrice) && unitPrice > 0
-    ? ` (about ${usd(Number(received.replace(/,/g, "")) * unitPrice)})`
+    ? aboutUsd(Number(exactAmount(toAmount, toDecimals)) * unitPrice)
     : "";
 
   const rows = [
@@ -109,7 +151,7 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
 
   const impactRaw = Number(data.priceImpactPercentage ?? data.priceImpactPercent);
   const impact = Number.isFinite(impactRaw) ? Math.abs(impactRaw) : null;
-  if (impact != null) rows.push({ label: "Price impact", value: `${impact.toFixed(2)}%` });
+  if (impact != null) rows.push({ label: "Price impact", value: formatPercent(impact) });
 
   const router = obj((data.dexRouterList as unknown[] | undefined)?.[0]);
   const protocol = obj(
@@ -125,11 +167,11 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
     rows,
     blocked:
       impact != null && impact > IMPACT_BLOCK
-        ? `Price impact is ${impact.toFixed(1)}%: this trade would lose too much value. Try a smaller amount.`
+        ? `Price impact is ${formatPercent(impact, { decimals: 1 })}: this trade would lose too much value. Try a smaller amount.`
         : null,
     warning:
       impact != null && impact >= IMPACT_WARN && impact <= IMPACT_BLOCK
-        ? `High price impact (${impact.toFixed(1)}%): you get noticeably less than the market price.`
+        ? `High price impact (${formatPercent(impact, { decimals: 1 })}): you get noticeably less than the market price.`
         : null,
   };
 }
@@ -157,8 +199,8 @@ export function bridgeReview(data: Obj, params: Obj, now = Date.now()): QuoteRev
   const toAmountMin = str(estimate.toAmountMin);
   if (!quoteId || !toAmount || !toAmountMin || !Number.isInteger(toDecimals)) return null;
 
-  const toSymbol = str(toToken.symbol) ?? str(params.toSymbol) ?? "";
-  const fromSymbol = str(fromToken.symbol) ?? str(params.fromSymbol) ?? "";
+  const toSymbol = symbolOf(toToken, null, params.toSymbol);
+  const fromSymbol = symbolOf(fromToken, null, params.fromSymbol);
   const cost = bridgeCost(
     (estimate.feeCosts as { amountUSD?: string }[] | undefined) ?? [],
     (estimate.gasCosts as { amountUSD?: string }[] | undefined) ?? [],
@@ -170,8 +212,8 @@ export function bridgeReview(data: Obj, params: Obj, now = Date.now()): QuoteRev
 
   const rows = [
     { label: "You send", value: `${String(params.amountDisplay ?? "")} ${fromSymbol}`.trim() },
-    { label: "You receive", value: `${readable(toAmount, toDecimals)} ${toSymbol}` },
-    { label: "Minimum received", value: `${readable(toAmountMin, toDecimals)} ${toSymbol}` },
+    { label: "You receive", value: `${readable(toAmount, toDecimals)} ${toSymbol}`.trim() },
+    { label: "Minimum received", value: `${readable(toAmountMin, toDecimals)} ${toSymbol}`.trim() },
     { label: "Fees and gas", value: share ? `${formatBridgeCost(cost)} (${share} of the amount)` : formatBridgeCost(cost) },
   ];
   if (Number.isFinite(seconds) && seconds > 0) {

@@ -5,12 +5,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { motion, useReducedMotion } from "motion/react";
 import useSWR from "swr";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { Empty, Sheet } from "@/components/premium";
-import { isStaleQuote, sendStateCode } from "@/lib/api/send-state";
+import { TokenIcon } from "@/components/token-icon";
+import { isStaleQuote, sendStateCode, userFacingError } from "@/lib/api/send-state";
+import { formatPrice, formatUsd } from "@/lib/format";
+import { chainName, cleanSymbol } from "@/lib/tokens/display";
+import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
 import {
   bridgeQuoteQuery,
   bridgeReview,
@@ -85,25 +89,160 @@ function actionParamsReady(action: ProposedAction): boolean {
 }
 
 // ── Token symbol lookup ──────────────────────────────────────────────────────
+/** Common tokens by contract address (the native coin depends on the chain: see knownSymbol). */
 const TOKEN_MAP: Record<string, string> = {
-  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": "ETH",
   "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC",
   "0xaf88d065e77c8cc2239327c5edb3a432268e5831": "USDC",
   "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "USDC",
+  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359": "USDC",
+  "0x0b2c639c533813f4aa9d7837caf62653d097ff85": "USDC",
+  "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": "USDC",
   "0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT",
   "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": "USDT",
+  "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "USDT",
+  "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58": "USDT",
+  "0x55d398326f99059ff775485246999027b3197955": "USDT",
   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "WETH",
   "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "WETH",
   "0x4200000000000000000000000000000000000006": "WETH",
+  "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "WPOL",
+  "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "WBNB",
 };
-
-function tokenSymbol(addr?: string): string {
-  if (!addr) return "token";
-  return TOKEN_MAP[addr.toLowerCase()] ?? addr.slice(0, 6) + "…" + addr.slice(-4);
-}
 
 function shortAddr(addr: string): string {
   return addr.slice(0, 6) + "…" + addr.slice(-4);
+}
+
+/** A chain index from a card param ("42161" or 42161), or null. */
+function chainIndexOf(raw: unknown): number | null {
+  if (!hasParam(raw)) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** "Arbitrum", "Unknown network" for a chain we do not list, or "Not set". */
+function networkLabel(raw: unknown): string {
+  if (!hasParam(raw)) return MISSING;
+  return chainName(chainIndexOf(raw)) ?? "Unknown network";
+}
+
+/** Symbol of a token by address: the chain's own coin (ETH, BNB, POL) for 0xeeee…, else a common token. */
+function knownSymbol(addr: string | undefined, chainIndex: number | null): string | null {
+  if (!addr) return null;
+  const a = addr.toLowerCase();
+  if (a === NATIVE_TOKEN) return chainIndex != null ? (getChainByIndex(chainIndex)?.nativeSymbol ?? null) : null;
+  return TOKEN_MAP[a] ?? null;
+}
+
+interface CardToken {
+  /** "USDT", or null for a token we cannot name. */
+  symbol: string | null;
+  /** What the row shows: the symbol, or "Unknown token (0x12…cdef)". */
+  label: string;
+}
+
+/**
+ * A token on a card: the server's symbol (read on-chain) cleaned up
+ * ("USD₮0" → "USDT"), else a known address, else "Unknown token" with the
+ * short address so the user can still tell which contract it is.
+ */
+function cardToken(serverSymbol: unknown, addr: unknown, chainIndex: number | null): CardToken {
+  const address = typeof addr === "string" && addr ? addr : undefined;
+  const fromServer = typeof serverSymbol === "string" ? cleanSymbol(serverSymbol) : "";
+  // The server sends an address fragment when the contract has no readable symbol.
+  const symbol = fromServer && !/^0x/i.test(fromServer) ? fromServer : knownSymbol(address, chainIndex);
+  if (symbol) return { symbol, label: symbol };
+  return { symbol: null, label: address ? `Unknown token (${shortAddr(address)})` : MISSING };
+}
+
+/** What a Fluid card supplies or withdraws: "USDC" for fUSDC, the chain's coin (ETH, POL) for fWETH / fWPOL. */
+function fluidAsset(fTokenSymbol: unknown, chainIndex: number | null): CardToken {
+  if (typeof fTokenSymbol !== "string" || !fTokenSymbol) return { symbol: null, label: MISSING };
+  const native = chainIndex != null && isNativeUnderlying(chainIndex, fTokenSymbol) ? getChainByIndex(chainIndex)?.nativeSymbol : undefined;
+  const underlying = chainIndex != null ? getFToken(chainIndex, fTokenSymbol)?.underlyingSymbol : undefined;
+  const symbol = cleanSymbol(native ?? underlying ?? fTokenSymbol.replace(/^f(?=[A-Z])/, ""));
+  return { symbol, label: symbol };
+}
+
+/** "1.5 USDT", or just the amount when the token has no name. */
+function withSymbol(amount: unknown, symbol: string | null): string {
+  return `${String(amount)} ${symbol ?? ""}`.trim();
+}
+
+const GAS_LEVELS: Record<string, string> = { slow: "Slow", average: "Standard", fast: "Fast" };
+
+/**
+ * An order price exactly as it will be sent, grouped for reading:
+ * "$91,250.50", "$1.2345", "$0.00012345". formatPrice would round a limit
+ * price the user must check digit by digit.
+ */
+function orderPrice(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  const n = Number(s);
+  const decimals = s.split(".")[1]?.length ?? 0;
+  if (!/^\d+(\.\d+)?$/.test(s) || n <= 0 || decimals > 8) return formatPrice(s);
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: n >= 1 ? 2 : Math.max(2, decimals),
+    maximumFractionDigits: Math.max(2, decimals),
+  })}`;
+}
+
+/** "[View transaction](https://arbiscan.io/tx/0x…)" for the chat, or "" without a valid hash or a known explorer. */
+function txLinkMarkdown(chainIndex: number | null, hash: unknown): string {
+  if (chainIndex == null || typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return "";
+  const explorer = getChainByIndex(chainIndex)?.explorer;
+  return explorer ? `[View transaction](${explorer}/tx/${hash})` : "";
+}
+
+/** The chain an action's transaction lands on (the source chain for a bridge). */
+function actionChainIndex(action: ProposedAction): number | null {
+  const p = action.params ?? {};
+  switch (action.action) {
+    case "swap":
+      return getChainBySwapName(String(p.chain))?.chainIndex ?? null;
+    case "bridge":
+      return chainIndexOf(p.fromChain);
+    case "send":
+    case "supply":
+    case "withdraw":
+      return chainIndexOf(p.chainIndex);
+    default:
+      return null;
+  }
+}
+
+const DONE_TITLES: Record<string, string> = {
+  swap: "Swap sent.",
+  bridge: "Bridge started.",
+  send: "Transfer sent.",
+  supply: "Supplied to Fluid.",
+  withdraw: "Withdrawal sent.",
+  hl_order: "Order placed.",
+  hl_close: "Position closed.",
+};
+
+const FAILED_TITLES: Record<string, string> = {
+  swap: "Swap failed.",
+  bridge: "Bridge failed.",
+  send: "Transfer failed.",
+  supply: "Supply failed.",
+  withdraw: "Withdrawal failed.",
+  hl_order: "Order failed.",
+  hl_close: "Closing the position failed.",
+};
+
+/**
+ * A failure reason for the chat. The API already reduces errors to safe
+ * sentences (lib/api/validation publicErrorMessage); this keeps those and
+ * the send-state messages, and drops anything that still looks technical.
+ */
+function plainError(detail: unknown, fallback: string): string {
+  const kept = userFacingError(detail, "");
+  if (kept) return kept;
+  if (typeof detail !== "string") return fallback;
+  const text = detail.trim();
+  const technical = text.length === 0 || text.length > 200 || /0x[0-9a-f]{16,}|[{}[\]<>`]|\n/i.test(text);
+  return technical ? fallback : text;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -208,98 +347,115 @@ function ActionCard({
   executing: boolean;
 }) {
   const secondsLeft = useSecondsLeft(review?.expiresAt ?? null);
-  const rows: { label: string; value: string }[] = [];
+  /** `token` puts the token's icon before the value. */
+  const rows: { label: string; value: string; token?: { symbol: string; chainIndex: number | null } }[] = [];
+  const iconFor = (t: CardToken, chainIndex: number | null) => (t.symbol ? { symbol: t.symbol, chainIndex } : undefined);
   let title = "";
   let icon: LineIconName = "swap";
 
   if (action.action === "swap") {
     const p = action.params;
     const chain = getChainBySwapName(p.chain as string);
+    const chainIndex = chain?.chainIndex ?? null;
     // Symbols and the amount come from the server (read on-chain), not the model.
-    const fromSymbol = (p.fromSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
-    const toSymbol = (p.toSymbol as string) || tokenSymbol(p.toToken as string | undefined);
+    const from = cardToken(p.fromSymbol, p.fromToken, chainIndex);
+    const to = cardToken(p.toSymbol, p.toToken, chainIndex);
     title = "Token swap";
     icon = "swap";
     rows.push({
       label: "Amount",
-      value: hasParam(p.amountDisplay) ? `${p.amountDisplay} ${fromSymbol}` : MISSING,
+      value: hasParam(p.amountDisplay) ? withSymbol(p.amountDisplay, from.symbol) : MISSING,
     });
-    rows.push({ label: "From", value: fromSymbol });
-    rows.push({ label: "To", value: toSymbol });
-    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chain) ? String(p.chain) : MISSING) });
+    rows.push({ label: "From", value: from.label, token: iconFor(from, chainIndex) });
+    rows.push({ label: "To", value: to.label, token: iconFor(to, chainIndex) });
+    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chain) ? "Unknown network" : MISSING) });
     if (p.slippage) rows.push({ label: "Slippage", value: `${p.slippage}%` });
-    if (p.gasLevel) rows.push({ label: "Gas", value: String(p.gasLevel) });
+    if (p.gasLevel) rows.push({ label: "Network fee", value: GAS_LEVELS[String(p.gasLevel).toLowerCase()] ?? "Standard" });
     if (p.mevProtection) rows.push({ label: "MEV protection", value: "On" });
   } else if (action.action === "supply") {
     const p = action.params;
-    const chain = getChainByIndex(p.chainIndex as number);
+    const chainIndex = chainIndexOf(p.chainIndex);
+    const asset = fluidAsset(p.fTokenSymbol, chainIndex);
     title = "Supply on Fluid";
     icon = "trending-up";
-    rows.push({ label: "Asset", value: p.fTokenSymbol as string });
-    rows.push({ label: "Amount", value: `${p.amount}` });
-    rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
+    rows.push({ label: "Asset", value: asset.label, token: iconFor(asset, chainIndex) });
+    rows.push({ label: "Amount", value: hasParam(p.amount) ? withSymbol(p.amount, asset.symbol) : MISSING });
+    rows.push({ label: "Chain", value: networkLabel(p.chainIndex) });
   } else if (action.action === "send") {
     const p = action.params;
-    const chain = getChainByIndex(p.chainIndex as number);
-    const token = p.contractToken
-      ? tokenSymbol(p.contractToken as string)
-      : chain?.nativeSymbol ?? "ETH";
+    const chainIndex = chainIndexOf(p.chainIndex);
+    const native = chainIndex != null ? (getChainByIndex(chainIndex)?.nativeSymbol ?? null) : null;
+    const token: CardToken = p.contractToken
+      ? cardToken(null, p.contractToken, chainIndex)
+      : { symbol: native, label: native ?? "The network's own coin" };
     title = "Transfer";
     icon = "send";
-    rows.push({ label: "Token", value: token });
-    rows.push({ label: "Amount", value: hasParam(p.amount) ? `${p.amount} ${token}` : MISSING });
+    rows.push({ label: "Token", value: token.label, token: iconFor(token, chainIndex) });
+    rows.push({ label: "Amount", value: hasParam(p.amount) ? withSymbol(p.amount, token.symbol) : MISSING });
     rows.push({
       label: "To",
       value: hasParam(p.recipient) ? shortAddr(String(p.recipient)) : MISSING,
     });
-    rows.push({ label: "Chain", value: chain?.name ?? (hasParam(p.chainIndex) ? String(p.chainIndex) : MISSING) });
+    rows.push({ label: "Chain", value: networkLabel(p.chainIndex) });
   } else if (action.action === "bridge") {
     const p = action.params;
-    const fromChain = getChainByIndex(Number(p.fromChain));
-    const toChain = getChainByIndex(Number(p.toChain));
-    const fromSymbol = (p.fromSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
-    const toSymbol = (p.toSymbol as string) || tokenSymbol(p.toToken as string | undefined);
+    const fromChainIndex = chainIndexOf(p.fromChain);
+    const toChainIndex = chainIndexOf(p.toChain);
+    const from = cardToken(p.fromSymbol, p.fromToken, fromChainIndex);
+    const to = cardToken(p.toSymbol, p.toToken, toChainIndex);
     title = "Bridge";
     icon = "bridge";
-    rows.push({ label: "From chain", value: fromChain?.name ?? (hasParam(p.fromChain) ? String(p.fromChain) : MISSING) });
-    rows.push({ label: "To chain", value: toChain?.name ?? (hasParam(p.toChain) ? String(p.toChain) : MISSING) });
+    rows.push({ label: "From chain", value: networkLabel(p.fromChain) });
+    rows.push({ label: "To chain", value: networkLabel(p.toChain) });
     rows.push({
       label: "Amount",
-      value: hasParam(p.amountDisplay) ? `${p.amountDisplay} ${fromSymbol}` : MISSING,
+      value: hasParam(p.amountDisplay) ? withSymbol(p.amountDisplay, from.symbol) : MISSING,
     });
-    rows.push({ label: "From token", value: fromSymbol });
-    rows.push({ label: "To token", value: toSymbol });
+    rows.push({ label: "From token", value: from.label, token: iconFor(from, fromChainIndex) });
+    rows.push({ label: "To token", value: to.label, token: iconFor(to, toChainIndex) });
   } else if (action.action === "withdraw") {
     const p = action.params;
-    const chain = getChainByIndex(p.chainIndex as number);
+    const chainIndex = chainIndexOf(p.chainIndex);
+    const asset = fluidAsset(p.fTokenSymbol, chainIndex);
     title = "Withdraw from Fluid";
     icon = "trending-down";
-    rows.push({ label: "Asset", value: p.fTokenSymbol as string });
-    rows.push({ label: "Amount", value: p.amount === "all" ? "Everything" : String(p.amount) });
-    rows.push({ label: "Chain", value: chain?.name ?? String(p.chainIndex) });
+    rows.push({ label: "Asset", value: asset.label, token: iconFor(asset, chainIndex) });
+    rows.push({
+      label: "Amount",
+      value: p.amount === "all" ? "Everything" : hasParam(p.amount) ? withSymbol(p.amount, asset.symbol) : MISSING,
+    });
+    rows.push({ label: "Chain", value: networkLabel(p.chainIndex) });
   } else if (action.action === "hl_order") {
     const p = action.params;
     const side = p.side === "buy" ? "Long" : p.side === "sell" ? "Short" : null;
     title = side ? `Hyperliquid ${side.toLowerCase()}` : "Hyperliquid order";
     icon = p.side === "buy" ? "long" : "short";
-    rows.push({ label: "Market", value: hasParam(p.coin) ? `${p.coin}-PERP` : MISSING });
+    rows.push({
+      label: "Market",
+      value: hasParam(p.coin) ? `${p.coin}-PERP` : MISSING,
+      token: hasParam(p.coin) ? { symbol: String(p.coin), chainIndex: null } : undefined,
+    });
     rows.push({ label: "Side", value: side ?? MISSING });
     rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : MISSING });
     rows.push({ label: "Type", value: p.type === "limit" ? "Limit" : "Market" });
-    if (p.type === "limit") rows.push({ label: "Limit price", value: hasParam(p.price) ? `$${p.price}` : MISSING });
+    if (p.type === "limit") rows.push({ label: "Limit price", value: hasParam(p.price) ? orderPrice(p.price) : MISSING });
     rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : MISSING });
-    if (p.currentPrice) rows.push({ label: "Mark price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString("en-US")}` });
-    if (p.slPx) rows.push({ label: "Stop loss", value: `$${p.slPx}` });
-    if (p.tpPx) rows.push({ label: "Take profit", value: `$${p.tpPx}` });
+    if (p.currentPrice) rows.push({ label: "Mark price", value: formatPrice(String(p.currentPrice)) });
+    if (p.slPx) rows.push({ label: "Stop loss", value: orderPrice(p.slPx) });
+    if (p.tpPx) rows.push({ label: "Take profit", value: orderPrice(p.tpPx) });
     rows.push({ label: "Settlement", value: "USDC on Hyperliquid L1" });
   } else if (action.action === "hl_close") {
     const p = action.params;
     title = "Close Hyperliquid position";
     icon = "close";
-    rows.push({ label: "Market", value: `${p.coin}-PERP` });
-    if (p.size) rows.push({ label: "Size", value: `${p.size} ${p.coin}` });
+    rows.push({
+      label: "Market",
+      value: hasParam(p.coin) ? `${p.coin}-PERP` : MISSING,
+      token: hasParam(p.coin) ? { symbol: String(p.coin), chainIndex: null } : undefined,
+    });
+    if (p.size) rows.push({ label: "Size", value: `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() });
     else rows.push({ label: "Size", value: "Full position" });
-    if (p.unrealizedPnl) rows.push({ label: "Unrealized PnL", value: `${parseFloat(String(p.unrealizedPnl)) >= 0 ? "+" : ""}${p.unrealizedPnl} USDC` });
+    if (p.unrealizedPnl) rows.push({ label: "Unrealized PnL", value: formatUsd(String(p.unrealizedPnl), { sign: true }) });
   }
 
   const ready = actionParamsReady(action);
@@ -350,7 +506,16 @@ function ActionCard({
           {rows.map((row) => (
             <div key={row.label}>
               <dt>{row.label}</dt>
-              <dd className={row.value === MISSING ? "missing" : undefined}>{row.value}</dd>
+              <dd className={row.value === MISSING ? "missing" : undefined}>
+                {row.token ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <TokenIcon symbol={row.token.symbol} size={18} chainIndex={row.token.chainIndex} />
+                    {row.value}
+                  </span>
+                ) : (
+                  row.value
+                )}
+              </dd>
             </div>
           ))}
         </dl>
@@ -427,6 +592,15 @@ function saveMessages(msgs: Message[]) {
 }
 
 const ENTER = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.8 };
+
+/** Links in the chat (explorer pages, docs) open in a new tab, so the conversation stays put. */
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+};
 
 function AssistantMark({ size = 28 }: { size?: number }) {
   return (
@@ -668,7 +842,7 @@ export default function AiPage() {
         });
         const approveEarnData = await approveEarnRes.json();
         if (!approveEarnData.success) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed:** ${approveEarnData.error}` }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed.** ${plainError(approveEarnData.error, "Try again in a moment.")}` }]);
           setExecutingIndex(null);
           return;
         }
@@ -677,7 +851,8 @@ export default function AiPage() {
         // there is no transaction to wait for.
         if (!approveEarnData.data?.alreadyApproved) {
           if (earnApproveTxHash) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${earnApproveTxHash.slice(0, 10)}…\`). Waiting for confirmation…` }]);
+            const link = txLinkMarkdown(chainIndexOf(action.params.chainIndex), earnApproveTxHash);
+            setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent. Waiting for it to confirm…${link ? ` ${link}` : ""}` }]);
           }
           const earnChain = getChainByIndex(action.params.chainIndex as number)?.swapName ?? "arbitrum";
           const confirmed = await waitForReceipt(earnApproveTxHash ?? "", earnChain);
@@ -713,7 +888,7 @@ export default function AiPage() {
           });
           const approveData = await approveRes.json();
           if (!approveData.success) {
-            setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed:** ${approveData.error}` }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: `**Approval failed.** ${plainError(approveData.error, "Try again in a moment.")}` }]);
             setExecutingIndex(null);
             return;
           }
@@ -721,7 +896,8 @@ export default function AiPage() {
           const alreadyApproved = Boolean(approveData.data?.alreadyApproved);
           if (!alreadyApproved) {
             if (approveTxHash) {
-              setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent (\`${approveTxHash.slice(0, 10)}…\`). Waiting for confirmation…` }]);
+              const link = txLinkMarkdown(actionChainIndex(action), approveTxHash);
+              setMessages((prev) => [...prev, { role: "assistant", content: `Approval sent. Waiting for it to confirm…${link ? ` ${link}` : ""}` }]);
             }
             const confirmed = await waitForReceipt(approveTxHash ?? "", action.params.chain as string);
             if (!confirmed) {
@@ -832,15 +1008,19 @@ export default function AiPage() {
         return;
       }
 
+      // A link to the explorer, never the bare 64-character hash.
+      const link = data.success ? txLinkMarkdown(actionChainIndex(action), data.data?.txHash) : "";
       const resultMsg = data.success
-        ? `**${action.action.charAt(0).toUpperCase() + action.action.slice(1)} completed!**\n${
-            data.data?.txHash
-              ? `Transaction hash: \`${data.data.txHash}\``
-              : "Transaction submitted successfully."
-          }`
+        ? [
+            `**${DONE_TITLES[action.action] ?? "Done."}**`,
+            action.action === "bridge" ? "The funds usually arrive within a few minutes." : "",
+            link,
+          ]
+            .filter(Boolean)
+            .join(" ")
         : sendStateCode(data)
           ? data.error
-          : `**${action.action} failed:** ${data.error}`;
+          : `**${FAILED_TITLES[action.action] ?? "That did not go through."}** ${plainError(data.error, "Try again in a moment.")}`;
 
       setMessages((prev) => [
         ...prev,
@@ -1006,7 +1186,9 @@ export default function AiPage() {
                   </p>
                 ) : (
                   <div className="md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                 )}
               </>

@@ -12,7 +12,9 @@ import { useAllChainBalances } from "@/hooks/use-balances";
 import { useFluidMarkets } from "@/hooks/use-fluid-markets";
 import { CHAINS } from "@/lib/chains";
 import { CHAIN_COLORS } from "@/lib/chain-colors";
-import { formatUsd } from "@/lib/utils";
+import { formatAmount, formatPercent, formatUsd } from "@/lib/format";
+import { chainName, displayToken } from "@/lib/tokens/display";
+import { isNativeUnderlying } from "@/lib/fluid/constants";
 import { TokenIcon } from "@/components/token-icon";
 import { BrandMark } from "@/components/brand-mark";
 import { LineIcon } from "@/components/line-icon";
@@ -32,8 +34,16 @@ interface PnlOverview {
   totalTrades: number;
 }
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const signedUsd = (n: number) => `${n >= 0 ? "+" : "−"}${usd.format(Math.abs(n))}`;
+/** A number from the API, or 0 when it is missing or broken (never NaN in a sum). */
+function num(value: string | number | null | undefined): number {
+  const n = typeof value === "number" ? value : parseFloat(value ?? "");
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Fluid lends the wrapped coin, but deposits and withdrawals use the chain's own: show ETH / POL, not WETH / WPOL. */
+function fluidAsset(m: { chainIndex: number; symbol: string; underlyingSymbol: string }) {
+  return displayToken({ symbol: m.underlyingSymbol, chainIndex: m.chainIndex, isNative: isNativeUnderlying(m.chainIndex, m.symbol) });
+}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -88,28 +98,31 @@ export default function DashboardPage() {
     );
   }
 
-  const totalUsd = Object.values(balancesByChain).reduce((sum, b) => sum + parseFloat(b.totalValueUsd || "0"), 0);
+  const totalUsd = Object.values(balancesByChain).reduce((sum, b) => sum + num(b.totalValueUsd), 0);
 
   const tokens: Array<{ symbol: string; balance: number; usdValue: number; chainIndex: number; chainName: string }> = [];
   for (const chain of Object.values(CHAINS)) {
     const bal = balancesByChain[chain.chainIndex];
     if (!bal) continue;
     for (const t of bal.tokens) {
-      const balance = parseFloat(t.balance || "0");
-      const price = parseFloat(t.tokenPrice || "0");
-      if (balance > 0) tokens.push({ symbol: t.symbol, balance, usdValue: balance * price, chainIndex: chain.chainIndex, chainName: chain.name });
+      const balance = num(t.balance);
+      const price = num(t.tokenPrice);
+      // OKX's machine symbols (ARB_ETH, USD₮0) as people know them: ETH, USDT.
+      const shown = displayToken({ ...t, chainIndex: chain.chainIndex });
+      if (balance > 0) tokens.push({ symbol: shown.symbol, balance, usdValue: balance * price, chainIndex: chain.chainIndex, chainName: chain.name });
     }
   }
   const holdings = [...tokens].sort((a, b) => b.usdValue - a.usdValue).slice(0, 6);
 
   const allocation = Object.values(CHAINS)
-    .map((c) => ({ name: c.name, chainIndex: c.chainIndex, value: parseFloat(balancesByChain[c.chainIndex]?.totalValueUsd || "0") }))
+    .map((c) => ({ name: c.name, chainIndex: c.chainIndex, value: num(balancesByChain[c.chainIndex]?.totalValueUsd) }))
     .filter((c) => c.value > 0)
     .sort((a, b) => b.value - a.value);
 
   const topMarkets = [...markets].sort((a, b) => b.totalAprPercent - a.totalAprPercent).slice(0, 5);
   const bestApy = topMarkets[0]?.totalAprPercent ?? null;
-  const hasTrades = pnl != null && (pnl.totalTrades > 0 || pnl.totalPnl !== 0);
+  const hasTrades = pnl != null && (num(pnl.totalTrades) > 0 || num(pnl.totalPnl) !== 0);
+  const bestAsset = topMarkets[0] ? fluidAsset(topMarkets[0]) : null;
 
   return (
     <div className="page">
@@ -125,10 +138,11 @@ export default function DashboardPage() {
                 {balLoading ? (
                   // Same text, same box: the figure takes its final size before the number arrives.
                   <span className="skel skel-text" aria-label="Loading">
-                    {usd.format(0)}
+                    {formatUsd(0)}
                   </span>
                 ) : (
-                  <CountUp value={totalUsd} format={(n) => usd.format(n)} />
+                  // While counting up from 0, skip the "< $0.01" crumb a real total never shows.
+                  <CountUp value={totalUsd} format={(n) => formatUsd(n < 0.01 && totalUsd >= 0.01 ? 0 : n)} />
                 )}
               </p>
               <div className="page-actions" style={{ marginTop: 6 }}>
@@ -165,8 +179,8 @@ export default function DashboardPage() {
                     <li key={c.chainIndex}>
                       <span className="sw" style={{ background: CHAIN_COLORS[c.chainIndex] }} aria-hidden="true" />
                       <span>{c.name}</span>
-                      <span className="num">{usd.format(c.value)}</span>
-                      <span className="num muted">{((c.value / totalUsd) * 100).toFixed(1)}%</span>
+                      <span className="num">{formatUsd(c.value)}</span>
+                      <span className="num muted">{formatPercent((c.value / totalUsd) * 100, { decimals: 1 })}</span>
                     </li>
                   ))}
                 </ul>
@@ -182,13 +196,13 @@ export default function DashboardPage() {
         <Metric label="Assets held" value={balLoading ? "…" : tokens.length} sub="across all chains" />
         <Metric
           label="Best Fluid yield"
-          value={marketsLoading ? "…" : bestApy != null ? `${bestApy.toFixed(2)}%` : "n/a"}
-          sub={topMarkets[0] ? `${topMarkets[0].underlyingSymbol} on ${topMarkets[0].chainName}` : undefined}
+          value={marketsLoading ? "…" : bestApy != null ? formatPercent(bestApy) : "n/a"}
+          sub={topMarkets[0] && bestAsset ? `${bestAsset.symbol} on ${chainName(topMarkets[0].chainIndex) ?? topMarkets[0].chainName}` : undefined}
         />
         <Metric
           label="Trading PnL"
-          value={pnl == null ? "…" : hasTrades ? <span className={pnl.totalPnl >= 0 ? "text-gain-ink" : "text-loss-ink"}>{signedUsd(pnl.totalPnl)}</span> : "n/a"}
-          sub={pnl == null ? undefined : hasTrades ? `${pnl.totalTrades} trades, ${(pnl.winRate * 100).toFixed(1)}% won` : "No DEX trades yet on Ethereum, Base or BNB Chain"}
+          value={pnl == null ? "…" : hasTrades ? <span className={num(pnl.totalPnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>{formatUsd(pnl.totalPnl, { sign: true })}</span> : "n/a"}
+          sub={pnl == null ? undefined : hasTrades ? `${num(pnl.totalTrades)} trades, ${formatPercent(num(pnl.winRate) * 100, { decimals: 1 })} won` : "No DEX trades yet on Ethereum, Base or BNB Chain"}
         />
       </div>
 
@@ -227,16 +241,18 @@ export default function DashboardPage() {
               {holdings.map((t, i) => (
                 <li key={`${t.chainIndex}-${t.symbol}-${i}`}>
                   <div className="row">
-                    <TokenIcon symbol={t.symbol} size={36} />
+                    <TokenIcon symbol={t.symbol} size={36} chainIndex={t.chainIndex} />
                     <div style={{ minWidth: 0 }}>
                       <div className="t">{t.symbol}</div>
                       <div className="sub">{t.chainName}</div>
                     </div>
                     <div className="end">
                       <div className="num" style={{ fontSize: 15 }}>
-                        {usd.format(t.usdValue)}
+                        {formatUsd(t.usdValue)}
                       </div>
-                      <div className="sub num">{t.balance.toLocaleString("en-US", { maximumFractionDigits: 6 })}</div>
+                      <div className="sub num">
+                        {formatAmount(t.balance)} {t.symbol}
+                      </div>
                     </div>
                   </div>
                 </li>
@@ -266,18 +282,21 @@ export default function DashboardPage() {
             <Empty icon="trending-up" title="Markets unavailable" text="Fluid markets could not be loaded. Try again in a moment." />
           ) : (
             <ul className="rows">
-              {topMarkets.map((m) => (
-                <li key={`${m.chainIndex}-${m.fTokenAddress}`}>
-                  <Link className="row" href="/earn">
-                    <TokenIcon symbol={m.underlyingSymbol} size={36} />
-                    <div style={{ minWidth: 0 }}>
-                      <div className="t">{m.underlyingSymbol}</div>
-                      <div className="sub">{m.chainName}</div>
-                    </div>
-                    <span className="glp pos">{m.totalAprPercent.toFixed(2)}%</span>
-                  </Link>
-                </li>
-              ))}
+              {topMarkets.map((m) => {
+                const asset = fluidAsset(m);
+                return (
+                  <li key={`${m.chainIndex}-${m.fTokenAddress}`}>
+                    <Link className="row" href="/earn">
+                      <TokenIcon symbol={asset.symbol} size={36} chainIndex={m.chainIndex} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="t">{asset.symbol}</div>
+                        <div className="sub">{asset.chainName ?? m.chainName}</div>
+                      </div>
+                      <span className="glp pos">{formatPercent(m.totalAprPercent)}</span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>
@@ -285,11 +304,11 @@ export default function DashboardPage() {
         {hasTrades && pnl && (
           <Panel className="span-12" index={4} title="Trading performance" sub="DEX trades on Ethereum, Base and BNB Chain">
             <div className="metrics">
-              <Metric label="Total PnL" value={<span className={pnl.totalPnl >= 0 ? "text-gain-ink" : "text-loss-ink"}>{signedUsd(pnl.totalPnl)}</span>} />
-              <Metric label="Realized" value={signedUsd(pnl.realizedPnl)} />
-              <Metric label="Unrealized" value={signedUsd(pnl.unrealizedPnl)} />
-              <Metric label="Win rate" value={`${(pnl.winRate * 100).toFixed(1)}%`} sub={`${pnl.totalTrades} trades`} />
-              <Metric label="Buy volume" value={formatUsd(pnl.buyVolume)} sub={`${pnl.tokenCount} tokens traded`} />
+              <Metric label="Total PnL" value={<span className={num(pnl.totalPnl) >= 0 ? "text-gain-ink" : "text-loss-ink"}>{formatUsd(pnl.totalPnl, { sign: true })}</span>} />
+              <Metric label="Realized" value={formatUsd(pnl.realizedPnl, { sign: true })} />
+              <Metric label="Unrealized" value={formatUsd(pnl.unrealizedPnl, { sign: true })} />
+              <Metric label="Win rate" value={formatPercent(num(pnl.winRate) * 100, { decimals: 1 })} sub={`${num(pnl.totalTrades)} trades`} />
+              <Metric label="Buy volume" value={formatUsd(pnl.buyVolume)} sub={`${num(pnl.tokenCount)} tokens traded`} />
             </div>
           </Panel>
         )}

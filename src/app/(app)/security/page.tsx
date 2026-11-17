@@ -9,8 +9,24 @@ import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { LineIcon } from "@/components/line-icon";
+import { TokenIcon } from "@/components/token-icon";
 import { Empty, Metric, PageHead, Panel, PillTabs, Segmented, Sheet, Skeleton } from "@/components/premium";
 import { userFacingError } from "@/lib/api/send-state";
+import { MISSING } from "@/lib/format";
+import {
+  EVM_ADDRESS,
+  allowanceLabel,
+  approvalRisk,
+  isUnlimitedAllowance,
+  networkName,
+  parseAddresses,
+  riskLabels,
+  taxIsHigh,
+  taxLabel,
+  tokenRisk,
+  tokenTitle,
+  tokensParam,
+} from "./display";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,25 +94,12 @@ interface ApprovalItem {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function abbreviate(addr: string): string {
-  if (!addr || addr.length <= 14) return addr || "unknown";
+  if (!addr || addr.length <= 14) return addr;
   return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
-function getChainName(idx: string | number | undefined): string {
-  if (!idx) return "unknown chain";
-  const chain = Object.values(CHAINS).find((c) => String(c.chainIndex) === String(idx));
-  return chain?.name ?? String(idx);
-}
-
-/** Risk level as a calm label and a tone used for its colour. */
-function riskTone(level: string | undefined): { label: string; tone: "bad" | "warn" | "ok" | "flat" } {
-  if (!level) return { label: "Unknown", tone: "flat" };
-  const l = level.toLowerCase();
-  if (l === "high" || l === "3" || l === "danger") return { label: "High risk", tone: "bad" };
-  if (l === "medium" || l === "2" || l === "warning") return { label: "Medium risk", tone: "warn" };
-  if (l === "low" || l === "1" || l === "safe" || l === "0") return { label: "Looks safe", tone: "ok" };
-  return { label: level, tone: "flat" };
-}
+/** Most tokens one scan takes (the API's limit). */
+const MAX_SCAN_TOKENS = 10;
 
 function ChainSelect({ id, value, onChange, allLabel }: { id: string; value: string; onChange: (v: string) => void; allLabel?: string }) {
   return (
@@ -106,8 +109,27 @@ function ChainSelect({ id, value, onChange, allLabel }: { id: string; value: str
       </label>
       <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
         {allLabel && <option value="">{allLabel}</option>}
+        {/* The API takes the chain id: a name such as "arbitrum" was refused. */}
         {Object.values(CHAINS).map((c) => (
-          <option key={c.swapName} value={c.swapName}>
+          <option key={c.chainIndex} value={String(c.chainIndex)}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/** Chain picker whose values are chain ids, as the scan API's tokens take them. */
+function ChainIndexSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="select select--chip">
+      <label htmlFor={id} className="sr-only">
+        Network
+      </label>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {Object.values(CHAINS).map((c) => (
+          <option key={c.chainIndex} value={String(c.chainIndex)}>
             {c.name}
           </option>
         ))}
@@ -130,12 +152,19 @@ function Loading() {
 
 function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
   const [mode, setMode] = useState<"wallet" | "manual">("wallet");
-  const [chain, setChain] = useState("arbitrum");
+  const [chain, setChain] = useState(String(CHAINS.arbitrum.chainIndex));
+  const [manualChain, setManualChain] = useState("1");
   const [manualTokens, setManualTokens] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<TokenScanResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [scanned, setScanned] = useState(false);
+
+  // Addresses typed for the manual scan; the API takes them as "chain:address".
+  const manualAddresses = parseAddresses(manualTokens);
+  const badAddress = manualAddresses.find((a) => !EVM_ADDRESS.test(a));
+  const tooMany = manualAddresses.length > MAX_SCAN_TOKENS;
+  const manualOk = manualAddresses.length > 0 && !badAddress && !tooMany;
 
   const handleScan = useCallback(async () => {
     setLoading(true);
@@ -148,7 +177,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
         params.set("address", walletAddress);
         if (chain) params.set("chain", chain);
       } else if (mode === "manual" && manualTokens.trim()) {
-        params.set("tokens", manualTokens.trim());
+        params.set("tokens", tokensParam(manualChain, parseAddresses(manualTokens)));
       } else {
         // Scan logged-in wallet
         if (chain) params.set("chain", chain);
@@ -172,7 +201,7 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
     } finally {
       setLoading(false);
     }
-  }, [mode, walletAddress, chain, manualTokens]);
+  }, [mode, walletAddress, chain, manualChain, manualTokens]);
 
   return (
     <Panel
@@ -193,11 +222,12 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
             ]}
           />
           {mode === "wallet" && <ChainSelect id="scan-chain" value={chain} onChange={setChain} />}
+          {mode === "manual" && <ChainIndexSelect id="scan-network" value={manualChain} onChange={setManualChain} />}
           <button
             type="button"
             className="btn btn--sm btn--primary"
             onClick={handleScan}
-            disabled={loading || (mode === "manual" && !manualTokens.trim()) || (mode === "wallet" && !chain)}
+            disabled={loading || (mode === "manual" && !manualOk) || (mode === "wallet" && !chain)}
           >
             {loading ? <span className="spin" aria-hidden="true" /> : <LineIcon name="shield-check" size={15} />}
             {loading ? "Scanning…" : "Scan"}
@@ -207,17 +237,24 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
     >
       {mode === "manual" && (
         <div className="field scan-input">
-          <label htmlFor="scan-tokens">Tokens to scan, as chainId:address, separated by commas</label>
+          <label htmlFor="scan-tokens">Token address</label>
           <input
             id="scan-tokens"
             className="input mono"
             spellCheck={false}
             autoComplete="off"
-            placeholder="1:0xdac17f958d2ee523a2206206994597c13d831ec7"
+            placeholder="0x…"
             value={manualTokens}
+            aria-invalid={manualTokens.trim() !== "" && !manualOk}
             onChange={(e) => setManualTokens(e.target.value)}
           />
-          <p className="hint">Chain IDs: 1 Ethereum, 42161 Arbitrum, 8453 Base, 56 BNB Chain, 137 Polygon, 10 Optimism.</p>
+          {badAddress ? (
+            <p className="err">&ldquo;{abbreviate(badAddress)}&rdquo; is not a token address. A token address starts with 0x and has 42 characters.</p>
+          ) : tooMany ? (
+            <p className="err">Up to {MAX_SCAN_TOKENS} tokens per scan.</p>
+          ) : (
+            <p className="hint">Pick the network above, then paste the token&rsquo;s address. Separate several with commas.</p>
+          )}
         </div>
       )}
 
@@ -231,46 +268,24 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
           </p>
         </div>
       ) : !scanned ? (
-        <Empty icon="shield-check" title="Nothing scanned yet" text={mode === "wallet" ? "Pick a chain and press Scan to check the tokens you hold there." : "Paste one or more tokens above, then press Scan."} />
+        <Empty icon="shield-check" title="Nothing scanned yet" text={mode === "wallet" ? "Pick a chain and press Scan to check the tokens you hold there." : "Paste a token address above, then press Scan."} />
       ) : results.length === 0 ? (
         <Empty icon="shield-check" title="No risky tokens found" text="The scan found nothing to worry about." />
       ) : (
         <ul className="rows wal-pad">
           {results.map((token, i) => {
-            const addr =
-              token.tokenAddress ?? token.tokenContractAddress ?? token.address ?? "";
-            const symbol = token.tokenSymbol ?? token.symbol ?? abbreviate(addr);
+            const addr: string = token.tokenAddress ?? token.tokenContractAddress ?? token.address ?? "";
+            const chainIdx = token.chainId ?? token.chainIndex;
+            const { title, iconSymbol, named } = tokenTitle({ symbol: token.tokenSymbol ?? token.symbol, chainIndex: chainIdx, address: addr });
             const risk = token.riskLevel ?? token.risk_level;
-            const isHoneypot =
-              token.isHoneypot ?? token.is_honeypot ?? token.honeypot ?? false;
+            const isHoneypot = (token.isHoneypot ?? token.is_honeypot ?? token.honeypot) === true;
             const buyTax = token.buyTaxes ?? token.buyTax ?? token.buy_tax;
             const sellTax = token.sellTaxes ?? token.sellTax ?? token.sell_tax;
             const isMintable = token.isMintable ?? token.is_mintable;
             const canPause = token.canPause ?? token.can_pause ?? token.isHasFrozenAuth;
-            const holders = token.holderCount ?? token.holder_count ?? token.holders;
-            const chainIdx = token.chainId ?? token.chainIndex;
-
-            // Build risk items from boolean flags
-            const risks: string[] = token.riskItems ?? token.risks ?? [];
-            if (risks.length === 0) {
-              if (token.isNotOpenSource) risks.push("Contract is not open source");
-              if (token.isNotRenounced) risks.push("Ownership not renounced");
-              if (token.isLowLiquidity) risks.push("Low liquidity");
-              if (token.isLiquidityRemoval) risks.push("Liquidity removal risk");
-              if (token.isDumping) risks.push("Dumping detected");
-              if (token.isFakeLiquidity) risks.push("Fake liquidity");
-              if (token.isAirdropScam) risks.push("Airdrop scam");
-              if (token.isCounterfeit) risks.push("Counterfeit token");
-              if (token.isOverIssued) risks.push("Over-issued");
-              if (token.isVeryHighLpHolderProp) risks.push("Very high LP holder proportion");
-              if (token.isVeryLowLpBurn) risks.push("Very low LP burn");
-              if (token.isHasBlockingHis) risks.push("Has blocking history");
-              if (token.isHasAssetEditAuth) risks.push("Has asset edit authority");
-              if (token.isFundLinkage) risks.push("Fund linkage detected");
-            }
-
-            const tone = riskTone(risk);
-            const taxBad = (v: unknown) => v != null && Number(v) > 5;
+            const holders = Number(token.holderCount ?? token.holder_count ?? token.holders);
+            const risks = riskLabels(token);
+            const tone = tokenRisk(risk);
 
             return (
               <li key={`${addr}-${i}`}>
@@ -281,41 +296,49 @@ function TokenScannerTab({ walletAddress }: { walletAddress: string | null }) {
                     </span>
                     <div style={{ minWidth: 0 }}>
                       <div className="t scan-t">
-                        <span>{symbol}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, alignSelf: "center" }}>
+                          <TokenIcon symbol={iconSymbol} size={20} chainIndex={chainIdx} />
+                          {title}
+                        </span>
                         <span className={`st ${tone.tone === "bad" ? "bad" : tone.tone === "warn" ? "wait" : tone.tone === "ok" ? "ok" : ""}`}>{tone.label}</span>
                         {isHoneypot && <span className="st bad">Honeypot</span>}
                       </div>
                       <div className="sub">
-                        <span className="num">{abbreviate(addr)}</span> · {getChainName(chainIdx)}
+                        {addr && named && (
+                          <>
+                            <span className="num">{abbreviate(addr)}</span> ·{" "}
+                          </>
+                        )}
+                        {networkName(chainIdx)}
                       </div>
                     </div>
                     <dl className="facts scan-facts">
                       <div>
                         <dt>Buy tax</dt>
-                        <dd className={`num${taxBad(buyTax) ? " text-loss-ink" : ""}`}>{buyTax != null ? `${Number(buyTax).toFixed(1)}%` : "n/a"}</dd>
+                        <dd className={`num${taxIsHigh(buyTax) ? " text-loss-ink" : ""}`}>{taxLabel(buyTax)}</dd>
                       </div>
                       <div>
                         <dt>Sell tax</dt>
-                        <dd className={`num${taxBad(sellTax) ? " text-loss-ink" : ""}`}>{sellTax != null ? `${Number(sellTax).toFixed(1)}%` : "n/a"}</dd>
+                        <dd className={`num${taxIsHigh(sellTax) ? " text-loss-ink" : ""}`}>{taxLabel(sellTax)}</dd>
                       </div>
                       <div>
                         <dt>Mintable</dt>
-                        <dd className={isMintable ? "text-warn-ink" : ""}>{isMintable == null ? "n/a" : isMintable ? "Yes" : "No"}</dd>
+                        <dd className={isMintable === true ? "text-warn-ink" : ""}>{typeof isMintable !== "boolean" ? MISSING : isMintable ? "Yes" : "No"}</dd>
                       </div>
                       <div>
                         <dt>Pausable</dt>
-                        <dd className={canPause ? "text-warn-ink" : ""}>{canPause == null ? "n/a" : canPause ? "Yes" : "No"}</dd>
+                        <dd className={canPause === true ? "text-warn-ink" : ""}>{typeof canPause !== "boolean" ? MISSING : canPause ? "Yes" : "No"}</dd>
                       </div>
                     </dl>
                   </div>
-                  {(risks.length > 0 || (holders != null && Number(holders) > 0)) && (
+                  {(risks.length > 0 || holders > 0) && (
                     <div className="scan-extra">
-                      {risks.map((r, j) => (
-                        <span key={j} className="tag tag--bad">
-                          {typeof r === "string" ? r : JSON.stringify(r)}
+                      {risks.map((r) => (
+                        <span key={r} className="tag tag--bad">
+                          {r}
                         </span>
                       ))}
-                      {holders != null && Number(holders) > 0 && <span className="muted">{Number(holders).toLocaleString("en-US")} holders</span>}
+                      {holders > 0 && <span className="muted">{Math.round(holders).toLocaleString("en-US")} holders</span>}
                     </div>
                   )}
                 </div>
@@ -336,11 +359,6 @@ interface RevokePending {
   chainIdx: number;
   symbol: string;
   chainName: string;
-}
-
-function isUnlimitedAllowance(allowance: unknown): boolean {
-  const a = String(allowance);
-  return a.includes("unlimited") || a.includes("MAX") || (a.length > 30 && /^[0-9]+$/.test(a));
 }
 
 function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
@@ -487,19 +505,16 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
               {approvals.map((item, i) => {
             const tokenAddr =
               item.tokenAddress ?? item.tokenContractAddress ?? "";
-            const symbol = item.symbol ?? item.tokenSymbol ?? abbreviate(tokenAddr);
+            const chainIdx = item.chainIndex ?? item.chainId;
+            const { title: symbol, iconSymbol } = tokenTitle({ symbol: item.symbol ?? item.tokenSymbol, chainIndex: chainIdx, address: tokenAddr });
             const spender = item.approvalAddress ?? item.spenderAddress ?? item.spender ?? "";
             const spenderName = item.protocolName ?? item.spenderName ?? item.spender_name ?? "";
             const allowance =
               item.remainAmount ?? item.allowance ?? item.approvedAmount ?? item.approved_amount ?? "";
-            const chainIdx = item.chainIndex ?? item.chainId;
-            const networkName = item.network;
-            const risk = item.riskLevel ?? item.risk_level;
+            const network = networkName(chainIdx);
+            const risk = approvalRisk(item.riskLevel ?? item.risk_level);
             const isRisky = item.vulnerabilityFlag ?? item.isAtRisk ?? item.is_at_risk ?? false;
-            const isUnlimited =
-              String(allowance).includes("unlimited") ||
-              String(allowance).includes("MAX") ||
-              (String(allowance).length > 30 && /^[0-9]+$/.test(String(allowance)));
+            const isUnlimited = isUnlimitedAllowance(allowance);
 
             const revokeKey = `${tokenAddr}-${spender}-${Number(chainIdx)}`;
             const isRevoking = revokingKey === revokeKey;
@@ -513,24 +528,29 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                       </span>
                       <div style={{ minWidth: 0 }}>
                         <div className="t scan-t">
-                          <span>{symbol}</span>
-                          <span className="muted appr-chain">{networkName ?? getChainName(chainIdx)}</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, alignSelf: "center" }}>
+                            <TokenIcon symbol={iconSymbol} size={20} chainIndex={chainIdx} />
+                            {symbol}
+                          </span>
+                          <span className="muted appr-chain">{network}</span>
                           {isRisky && !isRevoked && <span className="st bad">At risk</span>}
-                          {!isRisky && risk && !isRevoked && <span className={`st ${riskTone(risk).tone === "bad" ? "bad" : "wait"}`}>{risk}</span>}
+                          {!isRisky && risk && !isRevoked && (
+                            <span className={`st ${risk.tone === "bad" ? "bad" : risk.tone === "warn" ? "wait" : "ok"}`}>{risk.label}</span>
+                          )}
                           {item.tags === "isEoa" && <span className="st wait">Spender is a wallet, not an app</span>}
                         </div>
                         <div className="sub trunc">
-                          to {spenderName || <span className="num">{abbreviate(spender)}</span>}
-                          {spenderName && <span className="num"> · {abbreviate(spender)}</span>}
+                          to{" "}
+                          {spenderName && (
+                            <TokenIcon symbol={spenderName} logoUrl={item.protocolIcon} size={14} className="align-middle" />
+                          )}{" "}
+                          {spenderName || <span className="num">{spender ? abbreviate(spender) : "an unknown address"}</span>}
+                          {spenderName && spender && <span className="num"> · {abbreviate(spender)}</span>}
                         </div>
                       </div>
                       <div className="end">
                         <div className={`num${isUnlimited ? " text-warn-ink" : ""}`}>
-                          {isUnlimited
-                            ? "Unlimited"
-                            : item.remainAmtPrecise
-                              ? `${parseFloat(item.remainAmtPrecise).toLocaleString("en-US", { maximumFractionDigits: 6 })}`
-                              : allowance || "n/a"}
+                          {allowanceLabel(item, isUnlimited)}
                         </div>
                         <div className="sub">allowance</div>
                       </div>
@@ -546,7 +566,7 @@ function ApprovalsTab({ walletAddress }: { walletAddress: string | null }) {
                               spender,
                               chainIdx: Number(chainIdx),
                               symbol,
-                              chainName: networkName ?? getChainName(chainIdx),
+                              chainName: network,
                             })
                           }
                           disabled={isRevoking || !!revokingKey}

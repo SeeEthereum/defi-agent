@@ -11,7 +11,9 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { TokenIcon } from "@/components/token-icon";
-import { Fade, NumberDisplay } from "@/components/motion";
+import { Fade } from "@/components/motion";
+import { formatAmount, formatCompactUsd, formatPercent, formatPrice, formatUsd, MISSING } from "@/lib/format";
+import { displayToken } from "@/lib/tokens/display";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
 import { Change, Empty, PageHead, Panel, Picker, PickRow, Segmented, Skeleton } from "@/components/premium";
@@ -26,13 +28,18 @@ interface TokenInfo {
   symbol: string;
   address: string;
   decimals: number;
+  /** Logo URL from OKX, for display only. */
+  logo?: string;
 }
 
 interface TokenSearchResult {
   tokenSymbol?: string;
   tokenContractAddress?: string;
   decimal?: string | number;
+  tokenName?: string;
   tokenFullName?: string;
+  tokenLogoUrl?: string;
+  chainIndex?: string | number;
   symbol?: string;
   address?: string;
   decimals?: string | number;
@@ -61,20 +68,21 @@ function getNativeToken(chain: string): TokenInfo {
 
 function parseTokenResult(t: TokenSearchResult): TokenInfo {
   return {
-    symbol: t.tokenSymbol ?? t.symbol ?? "???",
+    symbol: t.tokenSymbol ?? t.symbol ?? "",
     address: t.tokenContractAddress || t.address || "",
     decimals: Number(t.decimal ?? t.decimals ?? 18),
+    logo: t.tokenLogoUrl || undefined,
   };
 }
 
-function getTokenName(t: TokenSearchResult): string {
-  const name = t.tokenFullName ?? t.name ?? "";
-  return name.length > 24 ? name.slice(0, 22) + "..." : name;
-}
-
-function abbreviateAddress(addr: string): string {
-  if (addr.length <= 12) return addr;
-  return addr.slice(0, 6) + "..." + addr.slice(-4);
+/** Symbol and plain name of a search result, as people know them. */
+function searchResultDisplay(t: TokenSearchResult, chainIndex: number | null) {
+  return displayToken({
+    symbol: t.tokenSymbol ?? t.symbol,
+    name: t.tokenName ?? t.tokenFullName ?? t.name,
+    address: t.tokenContractAddress || t.address,
+    chainIndex: t.chainIndex || chainIndex,
+  });
 }
 
 function toWei(amount: string, decimals: number): string | null {
@@ -146,6 +154,16 @@ function parsePriceImpact(q: Record<string, unknown>): number | null {
   if (raw == null || raw === "") return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The share of value a quote loses to price impact, in percent. OKX signs
+ * it: a loss is negative ("-28.26" for a huge trade, checked 2026-11-17), a
+ * slightly better than market fill is a small positive number. Checking the
+ * signed value let a 28% loss through with no warning.
+ */
+function impactLoss(impact: number | null): number | null {
+  return impact == null ? null : Math.max(0, -impact);
 }
 
 function clampSlippage(raw: string): string {
@@ -288,6 +306,11 @@ function TokenSelector({
 
   const isSelected = (address: string) => token != null && token.address.toLowerCase() === address.toLowerCase();
 
+  // OKX's own symbols ("ARB_ETH", "USD₮0") are shown as people know them.
+  const chainIndex = Object.values(CHAINS).find((c) => c.swapName === chain)?.chainIndex ?? null;
+  const show = (t: { symbol: string; address: string }) => displayToken({ symbol: t.symbol, address: t.address, chainIndex });
+  const tokenDisplay = token ? show(token) : null;
+
   return (
     <>
       <button
@@ -295,12 +318,12 @@ function TokenSelector({
         className={`tok-btn${token ? "" : " empty"}`}
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label={token ? `${label === "From" ? "Paying with" : "Receiving"} ${token.symbol}. Change token` : label === "From" ? "Choose the token to pay with" : "Choose the token to receive"}
+        aria-label={tokenDisplay ? `${label === "From" ? "Paying with" : "Receiving"} ${tokenDisplay.symbol}. Change token` : label === "From" ? "Choose the token to pay with" : "Choose the token to receive"}
       >
-        {token ? (
+        {token && tokenDisplay ? (
           <>
-            <TokenIcon symbol={token.symbol} size={26} />
-            <span>{token.symbol}</span>
+            <TokenIcon symbol={tokenDisplay.symbol} size={26} chainIndex={chainIndex} logoUrl={token.logo} />
+            <span>{tokenDisplay.symbol}</span>
           </>
         ) : (
           <span>Select token</span>
@@ -321,17 +344,20 @@ function TokenSelector({
             {walletTokens && walletTokens.length > 0 ? (
               <>
                 <p className="picker-group">In your wallet</p>
-                {walletTokens.map((wt, i) => (
-                  <PickRow
-                    key={`wallet-${wt.address}-${i}`}
-                    icon={<TokenIcon symbol={wt.symbol} size={34} />}
-                    title={wt.symbol}
-                    sub={<span className="num">{parseFloat(wt.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span>}
-                    end={parseFloat(wt.balanceUsd) > 0 ? <span className="num">${parseFloat(wt.balanceUsd).toFixed(2)}</span> : undefined}
-                    selected={isSelected(wt.address)}
-                    onPick={() => pick({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals })}
-                  />
-                ))}
+                {walletTokens.map((wt, i) => {
+                  const d = show(wt);
+                  return (
+                    <PickRow
+                      key={`wallet-${wt.address}-${i}`}
+                      icon={<TokenIcon symbol={d.symbol} size={34} chainIndex={chainIndex} />}
+                      title={d.symbol}
+                      sub={<span className="num">{formatAmount(wt.balance)}</span>}
+                      end={parseFloat(wt.balanceUsd) > 0 ? <span className="num">{formatUsd(wt.balanceUsd)}</span> : undefined}
+                      selected={isSelected(wt.address)}
+                      onPick={() => pick({ symbol: wt.symbol, address: wt.address, decimals: wt.decimals })}
+                    />
+                  );
+                })}
               </>
             ) : (
               <p className="picker-hint">Type a token name, a symbol or a contract address.</p>
@@ -348,20 +374,15 @@ function TokenSelector({
           !searching &&
           results.map((t, i) => {
             const parsed = parseTokenResult(t);
+            const d = searchResultDisplay(t, chainIndex);
             const bal = walletTokens?.find((w) => w.address.toLowerCase() === parsed.address.toLowerCase());
             return (
               <PickRow
                 key={`${parsed.address}-${i}`}
-                icon={<TokenIcon symbol={parsed.symbol} size={34} />}
-                title={parsed.symbol}
-                sub={getTokenName(t)}
-                end={
-                  bal ? (
-                    <span className="num">{parseFloat(bal.balance).toLocaleString("en-US", { maximumFractionDigits: 4 })}</span>
-                  ) : (
-                    <span className="num muted">{abbreviateAddress(parsed.address)}</span>
-                  )
-                }
+                icon={<TokenIcon symbol={d.symbol} size={34} chainIndex={chainIndex} logoUrl={parsed.logo} />}
+                title={d.symbol}
+                sub={d.name !== d.symbol ? d.name : undefined}
+                end={bal ? <span className="num">{formatAmount(bal.balance)}</span> : undefined}
                 selected={isSelected(parsed.address)}
                 onPick={() => pick(parsed)}
               />
@@ -637,9 +658,9 @@ export default function SwapPage() {
       void handleQuote();
       return;
     }
-    const impact = parsePriceImpact(liveQuote.data);
-    if (impact != null && impact > 10) return;
-    if (impact != null && impact >= 3 && impact <= 10 && !priceImpactAck) return;
+    const loss = impactLoss(parsePriceImpact(liveQuote.data));
+    if (loss != null && loss > 10) return;
+    if (loss != null && loss >= 3 && loss <= 10 && !priceImpactAck) return;
     setSwapLoading(true);
     setSwapStep("idle");
     setError(null);
@@ -750,8 +771,10 @@ export default function SwapPage() {
     liveQuote &&
     toToken &&
     (liveQuote.data.toTokenAmount || liveQuote.data.receiveAmount || liveQuote.data.toAmount);
+  // Display only, at full precision: cutting to 6 decimals turned small
+  // amounts into "0". Nothing below is sent with the swap.
   const quoteReceiveAmount = quoteReceiveRaw
-    ? fromWei(String(quoteReceiveRaw), toToken!.decimals, 6)
+    ? fromWei(String(quoteReceiveRaw), toToken!.decimals)
     : null;
   const quoteDisplay = quoteReceiveAmount
     ? `${quoteReceiveAmount} ${toToken!.symbol}`
@@ -762,19 +785,18 @@ export default function SwapPage() {
       : null;
   const minReceivedAmount =
     minReceivedWei && toToken
-      ? fromWei(minReceivedWei, toToken.decimals, 6)
+      ? fromWei(minReceivedWei, toToken.decimals)
       : null;
   const livePriceImpact = liveQuote ? parsePriceImpact(liveQuote.data) : null;
-  const priceImpactTooHigh = livePriceImpact != null && livePriceImpact > 10;
-  const priceImpactNeedsAck =
-    livePriceImpact != null && livePriceImpact >= 3 && livePriceImpact <= 10;
+  const liveImpactLoss = impactLoss(livePriceImpact);
+  const priceImpactTooHigh = liveImpactLoss != null && liveImpactLoss > 10;
+  const priceImpactNeedsAck = liveImpactLoss != null && liveImpactLoss >= 3 && liveImpactLoss <= 10;
 
   // Parse quote details for user-friendly display
   const quoteDetails = liveQuote
     ? (() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const q = liveQuote.data as Record<string, any>;
-        const estimatedGas = q.estimateGasFee ?? q.estimatedGas ?? q.gas;
         const priceImpact = livePriceImpact;
         const tradeFee = q.tradeFee ?? q.fee;
         // From/to token unit prices
@@ -785,17 +807,18 @@ export default function SwapPage() {
         const rate =
           fromWeiAmt && toWeiAmt && fromWeiAmt > 0n && fromToken && toToken
             ? (() => {
-                const scale = 10n ** 6n;
+                // 18 decimals so low-priced pairs do not read "= 0".
+                const scale = 10n ** 18n;
                 const fromDec = BigInt(fromToken.decimals);
                 const toDec = BigInt(toToken.decimals);
                 const adj = toWeiAmt * (10n ** fromDec) * scale / (fromWeiAmt * (10n ** toDec));
-                return fromWei(adj.toString(), 6, 6);
+                return fromWei(adj.toString(), 18);
               })()
             : null;
         // DEX router info
         const dexProtocol = q.dexRouterList?.[0]?.dexProtocol;
         const dexName = dexProtocol?.dexName ?? q.dexName ?? null;
-        return { estimatedGas, priceImpact, tradeFee, rate, dexName, fromUnitPrice, toUnitPrice };
+        return { priceImpact, tradeFee, rate, dexName, fromUnitPrice, toUnitPrice };
       })()
     : null;
 
@@ -815,7 +838,12 @@ export default function SwapPage() {
       ? parseFloat(quoteReceiveAmount) * parseFloat(quoteDetails.toUnitPrice)
       : null;
   const isNativeFrom = fromToken?.address.toLowerCase() === NATIVE_TOKEN.toLowerCase();
-  const usdFmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const symbolOf = (t: TokenInfo | null) =>
+    t ? displayToken({ symbol: t.symbol, address: t.address, chainIndex: chainConfig?.chainIndex }).symbol : "";
+  const fromSymbol = symbolOf(fromToken);
+  const toSymbol = symbolOf(toToken);
+  // What the trade loses to price impact (0 when the fill beats the market).
+  const impactSize = liveImpactLoss;
 
   const setMax = () => {
     if (!fromToken || !fromBal) return;
@@ -1002,7 +1030,7 @@ export default function SwapPage() {
                 <span className="leg-bal">
                   {fromBal ? (
                     <>
-                      <span className="num">{parseFloat(fromBal.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                      <span className="num">{formatAmount(fromBal.balance)}</span> available
                       {parseFloat(fromBal.balance) > 0 && (
                         <button type="button" className="max" onClick={setMax}>
                           Max
@@ -1040,7 +1068,7 @@ export default function SwapPage() {
                   Enter a valid amount
                 </span>
               ) : (
-                <span className="num">{payUsd != null ? usdFmt(payUsd) : " "}</span>
+                <span className="num">{payUsd != null ? formatUsd(payUsd) : " "}</span>
               )}
             </div>
           </div>
@@ -1057,19 +1085,19 @@ export default function SwapPage() {
               <span>You receive</span>
               {toBal && (
                 <span className="leg-bal">
-                  <span className="num">{parseFloat(toBal.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> held
+                  <span className="num">{formatAmount(toBal.balance)}</span> held
                 </span>
               )}
             </div>
             <div className="leg-main">
               <output className={`amount-out${quoteReceiveAmount ? "" : " muted"}`} aria-live="polite">
-                {quoteReceiveAmount ? <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} /> : "0"}
+                {quoteReceiveAmount ? formatAmount(quoteReceiveAmount) : "0"}
                 {quoteLoading && <span className="spin" aria-label="Getting a quote" />}
               </output>
               <TokenSelector label="To" token={toToken} onSelect={setToToken} chain={chain} walletTokens={walletTokens} />
             </div>
             <div className="leg-foot">
-              <span className="num">{receiveUsd != null ? usdFmt(receiveUsd) : " "}</span>
+              <span className="num">{receiveUsd != null ? formatUsd(receiveUsd) : " "}</span>
             </div>
           </div>
 
@@ -1087,7 +1115,7 @@ export default function SwapPage() {
                   <div>
                     <dt>Rate</dt>
                     <dd className="num">
-                      1 {fromToken.symbol} = {quoteDetails.rate} {toToken.symbol}
+                      1 {fromSymbol} = {formatAmount(quoteDetails.rate)} {toSymbol}
                     </dd>
                   </div>
                 )}
@@ -1095,23 +1123,15 @@ export default function SwapPage() {
                   <div>
                     <dt>Minimum received</dt>
                     <dd className="num">
-                      {minReceivedAmount} {toToken.symbol}
+                      {formatAmount(minReceivedAmount)} {toSymbol}
                     </dd>
                   </div>
                 )}
-                {quoteDetails.priceImpact != null && (
+                {impactSize != null && (
                   <div>
                     <dt>Price impact</dt>
-                    <dd
-                      className={`num ${
-                        Number(quoteDetails.priceImpact) > 3
-                          ? "text-loss-ink"
-                          : Number(quoteDetails.priceImpact) > 1
-                            ? "text-warn-ink"
-                            : "text-gain-ink"
-                      }`}
-                    >
-                      {Number(quoteDetails.priceImpact).toFixed(2)}%
+                    <dd className={`num${impactSize > 3 ? " text-loss-ink" : impactSize > 1 ? " text-warn-ink" : ""}`}>
+                      {formatPercent(impactSize)}
                     </dd>
                   </div>
                 )}
@@ -1119,16 +1139,10 @@ export default function SwapPage() {
                   <dt>Slippage</dt>
                   <dd>{autoSlippage ? "Auto" : `${liveSlippage}%`}</dd>
                 </div>
-                {quoteDetails.estimatedGas && (
-                  <div>
-                    <dt>Gas limit</dt>
-                    <dd className="num">{Number(quoteDetails.estimatedGas).toLocaleString("en-US")} units</dd>
-                  </div>
-                )}
                 {quoteDetails.tradeFee != null && Number(quoteDetails.tradeFee) > 0 && (
                   <div>
                     <dt>Network fee</dt>
-                    <dd className="num">${Number(quoteDetails.tradeFee).toFixed(2)}</dd>
+                    <dd className="num">{formatUsd(quoteDetails.tradeFee)}</dd>
                   </div>
                 )}
                 {quoteDetails.dexName && (
@@ -1194,7 +1208,7 @@ export default function SwapPage() {
             <button type="button" onClick={() => setPriceImpactAckFor(quoteIdentity)} className="note warn ack">
               <LineIcon name="alert" size={16} />
               <span>
-                This swap moves the price by {livePriceImpact!.toFixed(2)}%. You get noticeably less than the market rate. Tap to accept and&nbsp;continue.
+                This swap moves the price by {formatPercent(impactSize)}. You get noticeably less than the market rate. Tap to accept and&nbsp;continue.
               </span>
             </button>
           )}
@@ -1281,6 +1295,7 @@ export default function SwapPage() {
                   const price = parseFloat(t.price);
                   const change = parseFloat(t.change24h);
                   const mcap = parseFloat(t.marketCap);
+                  const d = displayToken({ symbol: t.symbol, name: t.name, address: t.address, chainIndex: t.chainIndex || chainConfig?.chainIndex });
                   return (
                     <li key={`${t.address}-${i}`}>
                       <button
@@ -1290,45 +1305,26 @@ export default function SwapPage() {
                           const raw = t.decimals ?? t.decimal;
                           const decimals = raw !== undefined && raw !== null && raw !== "" ? Number(raw) : NaN;
                           if (!Number.isFinite(decimals) || decimals < 0) {
-                            toast.error("Token decimals unavailable");
+                            toast.error("This token can’t be used right now. Try another one.");
                             return;
                           }
                           setToToken({
                             symbol: t.symbol,
                             address: t.address,
                             decimals,
+                            logo: t.logo || undefined,
                           });
                           if (!fromToken) setFromToken(getNativeToken(chain));
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
                       >
-                        {t.logo ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- remote logos from many hosts
-                          <img
-                            src={t.logo}
-                            alt=""
-                            width={34}
-                            height={34}
-                            className="tok-logo"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.visibility = "hidden";
-                            }}
-                          />
-                        ) : (
-                          <TokenIcon symbol={t.symbol} size={34} />
-                        )}
+                        <TokenIcon symbol={d.symbol} size={34} logoUrl={t.logo} chainIndex={d.chainIndex} />
                         <div style={{ minWidth: 0 }}>
-                          <div className="t">{t.symbol}</div>
-                          <div className="sub trunc">
-                            {mcap > 0
-                              ? `${mcap >= 1e9 ? (mcap / 1e9).toFixed(1) + "B" : mcap >= 1e6 ? (mcap / 1e6).toFixed(1) + "M" : mcap >= 1e3 ? (mcap / 1e3).toFixed(0) + "K" : mcap.toFixed(0)} market cap`
-                              : t.name}
-                          </div>
+                          <div className="t">{d.symbol}</div>
+                          <div className="sub trunc">{mcap > 0 ? `${formatCompactUsd(mcap)} market cap` : d.name}</div>
                         </div>
                         <div className="end">
-                          <div className="num">
-                            ${price >= 1 ? price.toLocaleString("en-US", { maximumFractionDigits: 2 }) : price >= 0.0001 ? price.toFixed(6) : price.toExponential(2)}
-                          </div>
+                          <div className="num">{price > 0 ? formatPrice(price) : MISSING}</div>
                           <Change value={change} />
                         </div>
                       </button>

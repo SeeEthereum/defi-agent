@@ -10,7 +10,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { bridgeCost, formatBridgeCost, formatCostShare } from "@/lib/bridge/cost";
 import { searchTokens } from "@/lib/token-search";
-import { Fade, NumberDisplay } from "@/components/motion";
+import { Fade } from "@/components/motion";
+import { TokenIcon } from "@/components/token-icon";
+import { formatAmount, formatPrice, formatUsd } from "@/lib/format";
+import { displayToken } from "@/lib/tokens/display";
+import { formatUnits } from "viem";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { LineIcon } from "@/components/line-icon";
 import { Empty, PageHead, Panel, PillTabs, Picker, PickRow, Skeleton } from "@/components/premium";
@@ -45,6 +49,8 @@ const NO_WALLET_ASSETS: WalletToken[] = [];
 
 interface QuoteData {
   tool: string;
+  /** LI.FI's name for the bridge ("Stargate"), for display. */
+  toolName?: string;
   toAmount: string;
   toAmountMin: string;
   toToken: BridgeTokenInfo;
@@ -136,44 +142,39 @@ function mapBackendError(detail: unknown): string {
   return "Bridge failed, please try again";
 }
 
-function fromWei(amount: string, decimals: number): string {
-  const s = amount.padStart(decimals + 1, "0");
-  const intPart = s.slice(0, s.length - decimals) || "0";
-  const fracPart = s.slice(s.length - decimals);
-  const trimmed = fracPart.slice(0, 6).replace(/0+$/, "");
-  return trimmed ? `${intPart}.${trimmed}` : intPart;
+/** A base-unit amount as a full-precision decimal string, for display only. */
+function unitsToDecimal(raw: string | null | undefined, decimals: number): string | null {
+  const d = Number(decimals);
+  if (typeof raw !== "string" || !/^\d+$/.test(raw) || !Number.isInteger(d) || d < 0) return null;
+  return formatUnits(BigInt(raw), d);
 }
 
-function TokenLogo({
-  logoURI,
-  symbol,
-  size,
-}: {
-  logoURI?: string;
-  symbol: string;
-  size: number;
-}) {
-  if (logoURI?.startsWith("https://")) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- LI.FI logos come from many hosts
-      <img
-        src={logoURI}
-        alt=""
-        width={size}
-        height={size}
-        className="tok-logo"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.visibility = "hidden";
-        }}
-      />
-    );
-  }
-  return (
-    <span className="tok-fallback" style={{ width: size, height: size }} aria-hidden="true">
-      {symbol.slice(0, 2)}
-    </span>
-  );
+/** Names people know for LI.FI's bridge keys, when the quote has no name. */
+const TOOL_NAMES: Record<string, string> = {
+  stargatev2: "Stargate",
+  stargatev2bus: "Stargate",
+  cbridge: "cBridge",
+};
+
+/** "stargateV2" → "Stargate", "across" → "Across", "someTool" → "Some Tool". */
+function toolLabel(key: string): string {
+  const known = TOOL_NAMES[key.toLowerCase()];
+  if (known) return known;
+  const words = key.replace(/([a-z])([A-Z0-9])/g, "$1 $2").replace(/[-_]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "LI.FI";
 }
+
+/** "About 40 s", "About 3 min", "About 2 h"; null when not given. */
+function durationLabel(seconds: number | null | undefined): string | null {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s <= 0) return null;
+  if (s < 60) return `About ${Math.max(1, Math.round(s))} s`;
+  const min = Math.ceil(s / 60);
+  if (min < 90) return `About ${min} min`;
+  return `About ${Math.round(min / 60)} h`;
+}
+
+const LIFI_NATIVE = new Set([NATIVE_TOKEN_LIFI, "0x0000000000000000000000000000000000000000"]);
 
 /** Network as a compact select; `label` is read by screen readers. */
 function ChainSelect({
@@ -212,12 +213,14 @@ function TokenChoice({
   onSelect,
   loading,
   title,
+  chainIndex,
 }: {
   tokens: BridgeTokenInfo[];
   selected: BridgeTokenInfo | null;
   onSelect: (t: BridgeTokenInfo) => void;
   loading: boolean;
   title: string;
+  chainIndex: number;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -229,6 +232,8 @@ function TokenChoice({
   // Exact symbol first, then symbols that start with the query, then the rest
   // (see lib/token-search). A pasted contract address matches too.
   const filtered = query ? searchTokens(tokens, query) : tokens.slice(0, 50);
+  const show = (t: BridgeTokenInfo) => displayToken({ symbol: t.symbol, name: t.name, address: t.address, chainIndex });
+  const selectedDisplay = selected ? show(selected) : null;
 
   return (
     <>
@@ -238,14 +243,14 @@ function TokenChoice({
         onClick={() => setOpen(true)}
         disabled={loading}
         aria-haspopup="dialog"
-        aria-label={selected ? `${title}: ${selected.symbol}. Change token` : title}
+        aria-label={selectedDisplay ? `${title}: ${selectedDisplay.symbol}. Change token` : title}
       >
         {loading ? (
           <span>Loading…</span>
-        ) : selected ? (
+        ) : selected && selectedDisplay ? (
           <>
-            <TokenLogo logoURI={selected.logoURI} symbol={selected.symbol} size={26} />
-            <span>{selected.symbol}</span>
+            <TokenIcon symbol={selectedDisplay.symbol} size={26} chainIndex={chainIndex} logoUrl={selected.logoURI} />
+            <span>{selectedDisplay.symbol}</span>
           </>
         ) : (
           <span>Select token</span>
@@ -254,20 +259,23 @@ function TokenChoice({
       </button>
       <Picker open={open} onClose={close} title={title} query={query} onQuery={setQuery} placeholder="Search a name, a symbol or an address">
         {filtered.length === 0 && <p className="picker-hint">No tokens found.</p>}
-        {filtered.map((t, i) => (
-          <PickRow
-            key={`${t.address}-${i}`}
-            icon={<TokenLogo logoURI={t.logoURI} symbol={t.symbol} size={34} />}
-            title={t.symbol}
-            sub={t.name}
-            end={t.priceUSD && parseFloat(t.priceUSD) > 0 ? <span className="num">${parseFloat(t.priceUSD).toFixed(2)}</span> : undefined}
-            selected={selected?.address.toLowerCase() === t.address.toLowerCase()}
-            onPick={() => {
-              onSelect(t);
-              close();
-            }}
-          />
-        ))}
+        {filtered.map((t, i) => {
+          const d = show(t);
+          return (
+            <PickRow
+              key={`${t.address}-${i}`}
+              icon={<TokenIcon symbol={d.symbol} size={34} chainIndex={chainIndex} logoUrl={t.logoURI} />}
+              title={d.symbol}
+              sub={d.name !== d.symbol ? d.name : undefined}
+              end={t.priceUSD && parseFloat(t.priceUSD) > 0 ? <span className="num">{formatPrice(t.priceUSD)}</span> : undefined}
+              selected={selected?.address.toLowerCase() === t.address.toLowerCase()}
+              onPick={() => {
+                onSelect(t);
+                close();
+              }}
+            />
+          );
+        })}
       </Picker>
     </>
   );
@@ -303,6 +311,8 @@ export default function BridgePage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
+  // LI.FI's name for the bridge of the last sent quote, for the progress note.
+  const [bridgeToolName, setBridgeToolName] = useState<string | null>(null);
   const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
   const [bridgeStatus, setBridgeStatus] = useState<StatusData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -562,6 +572,7 @@ export default function BridgePage() {
         const q = data.data;
         setQuote({
           tool: q.tool ?? q.toolDetails?.name ?? "Unknown",
+          toolName: typeof q.toolDetails?.name === "string" && q.toolDetails.name ? q.toolDetails.name : undefined,
           toAmount: q.estimate?.toAmount ?? "0",
           toAmountMin: q.estimate?.toAmountMin ?? "0",
           toToken: q.action?.toToken ?? toToken,
@@ -643,6 +654,7 @@ export default function BridgePage() {
       if (data.success && data.data) {
         const result = data.data as BridgeResult;
         setBridgeResult(result);
+        setBridgeToolName(quote.toolName ?? null);
         clearQuote();
         setAmount("");
 
@@ -717,14 +729,15 @@ export default function BridgePage() {
   const quoteIsCurrent = quote !== null && quoteKey === liveQuoteKey;
   const activeQuote = quoteIsCurrent ? quote : null;
 
+  // Display only, at full precision (nothing here is sent with the bridge).
   const quoteReceiveAmount =
     activeQuote && activeQuote.toToken
-      ? fromWei(activeQuote.toAmount, activeQuote.toToken.decimals)
+      ? unitsToDecimal(activeQuote.toAmount, activeQuote.toToken.decimals)
       : null;
 
   const quoteMinAmount =
     activeQuote && activeQuote.toToken
-      ? fromWei(activeQuote.toAmountMin, activeQuote.toToken.decimals)
+      ? unitsToDecimal(activeQuote.toAmountMin, activeQuote.toToken.decimals)
       : null;
 
   const quoteCost = activeQuote
@@ -732,9 +745,7 @@ export default function BridgePage() {
     : null;
   const quoteCostShare = quoteCost ? formatCostShare(quoteCost) : null;
 
-  const estimatedMinutes = activeQuote
-    ? Math.ceil(activeQuote.executionDuration / 60)
-    : null;
+  const estimatedTime = activeQuote ? durationLabel(activeQuote.executionDuration) : null;
 
   // Find the selected fromToken's wallet balance
   const selectedAssetBalance = fromToken
@@ -745,7 +756,16 @@ export default function BridgePage() {
       )
     : null;
 
-  const usdFmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fromSymbol = fromToken
+    ? displayToken({ symbol: fromToken.symbol, address: fromToken.address, chainIndex: fromChainIndex }).symbol
+    : "";
+  const toSymbol = toToken
+    ? displayToken({ symbol: toToken.symbol, address: toToken.address, chainIndex: toChainIndex }).symbol
+    : "";
+  const quoteToSymbol = activeQuote?.toToken
+    ? displayToken({ symbol: activeQuote.toToken.symbol, address: activeQuote.toToken.address, chainIndex: toChainIndex }).symbol
+    : toSymbol;
+  const resultTime = bridgeResult ? durationLabel(bridgeResult.estimatedTime) : null;
   const payUsd =
     fromToken?.priceUSD && parsedAmountWei !== null && amount ? parseFloat(amount.replace(",", ".")) * parseFloat(fromToken.priceUSD) : null;
   const receiveUsd =
@@ -815,7 +835,7 @@ export default function BridgePage() {
                 />
                 {selectedAssetBalance && (
                   <span className="leg-bal">
-                    <span className="num">{parseFloat(selectedAssetBalance.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</span> available
+                    <span className="num">{formatAmount(selectedAssetBalance.balance)}</span> available
                     <button type="button" className="max" onClick={handleMaxBalance}>
                       Max
                     </button>
@@ -855,6 +875,7 @@ export default function BridgePage() {
                   }}
                   loading={tokensLoading}
                   title={`Send from ${fromChainConfig?.name ?? "source chain"}`}
+                  chainIndex={fromChainIndex}
                 />
               </div>
               <div className="leg-foot">
@@ -863,7 +884,7 @@ export default function BridgePage() {
                     Enter a valid amount
                   </span>
                 ) : (
-                  <span className="num">{payUsd != null ? usdFmt(payUsd) : " "}</span>
+                  <span className="num">{payUsd != null ? formatUsd(payUsd) : " "}</span>
                 )}
               </div>
             </div>
@@ -892,7 +913,7 @@ export default function BridgePage() {
               </div>
               <div className="leg-main">
                 <output className={`amount-out${quoteReceiveAmount ? "" : " muted"}`} aria-live="polite">
-                  {activeQuote && quoteReceiveAmount ? <NumberDisplay value={quoteReceiveAmount} decimals={6} minDecimals={0} /> : "0"}
+                  {activeQuote && quoteReceiveAmount ? formatAmount(quoteReceiveAmount) : "0"}
                   {quoteLoading && <span className="spin" aria-label="Getting a quote" />}
                 </output>
                 <TokenChoice
@@ -905,10 +926,11 @@ export default function BridgePage() {
                   }}
                   loading={tokensLoading}
                   title={`Receive on ${toChainConfig?.name ?? "destination chain"}`}
+                  chainIndex={toChainIndex}
                 />
               </div>
               <div className="leg-foot">
-                <span className="num">{receiveUsd != null ? usdFmt(receiveUsd) : " "}</span>
+                <span className="num">{receiveUsd != null ? formatUsd(receiveUsd) : " "}</span>
               </div>
             </div>
 
@@ -926,25 +948,25 @@ export default function BridgePage() {
                       <div>
                         <dt>Minimum received</dt>
                         <dd className="num">
-                          {quoteMinAmount} {activeQuote.toToken.symbol}
+                          {formatAmount(quoteMinAmount)} {quoteToSymbol}
                         </dd>
                       </div>
                     )}
                     <div>
                       <dt>Bridge</dt>
-                      <dd style={{ textTransform: "capitalize" }}>{activeQuote.tool}</dd>
+                      <dd>{activeQuote.toolName ?? toolLabel(activeQuote.tool)}</dd>
                     </div>
-                    {fromToken && toToken && fromToken.symbol !== toToken.symbol && (
+                    {fromToken && toToken && fromSymbol !== toSymbol && (
                       <div>
                         <dt>Route</dt>
                         <dd>
-                          {fromToken.symbol} to {toToken.symbol}
+                          {fromSymbol} to {toSymbol}
                         </dd>
                       </div>
                     )}
                     <div>
                       <dt>Estimated time</dt>
-                      <dd>{estimatedMinutes != null ? `About ${estimatedMinutes} min` : "Unknown"}</dd>
+                      <dd>{estimatedTime ?? "Unknown"}</dd>
                     </div>
                     <div>
                       <dt>Fees and gas</dt>
@@ -992,13 +1014,13 @@ export default function BridgePage() {
                   <div>
                     <strong>{bridgeDone ? "Bridge complete" : bridgeFailed ? "Bridge failed" : "Bridge in progress"}</strong>
                     <p>
-                      {bridgeStatus?.substatusMessage ??
-                        (bridgeDone
-                          ? "The tokens have arrived on the destination chain."
-                          : bridgeFailed
-                            ? "The bridge transaction failed. Your funds may be returned."
-                            : `Bridging via ${bridgeResult.bridge}. About ${Math.ceil(bridgeResult.estimatedTime / 60)} min.`)}
+                      {bridgeDone
+                        ? "The tokens have arrived on the destination chain."
+                        : bridgeFailed
+                          ? "The bridge transaction failed. Your funds may be returned."
+                          : `Bridging via ${bridgeToolName ?? toolLabel(bridgeResult.bridge)}.${resultTime ? ` ${resultTime}.` : ""}`}
                     </p>
+                    {bridgeStatus?.substatusMessage && <p className="muted">{bridgeStatus.substatusMessage}</p>}
                     {bridgeResult.txHash && (
                       <a className="tx-link" href={`${fromChainConfig?.explorer ?? "https://etherscan.io"}/tx/${bridgeResult.txHash}`} target="_blank" rel="noopener noreferrer">
                         Sent on {fromChainConfig?.name} <LineIcon name="arrow-up-right" size={13} />
@@ -1080,15 +1102,22 @@ export default function BridgePage() {
                     fromToken != null &&
                     (fromToken.address.toLowerCase() === asset.address.toLowerCase() ||
                       fromToken.symbol.toLowerCase() === asset.symbol.toLowerCase());
+                  // OKX's own symbols ("ARB_ETH") shown as people know them; natives
+                  // find LI.FI's logo under its native address.
+                  const d = displayToken({ symbol: asset.symbol, address: asset.address, chainIndex: fromChainIndex });
+                  const assetAddr = asset.address.toLowerCase();
+                  const lifiLogo = fromTokens.find((t) =>
+                    d.isNative ? LIFI_NATIVE.has(t.address.toLowerCase()) : t.address.toLowerCase() === assetAddr
+                  )?.logoURI;
                   return (
                     <li key={`${asset.address}-${i}`}>
                       <button type="button" className={`row${on ? " is-on" : ""}`} aria-pressed={on} onClick={() => handleSelectWalletAsset(asset)}>
-                        <TokenLogo symbol={asset.symbol} size={34} logoURI={fromTokens.find((t) => t.address.toLowerCase() === asset.address.toLowerCase())?.logoURI} />
+                        <TokenIcon symbol={d.symbol} size={34} chainIndex={fromChainIndex} logoUrl={lifiLogo} />
                         <div style={{ minWidth: 0 }}>
-                          <div className="t">{asset.symbol}</div>
-                          <div className="sub num">{parseFloat(asset.balance).toLocaleString("en-US", { maximumFractionDigits: 6 })}</div>
+                          <div className="t">{d.symbol}</div>
+                          <div className="sub num">{formatAmount(asset.balance)}</div>
                         </div>
-                        <div className="end num">{parseFloat(asset.balanceUsd) > 0 ? `$${parseFloat(asset.balanceUsd).toFixed(2)}` : ""}</div>
+                        <div className="end num">{parseFloat(asset.balanceUsd) > 0 ? formatUsd(asset.balanceUsd) : ""}</div>
                       </button>
                     </li>
                   );

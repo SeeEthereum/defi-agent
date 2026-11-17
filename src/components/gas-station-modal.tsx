@@ -23,6 +23,10 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/motion/modal";
+import { TokenIcon } from "@/components/token-icon";
+import { getChainByIndex } from "@/lib/chains";
+import { formatAmount } from "@/lib/format";
+import { chainName, displayToken } from "@/lib/tokens/display";
 import type { GasStationConfirming, GasStationToken } from "@/lib/okx/types";
 
 // Backend states that require the one-time on-chain activation (handled by
@@ -43,13 +47,22 @@ const TERMINAL_STATES = new Set([
   "NOT_SUPPORT_INTENTION",
 ]);
 
-function tokenLabel(t: GasStationToken): string {
-  return (
-    t.symbol ??
-    t.feeTokenSymbol ??
-    `${t.feeTokenAddress.slice(0, 6)}…${t.feeTokenAddress.slice(-4)}`
-  );
+/** "USDT" (OKX's "USD₮0" cleaned up), or null when the backend gave no symbol. */
+function tokenSymbol(t: GasStationToken, chain: string): string | null {
+  const raw = t.symbol ?? t.feeTokenSymbol;
+  if (!raw) return null;
+  return displayToken({ symbol: raw, chainIndex: chain, tokenAddress: t.feeTokenAddress }).symbol;
 }
+
+/** Why Gas Station cannot help, in plain words, for the terminal states. */
+const TERMINAL_TEXT: Record<string, string> = {
+  INSUFFICIENT_ALL:
+    "None of your stablecoins on this network has enough to cover the fee. Add some funds, then try again.",
+  HAS_PENDING_TX:
+    "Another transaction from your wallet is still pending on this network. Wait for it to finish, then try again.",
+  NOT_SUPPORT_INTENTION:
+    "This kind of transaction can't pay its fee with a stablecoin. Add some of the network's own coin for the fee, then try again.",
+};
 
 interface GasStationModalProps {
   open: boolean;
@@ -85,6 +98,8 @@ export function GasStationModal({
 
   const status = payload.status ?? "";
   const isTerminal = TERMINAL_STATES.has(status);
+  const network = chainName(chain) ?? "this network";
+  const nativeCoin = getChainByIndex(Number(chain))?.nativeSymbol ?? "native coin";
   const needsActivation = ACTIVATION_STATES.has(status);
   const pickable = payload.tokenList.filter((t) => t.sufficient !== false);
 
@@ -136,12 +151,17 @@ export function GasStationModal({
           <h2 className="text-base font-semibold text-foreground">
             {isTerminal ? "Gas Station unavailable" : "Pay gas with a stablecoin?"}
           </h2>
+          {isTerminal && (
+            <p className="mt-1.5 text-[13px] text-muted-foreground">
+              {TERMINAL_TEXT[status] ?? "Gas Station can't pay the fee for this transaction. Try again later."}
+            </p>
+          )}
           {!isTerminal && (
             <p className="mt-1.5 text-[13px] text-muted-foreground">
-              Your native token balance isn&apos;t enough to pay gas on this
-              chain. Gas Station can pay it for you and charge the fee in a
-              stablecoin instead. A service fee in the selected token applies —
-              it is not free.{" "}
+              You don&apos;t have enough {nativeCoin} to pay the network fee
+              (gas) on {network}. Gas Station can pay it for you and charge the
+              fee in a stablecoin instead. A service fee in the selected token
+              applies — it is not free.{" "}
               <a
                 href="https://web3.okx.com/learn/wallet-gas-station"
                 target="_blank"
@@ -154,10 +174,12 @@ export function GasStationModal({
           )}
         </div>
 
-        {/* Backend message is authoritative — token balances and fees live here */}
+        {/* Backend message is authoritative (token balances and fees live
+            here), so it stays visible, labelled, under the plain explanation. */}
         {payload.message && (
-          <div className="rounded-xl bg-secondary/80 border border-border/40 p-3 text-[12px] text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">
-            {payload.message}
+          <div className="rounded-xl bg-secondary/80 border border-border/40 p-3 text-[12px] text-muted-foreground max-h-40 overflow-auto">
+            <p className="mb-1 font-medium text-foreground/80">Details from the wallet service</p>
+            <p className="whitespace-pre-wrap">{payload.message}</p>
           </div>
         )}
 
@@ -172,25 +194,31 @@ export function GasStationModal({
           <>
             {pickable.length > 0 ? (
               <div className="space-y-2">
-                {pickable.map((t) => (
-                  <button
-                    key={t.feeTokenAddress}
-                    onClick={() => setSelected(t)}
-                    disabled={submitting}
-                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
-                      selected?.feeTokenAddress === t.feeTokenAddress
-                        ? "border-primary bg-primary/12 text-foreground"
-                        : "border-border/60 bg-secondary/80 text-foreground hover:bg-primary/8"
-                    }`}
-                  >
-                    <span>{tokenLabel(t)}</span>
-                    {typeof t.balance === "string" && (
-                      <span className="ml-2 text-[12px] text-muted-foreground tabular-nums">
-                        balance {t.balance}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {pickable.map((t) => {
+                  const symbol = tokenSymbol(t, chain);
+                  return (
+                    <button
+                      key={t.feeTokenAddress}
+                      onClick={() => setSelected(t)}
+                      disabled={submitting}
+                      title={symbol ? undefined : t.feeTokenAddress}
+                      className={`w-full flex items-center gap-3 text-left px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                        selected?.feeTokenAddress === t.feeTokenAddress
+                          ? "border-primary bg-primary/12 text-foreground"
+                          : "border-border/60 bg-secondary/80 text-foreground hover:bg-primary/8"
+                      }`}
+                    >
+                      <TokenIcon symbol={symbol ?? "?"} size={24} chainIndex={chain} />
+                      <span>{symbol ?? "Unknown token"}</span>
+                      {typeof t.balance === "string" && t.balance !== "" && (
+                        <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
+                          Balance {formatAmount(t.balance)}
+                          {symbol ? ` ${symbol}` : ""}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-[13px] text-muted-foreground">

@@ -21,6 +21,8 @@ import { CHAINS, getChainByIndex } from "@/lib/chains";
 import { CHAIN_COLORS } from "@/lib/chain-colors";
 import { GasStationModal } from "@/components/gas-station-modal";
 import { OkxProtections } from "@/components/okx-protections";
+import { formatAmount, formatUsd } from "@/lib/format";
+import { chainName, cleanSymbol, displayToken } from "@/lib/tokens/display";
 import { TokenIcon } from "@/components/token-icon";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import { CountUp, Empty, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/components/premium";
@@ -60,11 +62,9 @@ interface TxEntry {
 
 type WalletTab = "balances" | "activity" | "receive" | "send";
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function amount(n: number, max = 6): string {
-  return n.toLocaleString("en-US", { maximumFractionDigits: max });
-}
+/** Dollar values and amounts as people read them (lib/format). */
+const usd = { format: (n: number) => formatUsd(n) };
+const amount = (n: number) => formatAmount(n);
 
 /**
  * ?tab=receive or ?tab=send opens that view (pages here render only in the
@@ -254,7 +254,7 @@ function AccountsSheet({
                         </div>
                         <div className="sub num">
                           {a.evmAddress ? `${a.evmAddress.slice(0, 8)}…${a.evmAddress.slice(-6)}` : "Address appears once you use it"}
-                          {a.totalValueUsd != null ? ` · $${Number(a.totalValueUsd).toFixed(2)}` : ""}
+                          {a.totalValueUsd != null ? ` · ${formatUsd(a.totalValueUsd)}` : ""}
                         </div>
                       </div>
                       <div className="acct-acts">
@@ -423,10 +423,13 @@ export default function WalletPage() {
     (c) => String(c.chainIndex) === sendForm.chain
   );
   const chainTokens = balancesByChain[parseInt(sendForm.chain)]?.tokens ?? [];
+  const sendToken = chainTokens.find((t) => t.tokenAddress === sendForm.tokenKey);
   const selectedTokenSymbol =
     sendForm.tokenKey === "native"
-      ? chainTokens.find((t) => t.isNative)?.symbol ?? selectedChain?.nativeSymbol ?? "ETH"
-      : chainTokens.find((t) => t.tokenAddress === sendForm.tokenKey)?.symbol ?? sendForm.tokenKey;
+      ? selectedChain?.nativeSymbol ?? "ETH"
+      : sendToken
+        ? displayToken(sendToken).symbol
+        : "token";
   const normalizedAmount = normalizeAmount(sendForm.amount);
   const amountValid = isValidAmount(sendForm.amount);
   const recipientValid = EVM_ADDRESS_RE.test(sendForm.recipient);
@@ -684,18 +687,24 @@ export default function WalletPage() {
                     <span className="num">{usd.format(total)}</span>
                   </header>
                   <ul className="rows">
-                    {tokens.map((t, i) => (
-                      <li key={`${t.tokenAddress}-${i}`}>
-                        <div className="row">
-                          <TokenIcon symbol={t.symbol} size={34} />
-                          <div style={{ minWidth: 0 }}>
-                            <div className="t">{t.symbol}</div>
-                            <div className="sub num">{amount(t.qty)}</div>
+                    {tokens.map((t, i) => {
+                      const d = displayToken(t);
+                      return (
+                        <li key={`${t.tokenAddress}-${i}`}>
+                          <div className="row">
+                            <TokenIcon symbol={d.symbol} size={34} />
+                            <div style={{ minWidth: 0 }}>
+                              <div className="t">
+                                {d.symbol}
+                                {d.name !== d.symbol && <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>{d.name}</span>}
+                              </div>
+                              <div className="sub num">{amount(t.qty)} {d.symbol}</div>
+                            </div>
+                            <div className="end num">{t.hasPrice ? usd.format(t.value) : <span className="muted">No price yet</span>}</div>
                           </div>
-                          <div className="end num">{t.hasPrice ? usd.format(t.value) : <span className="muted">No price</span>}</div>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </section>
               ))}
@@ -768,16 +777,17 @@ export default function WalletPage() {
 
                   // Action label: Approve / Receive / Send / Contract
                   const hasAmount = tx.amount && parseFloat(tx.amount) > 0;
+                  const sym = tx.symbol ? displayToken({ symbol: tx.symbol, chainIndex: tx.chainIndex }).symbol : "";
                   let actionLabel: string;
                   let kind: "approve" | "in" | "out" | "contract";
                   if (tx.isApprove) {
-                    actionLabel = `Approve ${tx.symbol ?? ""}`.trim();
+                    actionLabel = `Approve ${sym}`.trim();
                     kind = "approve";
                   } else if (hasAmount && isReceive) {
-                    actionLabel = `Received ${tx.symbol ?? ""}`.trim();
+                    actionLabel = `Received ${sym}`.trim();
                     kind = "in";
                   } else if (hasAmount && !isReceive) {
-                    actionLabel = `Sent ${tx.symbol ?? ""}`.trim();
+                    actionLabel = `Sent ${sym}`.trim();
                     kind = "out";
                   } else {
                     actionLabel = tx.contractName ? `Contract · ${tx.contractName}` : "Contract call";
@@ -786,9 +796,9 @@ export default function WalletPage() {
                   const icon: LineIconName = kind === "in" ? "arrow-down" : kind === "out" ? "arrow-up" : kind === "approve" ? "shield-check" : "file";
 
                   const amountDisplay = hasAmount
-                    ? `${isReceive ? "+" : "−"}${amount(parseFloat(tx.amount!), 4)} ${tx.symbol ?? ""}`
+                    ? `${isReceive ? "+" : "−"}${amount(parseFloat(tx.amount!))} ${sym}`
                     : tx.gasFeeEth
-                    ? `Gas ${tx.gasFeeEth} ETH`
+                    ? `Network fee ${formatAmount(tx.gasFeeEth)} ${getChainByIndex(Number(tx.chainIndex))?.nativeSymbol ?? ""}`.trim()
                     : "";
 
                   const explorerBase = getChainByIndex(Number(tx.chainIndex))?.explorer;
@@ -805,7 +815,7 @@ export default function WalletPage() {
                             {spam ? <span className="st bad">Likely spam</span> : <span className={`st ${state}`}>{stateLabel}</span>}
                           </div>
                           <div className="sub">
-                            {tx.chainSymbol ?? "Unknown chain"} · {dateStr}
+                            {chainName(tx.chainIndex) ?? "Unknown network"} · {dateStr}
                             {tx.failReason && <span className="fail"> · {tx.failReason}</span>}
                           </div>
                         </div>
@@ -913,12 +923,12 @@ export default function WalletPage() {
                     value={sendForm.tokenKey}
                     onChange={(e) => setSendForm({ ...sendForm, tokenKey: e.target.value, amount: "" })}
                   >
-                    <option value="native">{chainTokens.find((t) => t.isNative)?.symbol ?? selectedChain?.nativeSymbol ?? "ETH"} (native)</option>
+                    <option value="native">{selectedChain?.nativeSymbol ?? cleanSymbol(chainTokens.find((t) => t.isNative)?.symbol) ?? "ETH"}</option>
                     {chainTokens
                       .filter((t) => !t.isNative && t.tokenAddress)
                       .map((t) => (
                         <option key={t.tokenAddress} value={t.tokenAddress!}>
-                          {t.symbol} · {parseFloat(t.balance).toFixed(4)}
+                          {displayToken({ ...t, chainIndex: selectedChain?.chainIndex }).symbol} · {formatAmount(t.balance)}
                         </option>
                       ))}
                     {chainTokens.length === 0 && (
@@ -930,7 +940,7 @@ export default function WalletPage() {
                 </div>
                 {selectedBalance > 0 && (
                   <p className="hint">
-                    Available <span className="num">{selectedBalance.toFixed(6)}</span> {selectedTokenSymbol}
+                    Available <span className="num">{formatAmount(selectedBalance)}</span> {selectedTokenSymbol}
                   </p>
                 )}
               </div>
