@@ -15,6 +15,9 @@
  * Any answer that is not a success clears the entry, so a rejected or failed
  * request can be retried right away. State is in process memory: this
  * deployment runs one instance.
+ *
+ * Every attempt, refused ones included, is also written to the transaction
+ * log (lib/audit/transaction-log), fire and forget.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -24,6 +27,7 @@ import { currentSession } from "@/lib/session/session";
 import { invalidateBalances } from "@/lib/wallet/balances";
 import { markActive } from "@/lib/session/activity";
 import { IN_FLIGHT_MESSAGE, recentMessage, UNKNOWN_OUTCOME_MESSAGE } from "./send-state";
+import { logTransactionAttempt, outcomeFor, type TxOutcome } from "@/lib/audit/transaction-log";
 
 /** Default time a successful request stays blocked as a repeat. */
 export const RECENT_MS = 60_000;
@@ -103,19 +107,25 @@ function secondsSince(at: number, now: number): number {
   return Math.max(1, Math.round((now - at) / 1000));
 }
 
-/** Read `{ success, data: { txHash } }` from a JSON response without consuming it. */
-async function readResult(res: Response): Promise<{ success: boolean; txHash: string | null }> {
-  if (res.status < 200 || res.status >= 300) return { success: false, txHash: null };
+/**
+ * Read `{ success, code, data: { txHash } }` from a JSON response without
+ * consuming it. `code` is only for the transaction log.
+ */
+async function readResult(res: Response): Promise<{ success: boolean; txHash: string | null; code: string | null }> {
   try {
     const body = (await res.clone().json()) as {
       success?: unknown;
+      code?: unknown;
       data?: { txHash?: unknown; hash?: unknown };
     };
-    if (body?.success !== true) return { success: false, txHash: null };
+    const code = typeof body?.code === "string" ? body.code : null;
+    if (res.status < 200 || res.status >= 300 || body?.success !== true) {
+      return { success: false, txHash: null, code };
+    }
     const hash = body.data?.txHash ?? body.data?.hash;
-    return { success: true, txHash: typeof hash === "string" ? hash : null };
+    return { success: true, txHash: typeof hash === "string" ? hash : null, code };
   } catch {
-    return { success: false, txHash: null };
+    return { success: false, txHash: null, code: null };
   }
 }
 
@@ -139,18 +149,28 @@ export function guardDuplicates<Ctx = unknown>(
     // Sending a transaction is activity, whatever the page's heartbeat did.
     markActive(currentSession());
     const text = await request.clone().text();
-    const key = `${currentSession().sid}|${scope}|${bodyHash(text)}`;
+    const sid = currentSession().sid;
+    const hash = bodyHash(text);
+    const key = `${sid}|${scope}|${hash}`;
     const now = Date.now();
     prune(now);
 
+    // Transaction log: one row per attempt, written in the background.
+    const audit = (outcome: TxOutcome, status: number, txHash: string | null = null, code: string | null = null) =>
+      logTransactionAttempt({ scope, sid, bodyHash: hash, startedAt: now, outcome, status, txHash, code });
+
     const existing = entries.get(key);
     if (existing?.state === "pending") {
+      audit("declined", 409, null, "duplicate_in_flight");
       return conflict("duplicate_in_flight", IN_FLIGHT_MESSAGE);
     }
     if (existing?.state === "unknown") {
+      audit("declined", 409, null, "outcome_unknown");
       return conflict("outcome_unknown", UNKNOWN_OUTCOME_MESSAGE);
     }
     if (existing?.state === "done") {
+      // The hash belongs to the earlier attempt's row, not to this one.
+      audit("declined", 409, null, "duplicate_recent");
       return conflict("duplicate_recent", recentMessage(secondsSince(existing.at, now)), {
         txHash: existing.txHash,
       });
@@ -168,6 +188,8 @@ export function guardDuplicates<Ctx = unknown>(
       } else {
         entries.delete(key);
       }
+      // Next.js answers a thrown handler with a 500.
+      audit(ctx.unknown ? "outcome_unknown" : "failed", 500);
       throw error;
     }
 
@@ -181,18 +203,21 @@ export function guardDuplicates<Ctx = unknown>(
       } else {
         entries.delete(key);
       }
+      audit("success", res.status, result.txHash);
       return res;
     }
     if (ctx.unknown) {
       // The route's own error would read like a plain failure. Say instead
       // that the transaction may be on its way, with a code pages can match.
       entries.set(key, { state: "unknown", at, until: at + UNKNOWN_OUTCOME_MS });
+      audit("outcome_unknown", 504, null, "outcome_unknown");
       return NextResponse.json(
         { success: false, code: "outcome_unknown", error: UNKNOWN_OUTCOME_MESSAGE },
         { status: 504 }
       );
     }
     entries.delete(key);
+    audit(outcomeFor(res.status, false), res.status, null, result.code);
     return res;
   };
 }

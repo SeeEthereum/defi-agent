@@ -6,6 +6,7 @@ services:
     region: frankfurt
     buildCommand: bash scripts/install-onchainos.sh && npm ci && npm run build
     startCommand: npm run start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22"

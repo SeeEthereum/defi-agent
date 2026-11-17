@@ -63,5 +63,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?|css|js)$).*)"],
+  // No session for the health check (uptime monitors, Render) or the
+  // public metadata files: they need no cookie, and none is set.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/health|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?|css|js)$).*)",
+  ],
 };

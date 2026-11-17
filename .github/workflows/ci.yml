@@ -1,0 +1,57 @@
+# Type check, lint, unit tests and a production build on every push and
+# pull request to main.
+#
+# No secrets: the build and the tests run with an empty environment (the
+# Sentry upload, the database and every API key are optional at build time).
+# The onchainos binary is not installed; tests that would need it or a real
+# database skip themselves.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Same major as production (render.yaml NODE_VERSION).
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # next-env.d.ts and .next/types are gitignored: generate them (image
+      # imports, route types) before tsc, without a full build.
+      - name: Generate Next.js types
+        run: npx next typegen
+
+      - name: Type check
+        run: npx tsc --noEmit -p .
+
+      - name: Lint
+        run: npx eslint src --quiet
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
