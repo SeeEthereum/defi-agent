@@ -264,7 +264,7 @@ export default function WelcomePage() {
                       Your keys stay <span className="soft">in the&nbsp;enclave.</span>
                     </h2>
                     <p className="sec-lead">
-                      {t("Your private key is generated inside OKX's secure enclave and never leaves it. The assistant can prepare a transaction and ask you to sign it, but it cannot read your key, and neither can we.")}
+                      {t("Your private key is generated inside OKX's secure enclave and never leaves it: nobody can read it, not the assistant and not us. While you are signed in, our server keeps a session that can ask the enclave to sign, and we use it only for what you confirm. Sign out and that session is deleted.")}
                     </p>
                   </div>
                   <ul className="points">
@@ -279,7 +279,7 @@ export default function WelcomePage() {
                       <LineIcon name="shield-check" size={22} />
                       <div>
                         <h3>You confirm everything</h3>
-                        <p>{t("The assistant proposes, you approve. It never signs on its own, however you phrase the request.")}</p>
+                        <p>{t("The assistant only proposes. A transaction goes out after you press Confirm on its card, however you phrase the request.")}</p>
                       </div>
                     </li>
                     <li>

@@ -205,7 +205,7 @@ export default function AuthPage() {
                     onChange={(e) => setTicked(e.target.checked)}
                   />
                   <span>
-                    I have read the disclaimer above and understand the risks of swapping, bridging, lending, using AI-assisted actions, and managing a non-custodial wallet whose keys cannot be&nbsp;exported.
+                    I have read the disclaimer above and understand the risks of swapping, bridging, lending, using AI-assisted actions, and managing a wallet whose keys cannot be&nbsp;exported.
                   </span>
                 </label>
 

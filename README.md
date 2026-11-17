@@ -1,8 +1,8 @@
 # albicocca
 
-**AI-powered, non-custodial DeFi command center built on OKX Agentic Wallet.**
+**AI-powered DeFi command center built on OKX Agentic Wallet.**
 
-Swap any token, bridge across chains, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with a conversational AI agent that can execute every operation by chat. Sign in with Google, Apple or email, TEE custody, no seed phrases.
+Swap any token, bridge across chains, earn yield, scan for risks, track smart money, and manage your crypto portfolio — all from a single interface, with a conversational AI agent that prepares every operation by chat for you to confirm. Sign in with Google, Apple or email, TEE custody, no seed phrases.
 
 > Created by [0xSalvo](https://x.com/salvodisobey)
 
@@ -10,7 +10,7 @@ Swap any token, bridge across chains, earn yield, scan for risks, track smart mo
 
 ## What is albicocca?
 
-albicocca is a non-custodial DeFi platform that combines:
+albicocca is a DeFi platform that combines:
 
 - **DEX Aggregation** — swap any token across 500+ DEX sources at the best price, zero platform fees
 - **Cross-Chain Bridge** — bridge tokens between any supported chain via LI.FI aggregator (20+ bridge protocols), with cross-token support
@@ -195,6 +195,7 @@ No seed phrases. No browser extensions. Sign in with Google, Apple or email and 
 ### Transaction safety
 
 - **TEE custody** — private keys are generated and stored inside OKX's hardware enclave. They are never exposed to the server, the frontend, or the user.
+- **Server-held session, stated plainly** — while a user is signed in, the server keeps that user's OKX session credential (`ONCHAINOS_HOME` per browser session). It can ask the enclave to sign, so the server is part of the trust boundary: the app only uses it for transactions the user confirms, and sign-out runs `wallet logout` and deletes the directory.
 - **No seed phrases** — sign in with Google, Apple or email. No mnemonic to lose or get stolen.
 - **The server picks the address** — the recipient of a swap, the sender of a bridge and the destination of a Hyperliquid withdrawal always come from the signed-in session, never from the request body.
 - **Quote binding** — a quote route issues a one-minute, session-scoped quote id; the matching execute route refuses to sign without it, and refuses again if the price moved more than 1% since the quote.

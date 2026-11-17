@@ -196,6 +196,19 @@ export const RISK_CARDS: Card[] = [
       {
         body: (
           <>
+            <strong>
+              While you are signed in, this application&rsquo;s server holds a
+              session credential issued by OKX.
+            </strong>{" "}
+            It lets the server ask the enclave to sign, and the application uses
+            it only for transactions you confirm. Someone who took control of
+            that server could misuse it. Signing out deletes it from the&nbsp;server.
+          </>
+        ),
+      },
+      {
+        body: (
+          <>
             <strong>You depend on OKX infrastructure</strong> to access and
             operate your wallet. If OKX discontinues the Agentic Wallet service,
             you will not be able to recover your keys&nbsp;independently.
