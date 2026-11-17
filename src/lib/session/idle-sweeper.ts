@@ -15,14 +15,10 @@ import { clearLoginSession } from "@/lib/okx/login-session";
 import { invalidateHlClients } from "@/lib/hyperliquid/http";
 import { invalidateHlSigningAddressCache } from "@/lib/hyperliquid/probe";
 import { idleTimeoutMs, lastActiveMs, noteIdleSignOut } from "./activity";
-import { destroySessionHome, runWithSession, sessionsRoot, type UserSession } from "./session";
+import { destroySessionHome, holdsSignedInWallet, runWithSession, sessionsRoot, type UserSession } from "./session";
 import { SID_PATTERN } from "./token";
 
 const SWEEP_EVERY_MS = 60_000;
-
-function holdsWallet(dir: string): boolean {
-  return fs.existsSync(path.join(dir, "wallets.json")) || fs.existsSync(path.join(dir, "session.json"));
-}
 
 /** Sessions idle for longer than `timeoutMs` at `now`. */
 export function idleSessions(timeoutMs: number, now = Date.now()): UserSession[] {
@@ -33,7 +29,7 @@ export function idleSessions(timeoutMs: number, now = Date.now()): UserSession[]
     if (!SID_PATTERN.test(name)) continue;
     const dir = path.join(root, name);
     try {
-      if (!fs.statSync(dir).isDirectory() || !holdsWallet(dir)) continue;
+      if (!fs.statSync(dir).isDirectory() || !holdsSignedInWallet(dir)) continue;
       if (now - lastActiveMs(dir) > timeoutMs) idle.push({ sid: name, home: dir });
     } catch {
       // removed meanwhile, or unreadable: skip it

@@ -105,3 +105,24 @@ describe("idle sweep", () => {
     expect(fs.existsSync(idle.home)).toBe(false);
   });
 });
+
+describe("what counts as a signed-in wallet", () => {
+  it("is not fooled by the session.json onchainos 4.6.11 writes when a login only started", async () => {
+    const { holdsSignedInWallet } = await import("./session");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "holds-"));
+    try {
+      fs.writeFileSync(
+        path.join(dir, "session.json"),
+        JSON.stringify({ saTeeId: "", sessionCert: "", encryptedSessionSk: "", sessionKeyExpireAt: "", deviceId: "d" })
+      );
+      expect(holdsSignedInWallet(dir)).toBe(false);
+      fs.writeFileSync(path.join(dir, "session.json"), JSON.stringify({ sessionCert: "cert", deviceId: "d" }));
+      expect(holdsSignedInWallet(dir)).toBe(true);
+      fs.rmSync(path.join(dir, "session.json"));
+      fs.writeFileSync(path.join(dir, "wallets.json"), "{}");
+      expect(holdsSignedInWallet(dir)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

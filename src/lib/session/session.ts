@@ -100,12 +100,28 @@ function newestDirectMtimeMs(dir: string): number {
 }
 
 /**
+ * Whether a session directory holds a signed-in wallet, as opposed to a
+ * login someone started and walked away from. onchainos 4.6.11 writes
+ * `session.json` already at `login --phase init`, with only a device id;
+ * it carries a session certificate only once the login completed.
+ */
+export function holdsSignedInWallet(dir: string): boolean {
+  if (fs.existsSync(path.join(dir, "wallets.json"))) return true;
+  try {
+    const session = JSON.parse(fs.readFileSync(path.join(dir, "session.json"), "utf8")) as { sessionCert?: unknown };
+    return typeof session?.sessionCert === "string" && session.sessionCert.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Delete abandoned per-session keystore directories.
  *
  * A directory whose name matches the session-id pattern is removed when the
  * newest mtime of the directory and the files directly inside it is older
- * than 30 days (if it holds a keystore: `wallets.json` or `session.json`) or
- * 2 hours (if it holds neither).
+ * than 30 days (if it holds a signed-in wallet: holdsSignedInWallet) or
+ * 2 hours (if it does not).
  * All filesystem work is try/caught so a permission error cannot take down
  * a request.
  */
@@ -123,11 +139,7 @@ export function sweepAbandonedSessions(): void {
       const dir = path.join(root, name);
       try {
         if (!fs.statSync(dir).isDirectory()) continue;
-        // Either file means a real signed-in wallet lives here; a directory
-        // with neither is a login someone started and walked away from.
-        const hasKeystore =
-          fs.existsSync(path.join(dir, "wallets.json")) ||
-          fs.existsSync(path.join(dir, "session.json"));
+        const hasKeystore = holdsSignedInWallet(dir);
         const cutoff = hasKeystore ? KEYSTORE_MAX_AGE_MS : ABANDONED_LOGIN_MAX_AGE_MS;
         if (now - newestDirectMtimeMs(dir) <= cutoff) continue;
         fs.rmSync(dir, { recursive: true, force: true });
