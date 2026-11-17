@@ -18,6 +18,8 @@ export interface BridgeToken {
   name: string;
   logoURI?: string;
   priceUSD?: string;
+  /** LI.FI's security screening: "verified", "unverified" or "flagged". */
+  verificationStatus?: string;
 }
 
 export interface BridgeQuote {
