@@ -61,6 +61,30 @@ export class GasStationConfirmingError extends Error {
 }
 
 /**
+ * Thrown when the wallet backend asks the user to confirm a transaction it
+ * considers risky (a `confirming` response with a `message` and no Gas
+ * Station or payment markers). Per the OKX docs the message must be shown
+ * to the user, and the command re-run with `--force` only if they accept.
+ * Routes turn this into a 428 `risk_confirmation`; the page asks the user
+ * and re-sends the request with `acknowledgeRisk: true`.
+ */
+export class RiskConfirmingError extends Error {
+  constructor(
+    public command: string,
+    public prompt: string
+  ) {
+    super(prompt);
+    this.name = "RiskConfirmingError";
+  }
+}
+
+/** The text of a risk prompt, with a fallback when the backend sent none. */
+function riskPrompt(json: Record<string, unknown>): string {
+  const message = typeof json.message === "string" ? json.message.trim() : "";
+  return message || "The wallet flagged this transaction as risky. Confirm to send it anyway.";
+}
+
+/**
  * Detect whether a `confirming: true` CLI response is a Gas Station
  * prompt (vs an x402 payment notification, which carries `notifications[]`).
  * Gas Station Confirmings carry the scene in `message` (e.g.
@@ -236,6 +260,9 @@ export async function runCli<T = unknown>(
           if (gasStation) {
             throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
           }
+          if (!Array.isArray(json.notifications)) {
+            throw new RiskConfirmingError(subcommands.join(" "), riskPrompt(json));
+          }
           console.warn("[onchainos] confirming response (payment / grace notification)", {
             cmd: subcommands.join(" "),
             notifications: json.notifications,
@@ -267,10 +294,13 @@ export async function runCli<T = unknown>(
       } catch (parseOrConfirming) {
         // Re-throw typed signals — only swallow JSON.parse failures
         // (stdout is not JSON).
-        if (parseOrConfirming instanceof GasStationConfirmingError) {
+        if (
+          parseOrConfirming instanceof GasStationConfirmingError ||
+          parseOrConfirming instanceof RiskConfirmingError ||
+          parseOrConfirming instanceof OkxCliError
+        ) {
           throw parseOrConfirming;
         }
-        if (parseOrConfirming instanceof OkxCliError) throw parseOrConfirming;
 
         // Every command answers with a JSON envelope. Anything else means
         // the output was truncated or the binary printed a diagnostic, and
@@ -292,24 +322,28 @@ export async function runCli<T = unknown>(
         raw: stdout.trim(),
       };
     } catch (error: unknown) {
-      // Typed Confirming signal from the success path above — not an exec
-      // failure; propagate untouched so callers can show the token picker.
-      if (error instanceof GasStationConfirmingError) throw error;
+      // Typed signals from the success path above, not exec failures:
+      // propagate untouched so the route can ask the user.
+      if (error instanceof GasStationConfirmingError || error instanceof RiskConfirmingError) throw error;
 
       const err = error as {
-        code?: string;
-        exitCode?: number;
+        code?: string | number | null;
         killed?: boolean;
         stderr?: string;
         stdout?: string;
       };
+      // execFile puts a non-zero exit status in `code` (a number); `code`
+      // is a string such as "ENOENT" when the binary could not be started.
+      // An OkxCliError from the success path above carries its own.
+      const exitCode =
+        typeof err.code === "number" ? err.code : error instanceof OkxCliError ? error.exitCode : null;
 
       // Always log full details server-side for debugging
       console.error("[onchainos]", {
         cmd: subcommands.join(" "),
         bin: ONCHAINOS_BIN,
         session: session.sid.slice(0, 8),
-        exitCode: err.exitCode,
+        exitCode,
         code: err.code,
         stderr: err.stderr,
         stdout: err.stdout,
@@ -330,39 +364,47 @@ export async function runCli<T = unknown>(
         );
       }
 
-      // Exit code 2 = confirming response (not an error). Two cases:
+      // Exit code 2 = confirming response (not an error). Three cases:
       //
       // 1. Gas Station prompt (insufficient native gas): detected via
       //    gasStationStatus / tokenList markers and re-thrown typed, so the
-      //    calling route can surface the stablecoin picker. Returning
-      //    ok:true here would hand the Confirming JSON to tx-result parsing
-      //    and produce a phantom "submitted" success.
+      //    calling route can surface the stablecoin picker.
       //
       // 2. x402 payment notification (`notifications[]` array): grace /
-      //    over-quota terms for the paid Market API tier. We log for
-      //    operators and return ok:true so grace-period traffic isn't
-      //    degraded into user-visible errors. See
-      //    docs/onchainos-upgrade-notes.md for pricing tiers and the
-      //    proposed payment integration path.
-      if (err.exitCode === 2 && err.stdout) {
+      //    over-quota terms for the paid Market API tier. Logged for
+      //    operators; the data comes through when there is any, otherwise
+      //    it is a quota error. See docs/onchainos-upgrade-notes.md.
+      //
+      // 3. Anything else is the backend asking the user to confirm a risky
+      //    transaction: RiskConfirmingError, so the route can ask the user.
+      //    Returning it as ok:true would read as a phantom success.
+      if (exitCode === 2 && err.stdout) {
+        let json: Record<string, unknown> | null = null;
         try {
-          const json = JSON.parse(err.stdout);
-          if (json.confirming) {
-            const gasStation = parseGasStationConfirming(json);
-            if (gasStation) {
-              throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
-            }
-            console.warn("[onchainos] confirming response (payment / grace notification, exit=2)", {
-              cmd: subcommands.join(" "),
-              notifications: json.notifications,
-            });
-            return { ok: true, data: json as T, raw: err.stdout };
+          json = JSON.parse(err.stdout);
+        } catch {
+          // not a JSON confirming response
+        }
+        if (json?.confirming) {
+          const gasStation = parseGasStationConfirming(json);
+          if (gasStation) {
+            throw new GasStationConfirmingError(subcommands.join(" "), gasStation);
           }
-        } catch (confirmingOrParse) {
-          if (confirmingOrParse instanceof GasStationConfirmingError) {
-            throw confirmingOrParse;
+          if (!Array.isArray(json.notifications)) {
+            throw new RiskConfirmingError(subcommands.join(" "), riskPrompt(json));
           }
-          // not JSON confirming response
+          console.warn("[onchainos] confirming response (payment / grace notification, exit=2)", {
+            cmd: subcommands.join(" "),
+            notifications: json.notifications,
+          });
+          if (json.data === undefined) {
+            throw new OkxCliError(
+              subcommands.join(" "),
+              2,
+              "Market data quota exceeded. Please try again later."
+            );
+          }
+          return { ok: true, data: json.data as T, raw: err.stdout };
         }
       }
 
@@ -373,7 +415,7 @@ export async function runCli<T = unknown>(
       ) {
         throw new OkxCliError(
           subcommands.join(" "),
-          err.exitCode ?? null,
+          exitCode,
           "Service is not available in your region. Please switch to a supported region and try again."
         );
       }
@@ -401,11 +443,11 @@ export async function runCli<T = unknown>(
       // Include exit code in fallback message for easier diagnosis
       const fallback = err.code === "ENOENT"
         ? `Binary not found at: ${ONCHAINOS_BIN}`
-        : `Command execution failed (exit ${err.exitCode ?? "?"}, code: ${err.code ?? "-"})`;
+        : `Command execution failed (exit ${exitCode ?? "?"}, code: ${err.code ?? "-"})`;
 
       throw new OkxCliError(
         subcommands.join(" "),
-        err.exitCode ?? null,
+        exitCode,
         detail || fallback
       );
     }

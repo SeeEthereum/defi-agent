@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { bridgeQuote } from "@/lib/bridge/lifi";
 import { walletContractCall } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { z } from "zod";
 import { getChainByIndex } from "@/lib/chains";
 import { encodeApprove } from "@/lib/fluid/ftokens";
@@ -29,6 +30,7 @@ const schema = z.object({
   quoteId: z
     .string({ error: "Missing quote. Refresh the quote and try again." })
     .min(1, "Missing quote. Refresh the quote and try again."),
+  acknowledgeRisk,
 });
 
 // LI.FI's native token sentinels — both cases exist; normalize via lowercase
@@ -103,7 +105,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
   let restoreQuote: (() => void) | null = null;
   try {
     const body = await request.json();
-    const { fromChain, toChain, fromToken, toToken, fromAmount, quoteId } =
+    const { fromChain, toChain, fromToken, toToken, fromAmount, quoteId, acknowledgeRisk } =
       schema.parse(body);
 
     // Validate source chain
@@ -221,6 +223,8 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
             to: fromTokenAddr,
             chain: fromChainStr,
             inputData: approveCalldata,
+            // An exact-amount approval to the router checked above; the
+            // user's risk prompt, if any, comes with the bridge itself.
             force: true,
             // Our own calldata — safe to append Builder Code
           });
@@ -301,7 +305,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
       inputData: txReq.data,
       amt: amtWei,
       gasLimit: txReq.gasLimit,
-      force: true,
+      force: forceAfterConsent(acknowledgeRisk),
       skipBuilderCode: true,
     });
 
@@ -343,10 +347,11 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
-    if (gasStation) {
-      // The wallet stopped before signing: the same quote stays usable.
+    const prompt = gasStation ?? riskResponseFor(error);
+    if (prompt) {
+      // The wallet stopped to ask before signing: the same quote stays usable.
       restoreQuote?.();
-      return gasStation;
+      return prompt;
     }
 
     return apiError("bridge/execute", error, "Bridge execution failed");

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
+import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import {
   encodeDeposit,
   encodeDepositNative,
@@ -21,12 +23,13 @@ const schema = z.object({
   fTokenSymbol: z.string().min(1),
   amount: decimalAmount,
   chainIndex: chainIdSchema,
+  acknowledgeRisk,
 });
 
 export const POST = withSession(guardDuplicates("earn/supply", async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex: chainId } = schema.parse(body);
+    const { fTokenSymbol, amount, chainIndex: chainId, acknowledgeRisk } = schema.parse(body);
 
     const fToken = getFToken(chainId, fTokenSymbol);
     if (!fToken) {
@@ -47,7 +50,7 @@ export const POST = withSession(guardDuplicates("earn/supply", async (request: N
         ? encodeDepositNative(receiver)
         : encodeDeposit(rawAmount, receiver),
       ...(native ? { amt: rawAmount.toString() } : {}),
-      force: true,
+      force: forceAfterConsent(acknowledgeRisk),
     });
 
     return NextResponse.json({
@@ -58,6 +61,8 @@ export const POST = withSession(guardDuplicates("earn/supply", async (request: N
     });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
+    const prompt = gasStationResponseFor(error) ?? riskResponseFor(error);
+    if (prompt) return prompt;
     return apiError("earn/supply", error, "Supply failed");
   }
 }));

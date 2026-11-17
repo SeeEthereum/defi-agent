@@ -90,6 +90,7 @@ export const POST = withSession(guardDuplicates("earn/approve", async (request: 
         to: token,
         chain: String(chainId),
         inputData: encodeApprove(spender, 0n),
+        // Allowance reset to 0: it can only lower what the market may spend.
         force: true,
       });
       const resetHash = txHashOf(resetResult.data);
@@ -104,6 +105,8 @@ export const POST = withSession(guardDuplicates("earn/approve", async (request: 
       to: token,
       chain: String(chainId),
       inputData: encodeApprove(spender, rawAmount),
+      // Exact-amount approval to the Fluid market from our own constants.
+      // The user's risk prompt, if any, comes with the supply itself.
       force: true,
     });
 

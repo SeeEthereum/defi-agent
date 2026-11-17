@@ -7,6 +7,8 @@ import { AppMasthead } from "@/components/shell/app-masthead";
 import { AppDock } from "@/components/shell/app-dock";
 import { AuthContext, useAuthState } from "@/hooks/use-auth";
 import { DISCLAIMER_KEY } from "@/components/risk-disclaimer";
+import { askRiskConfirmation, RiskConfirmHost } from "@/components/risk-confirm";
+import { confirmRiskIfAsked } from "@/lib/api/risk-retry";
 import "./app.css";
 
 // Derive the disclaimer state from localStorage via useSyncExternalStore so
@@ -49,15 +51,26 @@ function redirectIfNoSession(res: Response): void {
 /**
  * Client session guard. useAuthState already polls /api/auth/status for the
  * OKX login flag; this additionally treats HTTP 401 `{ code: "no_session" }`
- * (missing/expired session cookie) as a hard redirect to /auth.
+ * (missing/expired session cookie) as a hard redirect to /auth, and asks the
+ * user about transactions the wallet flagged (lib/api/risk-retry).
  */
 function useSessionGuard() {
   useEffect(() => {
     const nativeFetch = window.fetch.bind(window);
-    window.fetch = async (...args: Parameters<typeof fetch>) => {
-      const res = await nativeFetch(...args);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const res = await nativeFetch(input, init);
       redirectIfNoSession(res);
-      return res;
+      return confirmRiskIfAsked(
+        res,
+        input,
+        init,
+        async (retryInput, retryInit) => {
+          const retry = await nativeFetch(retryInput, retryInit);
+          redirectIfNoSession(retry);
+          return retry;
+        },
+        askRiskConfirmation
+      );
     };
 
     nativeFetch("/api/auth/status").then(redirectIfNoSession).catch(() => {});
@@ -119,6 +132,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </main>
           <AppDock />
+          <RiskConfirmHost />
         </div>
       </MotionConfig>
     </AuthContext>

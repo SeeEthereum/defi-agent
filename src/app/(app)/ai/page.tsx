@@ -11,7 +11,7 @@ import { formatUnits } from "viem";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { Empty, Sheet } from "@/components/premium";
-import { isStaleQuote } from "@/lib/api/send-state";
+import { isStaleQuote, sendStateCode } from "@/lib/api/send-state";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -773,7 +773,9 @@ export default function AiPage() {
               ? `Transaction hash: \`${data.data.txHash}\``
               : "Transaction submitted successfully."
           }`
-        : `**${action.action} failed:** ${data.error}`;
+        : sendStateCode(data)
+          ? data.error
+          : `**${action.action} failed:** ${data.error}`;
 
       setMessages((prev) => [
         ...prev,

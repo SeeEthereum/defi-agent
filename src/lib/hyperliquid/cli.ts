@@ -879,6 +879,8 @@ export async function hlDeposit(params: HlDepositParams): Promise<HlResult<unkno
       chain: "42161",
       from: address,
       contractToken: USDC_ARB,
+      // USDC to Hyperliquid's own bridge contract, both fixed in code; the
+      // user has already confirmed this deposit in the app.
       force: true,
     });
     if (!send.ok) {

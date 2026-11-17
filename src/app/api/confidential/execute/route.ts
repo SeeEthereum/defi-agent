@@ -4,6 +4,7 @@ import { currentSession, withSession } from "@/lib/session/session";
 import { guardDuplicates } from "@/lib/api/duplicate-guard";
 import { walletSend, GasStationConfirmingError } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, isRiskPrompt, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { checkQuote, outputDegraded, quoteFingerprint } from "@/lib/api/quote-store";
 import { rateLimit } from "@/lib/api/rate-limit";
 import { badRequest, EVM_ADDRESS_RE, NATIVE_TOKEN, sessionEvmAddress } from "@/lib/api/validation";
@@ -20,6 +21,7 @@ const schema = confidentialRequest.extend({
   quoteId: z
     .string({ error: "Missing quote. Refresh the quote and try again." })
     .min(1, "Missing quote. Refresh the quote and try again."),
+  acknowledgeRisk,
 });
 
 function refuse(error: string, status: number, code?: string): NextResponse {
@@ -34,7 +36,7 @@ export const POST = withSession(guardDuplicates("confidential/execute", async (r
     const limited = rateLimit("confidential-execute:" + currentSession().sid, 5, 60_000);
     if (!limited.ok) return refuse("Too many attempts, wait a minute.", 429);
 
-    const { fromChain, toChain, fromToken, toToken, amount, recipient, quoteId } = schema.parse(
+    const { fromChain, toChain, fromToken, toToken, amount, recipient, quoteId, acknowledgeRisk } = schema.parse(
       await request.json()
     );
 
@@ -100,8 +102,7 @@ export const POST = withSession(guardDuplicates("confidential/execute", async (r
       recipient: depositAddress,
       chain: String(fromChain),
       contractToken: fromToken === NATIVE_TOKEN ? undefined : fromToken,
-      // Server-side constant: the client cannot control `force`.
-      force: true,
+      force: forceAfterConsent(acknowledgeRisk),
     });
 
     const data = sendResult.data as Record<string, unknown> | null;
@@ -133,13 +134,16 @@ export const POST = withSession(guardDuplicates("confidential/execute", async (r
     });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
-    // Keep the claim once a send may have broadcast. A Gas Station prompt is
-    // the exception: it is raised before anything leaves the wallet.
-    if (claimedQuoteId && (!sendAttempted || error instanceof GasStationConfirmingError)) {
+    // Keep the claim once a send may have broadcast. A Gas Station or risk
+    // prompt is the exception: both come before anything leaves the wallet.
+    if (
+      claimedQuoteId &&
+      (!sendAttempted || error instanceof GasStationConfirmingError || isRiskPrompt(error))
+    ) {
       releaseQuote(claimedQuoteId);
     }
-    const gasStation = gasStationResponseFor(error);
-    if (gasStation) return gasStation;
+    const prompt = gasStationResponseFor(error) ?? riskResponseFor(error);
+    if (prompt) return prompt;
     return confidentialError("confidential/execute", error, "Confidential swap failed");
   }
 }));

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dexSwap } from "@/lib/okx/dex-api";
 import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
@@ -32,6 +33,7 @@ const schema = z.object({
   autoSlippage: z.boolean().optional(),
   gasLevel: z.enum(["slow", "average", "fast"]).optional(),
   mevProtection: z.boolean().optional(),
+  acknowledgeRisk,
 });
 
 export const POST = withSession(guardDuplicates("swap/execute", async (request: NextRequest) => {
@@ -178,7 +180,7 @@ export const POST = withSession(guardDuplicates("swap/execute", async (request: 
       inputData: tx.data,
       amt: amtWei,
       mevProtection: useMev,
-      force: true, // Skip backend simulation — approval may not be reflected yet
+      force: forceAfterConsent(body.acknowledgeRisk),
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -239,10 +241,11 @@ export const POST = withSession(guardDuplicates("swap/execute", async (request: 
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
     const gasStation = gasStationResponseFor(error);
-    if (gasStation) {
-      // The wallet stopped before signing: the same quote stays usable.
+    const prompt = gasStation ?? riskResponseFor(error);
+    if (prompt) {
+      // The wallet stopped to ask before signing: the same quote stays usable.
       restoreQuote?.();
-      return gasStation;
+      return prompt;
     }
 
     return apiError("swap/execute", error, "Swap failed");

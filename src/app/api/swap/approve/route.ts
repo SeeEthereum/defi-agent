@@ -70,6 +70,8 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
             to: tokenAddr,
             chain: chainIndex,
             inputData: resetData.data,
+            // Allowance reset to 0 for the OKX DEX router: it can only lower
+            // what the router may spend. The risk prompt comes with the swap.
             force: true,
           });
           // Brief pause to let the reset propagate
@@ -86,7 +88,9 @@ export const POST = withSession(guardDuplicates("swap/approve", async (request: 
       to: tokenAddr,
       chain: chainIndex,
       inputData: approveData.data,
-      force: true, // Skip backend simulation — may race with recent txs
+      // Exact-amount approval to the OKX DEX router (spender from OKX's own
+      // approve API). The user's risk prompt, if any, comes with the swap.
+      force: true,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

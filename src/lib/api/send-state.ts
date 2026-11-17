@@ -7,7 +7,12 @@
  * when the same transaction is running or may already be on chain.
  */
 
-export const SEND_STATE_CODES = ["duplicate_in_flight", "duplicate_recent", "outcome_unknown"] as const;
+export const SEND_STATE_CODES = [
+  "duplicate_in_flight",
+  "duplicate_recent",
+  "outcome_unknown",
+  "risk_declined",
+] as const;
 export type SendStateCode = (typeof SEND_STATE_CODES)[number];
 
 export const IN_FLIGHT_MESSAGE = "This request is already being processed. Wait for it to finish.";
@@ -19,16 +24,24 @@ export function recentMessage(secondsAgo: number): string {
   return `The same request went through ${secondsAgo} seconds ago. Check Wallet activity; to repeat it on purpose, wait a minute and try again.`;
 }
 
+/** 428 code: the wallet flagged the transaction and wants the user to confirm. */
+export const RISK_CONFIRMATION_CODE = "risk_confirmation";
+
+/** What a page receives when the user declines the wallet's warning. */
+export const RISK_DECLINED_MESSAGE = "Cancelled. Nothing was sent.";
+
 export const SEND_STATE_TITLES: Record<SendStateCode, string> = {
   duplicate_in_flight: "Already in progress",
   duplicate_recent: "Already sent",
   outcome_unknown: "Result not known yet",
+  risk_declined: "Cancelled",
 };
 
 const SEND_STATE_PATTERNS = [
   /already being processed/i,
   /went through \d+ seconds? ago/i,
   /may still go through/i,
+  /nothing was sent/i,
 ];
 
 /** True for a message that must be shown to the user unchanged. */

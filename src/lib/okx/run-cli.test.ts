@@ -19,7 +19,8 @@ vi.mock("child_process", async (importOriginal) => {
   return { ...actual, execFile, default: { ...actual, execFile } };
 });
 
-const { runCli, OkxCliError } = await import("./cli");
+const { runCli, walletSend, OkxCliError, RiskConfirmingError, GasStationConfirmingError } = await import("./cli");
+const { riskResponseFor } = await import("./risk-confirmation");
 const { runWithSession } = await import("@/lib/session/session");
 const { guardDuplicates, resetDuplicateGuard } = await import("@/lib/api/duplicate-guard");
 
@@ -100,5 +101,85 @@ describe("runCli timeouts", () => {
     expect((await inSession(() => route(request(), {}))).status).toBe(500);
     expect((await inSession(() => route(request(), {}))).status).toBe(500);
     expect(exec).toHaveBeenCalledTimes(2);
+  });
+});
+
+/** What execFile rejects with when the binary exits with status 2. */
+function exitTwo(payload: unknown) {
+  return Object.assign(new Error("Command failed"), {
+    killed: false,
+    signal: null,
+    code: 2,
+    stdout: JSON.stringify(payload),
+    stderr: "",
+  });
+}
+
+describe("runCli confirming responses", () => {
+  it("turns a risk prompt (exit 2) into RiskConfirmingError, never a success", async () => {
+    exec.mockRejectedValue(
+      exitTwo({ confirming: true, message: "This transaction may result in significant loss.", next: "re-run with --force" })
+    );
+    const error = await inSession(() => runCli(["wallet", "send"], { amt: "1" })).catch((e) => e);
+    expect(error).toBeInstanceOf(RiskConfirmingError);
+    expect(error.prompt).toBe("This transaction may result in significant loss.");
+  });
+
+  it("treats a risk prompt printed with exit 0 the same way", async () => {
+    exec.mockResolvedValue({ stdout: JSON.stringify({ confirming: true, message: "Risky address" }), stderr: "" });
+    const error = await inSession(() => runCli(["wallet", "contract-call"])).catch((e) => e);
+    expect(error).toBeInstanceOf(RiskConfirmingError);
+  });
+
+  it("still recognizes a Gas Station prompt on exit 2", async () => {
+    exec.mockRejectedValue(exitTwo({ confirming: true, message: "gasStationStatus: FIRST_TIME_PROMPT" }));
+    const error = await inSession(() => runCli(["wallet", "send"])).catch((e) => e);
+    expect(error).toBeInstanceOf(GasStationConfirmingError);
+  });
+
+  it("passes the data of a payment notice through, and fails one without data", async () => {
+    exec.mockRejectedValueOnce(exitTwo({ confirming: true, notifications: [{ code: "GRACE" }], data: { price: "1" } }));
+    await expect(inSession(() => runCli(["market", "price"]))).resolves.toMatchObject({ ok: true, data: { price: "1" } });
+
+    exec.mockRejectedValueOnce(exitTwo({ confirming: true, notifications: [{ code: "OVER_QUOTA" }] }));
+    const error = await inSession(() => runCli(["market", "price"])).catch((e) => e);
+    expect(error).toBeInstanceOf(OkxCliError);
+    expect(error.message).toMatch(/quota/);
+  });
+
+  it("reads a plain non-zero exit as a failure with its exit code", async () => {
+    exec.mockRejectedValue(
+      Object.assign(new Error("Command failed"), { code: 1, stdout: "", stderr: "insufficient funds" })
+    );
+    const error = await inSession(() => runCli(["wallet", "send"])).catch((e) => e);
+    expect(error).toBeInstanceOf(OkxCliError);
+    expect(error.exitCode).toBe(1);
+    expect(error.message).toMatch(/insufficient funds/);
+  });
+
+  it("answers a risk prompt with 428 and the backend's words", async () => {
+    const res = riskResponseFor(new RiskConfirmingError("wallet send", "Recipient flagged as phishing"));
+    expect(res?.status).toBe(428);
+    expect(await res?.json()).toEqual({
+      success: false,
+      code: "risk_confirmation",
+      error: "Recipient flagged as phishing",
+    });
+    expect(riskResponseFor(new Error("other"))).toBeNull();
+  });
+});
+
+describe("--force", () => {
+  function argsOfLastCall(): string[] {
+    return exec.mock.calls.at(-1)?.[1] as string[];
+  }
+
+  it("is left out unless the caller asks for it", async () => {
+    exec.mockResolvedValue({ stdout: JSON.stringify({ ok: true, data: { txHash: "0x1" } }), stderr: "" });
+    await inSession(() => walletSend({ amount: "1", recipient: "0xabc", chain: "1" }));
+    expect(argsOfLastCall()).not.toContain("--force");
+
+    await inSession(() => walletSend({ amount: "1", recipient: "0xabc", chain: "1", force: true }));
+    expect(argsOfLastCall()).toContain("--force");
   });
 });

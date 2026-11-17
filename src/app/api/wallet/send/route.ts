@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletSend } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { z } from "zod";
 import { withSession } from "@/lib/session/session";
 import { guardDuplicates } from "@/lib/api/duplicate-guard";
@@ -18,26 +19,28 @@ const schema = z.object({
   recipient: evmAddress,
   chain: chainId,
   contractToken: tokenAddress.optional(),
+  acknowledgeRisk,
 });
 
 export const POST = withSession(guardDuplicates("wallet/send", async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { amount, recipient, chain, contractToken } = schema.parse(body);
+    const { amount, recipient, chain, contractToken, acknowledgeRisk } = schema.parse(body);
 
     const result = await walletSend({
       amount,
       recipient,
       chain: String(chain),
       contractToken,
-      // Server-side constant: the client cannot control `force`.
-      force: true,
+      force: forceAfterConsent(acknowledgeRisk),
     });
 
     return NextResponse.json({ success: true, data: result.data });
   } catch (error) {
     const gasStation = gasStationResponseFor(error);
     if (gasStation) return gasStation;
+    const risk = riskResponseFor(error);
+    if (risk) return risk;
 
     if (error instanceof z.ZodError) return badRequest(error);
     return apiError("wallet/send", error, "Transfer failed");

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletContractCall } from "@/lib/okx/cli";
+import { gasStationResponseFor } from "@/lib/okx/gas-station";
+import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import {
   encodeWithdraw,
   encodeRedeem,
@@ -27,12 +29,13 @@ const schema = z.object({
   chainIndex: chainIdSchema,
   isAll: z.boolean().optional(),
   shares: z.string().regex(/^[0-9]+$/).optional(),
+  acknowledgeRisk,
 });
 
 export const POST = withSession(guardDuplicates("earn/withdraw", async (request: NextRequest) => {
   try {
     const body = await request.json();
-    const { fTokenSymbol, amount, chainIndex: chainId, isAll, shares } =
+    const { fTokenSymbol, amount, chainIndex: chainId, isAll, shares, acknowledgeRisk } =
       schema.parse(body);
 
     const fToken = getFToken(chainId, fTokenSymbol);
@@ -115,7 +118,7 @@ export const POST = withSession(guardDuplicates("earn/withdraw", async (request:
       to: fToken.address,
       chain: String(chainId),
       inputData: withdrawCalldata,
-      force: true,
+      force: forceAfterConsent(acknowledgeRisk),
     });
 
     return NextResponse.json({
@@ -126,6 +129,8 @@ export const POST = withSession(guardDuplicates("earn/withdraw", async (request:
     });
   } catch (error) {
     if (error instanceof z.ZodError) return badRequest(error);
+    const prompt = gasStationResponseFor(error) ?? riskResponseFor(error);
+    if (prompt) return prompt;
     return apiError("earn/withdraw", error, "Withdraw failed");
   }
 }));
