@@ -20,6 +20,7 @@ import { Change, Empty, PageHead, Panel, Picker, PickRow, Segmented, Skeleton } 
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { motion, AnimatePresence } from "motion/react";
 import { isStaleQuote, SEND_STATE_TITLES, sendStateCode } from "@/lib/api/send-state";
+import { exceedsSpendable, gasReserve, knownDecimals } from "@/lib/wallet/amount-guards";
 
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -57,20 +58,31 @@ interface WalletToken {
 const NO_WALLET_TOKENS: WalletToken[] = [];
 const NO_SEARCH_RESULTS: TokenSearchResult[] = [];
 
-function getNativeToken(chain: string): TokenInfo {
+/** The chain's own coin, with the chain's nativeDecimals; null for a chain we do not list. */
+function getNativeToken(chain: string): TokenInfo | null {
   const chainConfig = Object.values(CHAINS).find((c) => c.swapName === chain);
+  if (!chainConfig) return null;
   return {
-    symbol: chainConfig?.nativeSymbol ?? "ETH",
+    symbol: chainConfig.nativeSymbol,
     address: NATIVE_TOKEN,
-    decimals: chainConfig?.nativeDecimals ?? 18,
+    decimals: chainConfig.nativeDecimals,
   };
 }
 
-function parseTokenResult(t: TokenSearchResult): TokenInfo {
+/**
+ * A search result as a pickable token, or null when its decimals are not
+ * given: a guessed 18 would scale the amount and the approval by a wrong
+ * power of ten. The native coin may use the chain's nativeDecimals.
+ */
+function parseTokenResult(t: TokenSearchResult, chain: string): TokenInfo | null {
+  const address = t.tokenContractAddress || t.address || "";
+  const native = address.toLowerCase() === NATIVE_TOKEN;
+  const decimals = knownDecimals(t.decimal ?? t.decimals, native ? getNativeToken(chain)?.decimals : null);
+  if (decimals == null) return null;
   return {
     symbol: t.tokenSymbol ?? t.symbol ?? "",
-    address: t.tokenContractAddress || t.address || "",
-    decimals: Number(t.decimal ?? t.decimals ?? 18),
+    address,
+    decimals,
     logo: t.tokenLogoUrl || undefined,
   };
 }
@@ -275,6 +287,12 @@ function TokenSelector({
       } catch {
         // A failed search shows "No tokens found" for this query.
       }
+      // Tokens without known decimals are not offered (see parseTokenResult).
+      list = list.filter((t) => {
+        if (parseTokenResult(t, chain)) return true;
+        console.warn("[swap] skipped a token without known decimals", t.tokenContractAddress || t.address);
+        return false;
+      });
       if (latestRequestRef.current === request) setFound({ q, chain, results: list });
     },
     [chain]
@@ -373,7 +391,8 @@ function TokenSelector({
         {query.length > 0 &&
           !searching &&
           results.map((t, i) => {
-            const parsed = parseTokenResult(t);
+            const parsed = parseTokenResult(t, chain);
+            if (!parsed) return null;
             const d = searchResultDisplay(t, chainIndex);
             const bal = walletTokens?.find((w) => w.address.toLowerCase() === parsed.address.toLowerCase());
             return (
@@ -427,7 +446,8 @@ export default function SwapPage() {
   // for. While a new chain loads, nothing from the previous chain is shown
   // (a native-token balance from Arbitrum must never read as "available" on
   // Base), and a late answer for an old chain cannot overwrite the new one.
-  const [walletFetch, setWalletFetch] = useState<{ chain: string; tokens: WalletToken[] } | null>(null);
+  // `failed`: the balances could not be read, so nothing is judged from them.
+  const [walletFetch, setWalletFetch] = useState<{ chain: string; tokens: WalletToken[]; failed?: boolean } | null>(null);
   const balanceChainIndex = authenticated
     ? Object.values(CHAINS).find((c) => c.swapName === chain)?.chainIndex ?? null
     : null;
@@ -462,7 +482,7 @@ export default function SwapPage() {
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) {
-          setWalletFetch({ chain, tokens: [] });
+          setWalletFetch({ chain, tokens: [], failed: true });
           return;
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -473,14 +493,23 @@ export default function SwapPage() {
           raw?.details?.[0]?.tokenAssets ??
           raw?.tokenAssets ??
           (Array.isArray(raw) ? raw : []);
+        const nativeDecimals = getNativeToken(chain)?.decimals;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const t of tokenList as any[]) {
           const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
           if (bal <= 0) continue;
+          const contract = t.tokenAddress || t.tokenContractAddress;
+          // Never guess decimals: a token without them is not offered.
+          const isNative = !contract || String(contract).toLowerCase() === NATIVE_TOKEN;
+          const decimals = knownDecimals(t.decimal ?? t.decimals, isNative ? nativeDecimals : null);
+          if (decimals == null) {
+            console.warn("[swap] skipped a wallet token without known decimals", contract);
+            continue;
+          }
           assets.push({
             symbol: t.symbol ?? t.tokenSymbol ?? "?",
-            address: t.tokenAddress || t.tokenContractAddress || NATIVE_TOKEN,
-            decimals: Number(t.decimal ?? t.decimals ?? 18),
+            address: contract || NATIVE_TOKEN,
+            decimals,
             balance: t.balance ?? t.holdingAmount ?? "0",
             balanceUsd: t.usdValue
               ? String(t.usdValue)
@@ -493,7 +522,7 @@ export default function SwapPage() {
         assets.sort((a, b) => parseFloat(b.balanceUsd) - parseFloat(a.balanceUsd));
         setWalletFetch({ chain, tokens: assets });
       })
-      .catch(() => setWalletFetch({ chain, tokens: [] }));
+      .catch(() => setWalletFetch({ chain, tokens: [], failed: true }));
   }, [chain, balanceChainIndex]);
 
   // Fetch trending tokens on chain change
@@ -844,6 +873,21 @@ export default function SwapPage() {
   const toSymbol = symbolOf(toToken);
   // What the trade loses to price impact (0 when the fill beats the market).
   const impactSize = liveImpactLoss;
+  // Above the balance (for the native coin, the balance less the gas
+  // reserve), the swap can only fail, after the approval may already be
+  // signed. Judged only from balances read for this chain; while they load,
+  // or if they could not be read, nothing is blocked.
+  const balancesKnown = walletFetch != null && walletFetch.chain === chain && !walletFetch.failed;
+  const notEnough =
+    balancesKnown &&
+    fromToken != null &&
+    !!amountWei &&
+    exceedsSpendable(amount, fromBal?.balance ?? "0", {
+      native: isNativeFrom,
+      chainIndex: chainConfig?.chainIndex,
+      decimals: fromToken.decimals,
+    }) === true;
+  const notEnoughLabel = fromSymbol && fromSymbol !== "?" ? `Not enough ${fromSymbol}` : "Not enough balance";
 
   const setMax = () => {
     if (!fromToken || !fromBal) return;
@@ -851,8 +895,8 @@ export default function SwapPage() {
       setAmount(fromBal.balance);
       return;
     }
-    // Keep a little of the native coin for gas.
-    const reserve = chain === "ethereum" ? "0.002" : "0.0005";
+    // Keep a little of the native coin for gas (lib/wallet/amount-guards).
+    const reserve = gasReserve(chainConfig?.chainIndex);
     const balWei = toWei(fromBal.balance, fromToken.decimals);
     const resWei = toWei(reserve, fromToken.decimals);
     if (!balWei || !resWei) {
@@ -1253,7 +1297,8 @@ export default function SwapPage() {
                   amountInvalid ||
                   !amountWei ||
                   priceImpactTooHigh ||
-                  (priceImpactNeedsAck && !priceImpactAck)
+                  (priceImpactNeedsAck && !priceImpactAck) ||
+                  notEnough
                 }
               >
                 {swapLoading ? (
@@ -1265,6 +1310,8 @@ export default function SwapPage() {
                         ? "Confirming approval…"
                         : "Swapping…"}
                   </>
+                ) : notEnough ? (
+                  notEnoughLabel
                 ) : isNativeFrom ? (
                   "Swap"
                 ) : (

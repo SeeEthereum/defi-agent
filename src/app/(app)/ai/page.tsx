@@ -15,6 +15,7 @@ import { isStaleQuote, sendStateCode, userFacingError } from "@/lib/api/send-sta
 import { formatPrice, formatUsd } from "@/lib/format";
 import { chainName, cleanSymbol } from "@/lib/tokens/display";
 import { getFToken, isNativeUnderlying } from "@/lib/fluid/constants";
+import { addressGroups, checksumAddress, isKnownRecipient, rememberRecipient } from "@/lib/wallet/recipients";
 import {
   bridgeQuoteQuery,
   bridgeReview,
@@ -347,8 +348,18 @@ function ActionCard({
   executing: boolean;
 }) {
   const secondsLeft = useSecondsLeft(review?.expiresAt ?? null);
-  /** `token` puts the token's icon before the value. */
-  const rows: { label: string; value: string; token?: { symbol: string; chainIndex: number | null } }[] = [];
+  /**
+   * `token` puts the token's icon before the value. `address` shows a full
+   * checksummed address in groups of four instead of `value`.
+   */
+  const rows: {
+    label: string;
+    value: string;
+    token?: { symbol: string; chainIndex: number | null };
+    address?: string;
+  }[] = [];
+  /** A note under the rows: `blocked` notes also keep Confirm disabled. */
+  let cardNote: { text: string; blocked: boolean } | null = null;
   const iconFor = (t: CardToken, chainIndex: number | null) => (t.symbol ? { symbol: t.symbol, chainIndex } : undefined);
   let title = "";
   let icon: LineIconName = "swap";
@@ -392,11 +403,23 @@ function ActionCard({
     icon = "send";
     rows.push({ label: "Token", value: token.label, token: iconFor(token, chainIndex) });
     rows.push({ label: "Amount", value: hasParam(p.amount) ? withSymbol(p.amount, token.symbol) : MISSING });
+    // The whole address, checksummed and in groups of four: "0x1234…abcd"
+    // hides a look-alike address planted in the history (address poisoning).
+    const recipient = checksumAddress(p.recipient);
     rows.push({
       label: "To",
-      value: hasParam(p.recipient) ? shortAddr(String(p.recipient)) : MISSING,
+      value: recipient ?? (hasParam(p.recipient) ? String(p.recipient) : MISSING),
+      address: recipient ?? undefined,
     });
     rows.push({ label: "Chain", value: networkLabel(p.chainIndex) });
+    if (hasParam(p.recipient) && !recipient) {
+      cardNote = { text: "This is not a valid address. Nothing can be sent to it.", blocked: true };
+    } else if (recipient && isKnownRecipient(recipient) === false) {
+      cardNote = {
+        text: "You have not sent to this address from this browser before. Check it character by character.",
+        blocked: false,
+      };
+    }
   } else if (action.action === "bridge") {
     const p = action.params;
     const fromChainIndex = chainIndexOf(p.fromChain);
@@ -474,7 +497,7 @@ function ActionCard({
 
   let primary: { label: string; onClick: () => void; disabled: boolean };
   if (!reviewed) {
-    primary = { label: "Confirm", onClick: onConfirm, disabled: executing || !ready };
+    primary = { label: "Confirm", onClick: onConfirm, disabled: executing || !ready || cardNote?.blocked === true };
   } else if (!review || expired) {
     primary = {
       label: review ? "Get a new quote" : "Get final quote",
@@ -507,7 +530,16 @@ function ActionCard({
             <div key={row.label}>
               <dt>{row.label}</dt>
               <dd className={row.value === MISSING ? "missing" : undefined}>
-                {row.token ? (
+                {row.address ? (
+                  <span style={{ display: "inline-flex", flexWrap: "wrap", justifyContent: "flex-end", columnGap: "0.45em" }}>
+                    <span className="sr-only">{row.address}</span>
+                    {addressGroups(row.address).map((g, i) => (
+                      <span key={i} aria-hidden="true" style={i % 2 === 1 ? { color: "var(--text-2)" } : undefined}>
+                        {g}
+                      </span>
+                    ))}
+                  </span>
+                ) : row.token ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <TokenIcon symbol={row.token.symbol} size={18} chainIndex={row.token.chainIndex} />
                     {row.value}
@@ -519,6 +551,12 @@ function ActionCard({
             </div>
           ))}
         </dl>
+
+        {cardNote && (
+          <p className={cn("act-note", cardNote.blocked && "is-blocked")} role="alert">
+            {cardNote.text}
+          </p>
+        )}
 
         {review && (
           <>
@@ -1022,6 +1060,10 @@ export default function AiPage() {
           ? data.error
           : `**${FAILED_TITLES[action.action] ?? "That did not go through."}** ${plainError(data.error, "Try again in a moment.")}`;
 
+      // Next time, this address is no longer new to this browser.
+      if (data.success && action.action === "send" && typeof action.params.recipient === "string") {
+        rememberRecipient(action.params.recipient);
+      }
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: resultMsg },

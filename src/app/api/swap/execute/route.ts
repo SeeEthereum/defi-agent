@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dexSwap, SWAP_IMPACT_PROTECTION } from "@/lib/okx/dex-api";
 import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
+// The same reader the bridge uses for OKX's tx-scan verdict.
+import { readTxScan } from "@/lib/bridge/safety";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { z } from "zod";
@@ -125,31 +127,20 @@ export const POST = withSession(guardDuplicates("swap/execute", async (request: 
         data: tx.data,
         value: tx.value !== "0" ? tx.value : undefined,
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const scan = scanResult.data as any;
-      const riskLevel =
-        scan?.riskLevel ?? scan?.risk_level ?? scan?.level ?? "";
-      const riskItems: string[] = scan?.riskItems ?? scan?.risks ?? [];
-      if (
-        riskLevel === "HIGH" ||
-        riskLevel === "high" ||
-        riskLevel === "3"
-      ) {
+      // OKX's tx-scan answers `action` ("" / "warn" / "block") and
+      // `riskItemDetail[]` (security-cli-reference, onchainos 4.6.11); it has
+      // no `riskLevel`. This used to read only `riskLevel`, so nothing was
+      // ever blocked: a blacklisted target or a malicious token passed.
+      const verdict = readTxScan(scanResult.data);
+      if (verdict.level === "high") {
+        const why = verdict.reasons.length ? verdict.reasons.join("; ") : "possible malicious activity";
         return NextResponse.json(
-          {
-            success: false,
-            error: `Security scan flagged this transaction as HIGH RISK: ${riskItems.join(", ") || "Potential malicious activity detected."}`,
-            securityScan: scan,
-          },
+          { success: false, error: `Security scan flagged this swap as high risk: ${why}. Nothing was sent.` },
           { status: 400 }
         );
       }
-      if (
-        riskLevel === "MEDIUM" ||
-        riskLevel === "medium" ||
-        riskLevel === "2"
-      ) {
-        securityWarning = `Security scan flagged medium risk: ${riskItems.join(", ") || "Proceed with caution."}`;
+      if (verdict.level === "medium") {
+        securityWarning = `Security scan flagged a possible risk: ${verdict.reasons.join("; ") || "proceed with caution"}.`;
       }
     } catch {
       return NextResponse.json(

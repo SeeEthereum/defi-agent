@@ -20,6 +20,14 @@ describe("isJunkToken", () => {
     expect(isJunkToken(token({ symbol: "USDCEURe", priceUSD: "100090082.10439873" }))).toBe(true);
   });
 
+  it("drops a token without known decimals rather than guess 18", () => {
+    for (const decimals of [undefined, null, "6", 6.5, -1, 256]) {
+      expect(isJunkToken(token({ decimals })), String(decimals)).toBe(true);
+    }
+    expect(isJunkToken(token({ decimals: 0 }))).toBe(false);
+    expect(isJunkToken(token({ decimals: 6 }))).toBe(false);
+  });
+
   it("keeps expensive real tokens and tokens without a price", () => {
     expect(isJunkToken(token({ symbol: "WBTC", priceUSD: "64742.7" }))).toBe(false);
     expect(isJunkToken(token({ symbol: "tBTC", priceUSD: "522012.25" }))).toBe(false);

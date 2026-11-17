@@ -9,6 +9,8 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { useAuth } from "@/hooks/use-auth";
 import { CHAINS } from "@/lib/chains";
 import { bridgeCost, formatBridgeCost, formatCostShare } from "@/lib/bridge/cost";
+import { BRIDGE_REFUSED_CODE } from "@/lib/bridge/safety";
+import { knownDecimals } from "@/lib/wallet/amount-guards";
 import { searchTokens } from "@/lib/token-search";
 import { Fade } from "@/components/motion";
 import { TokenIcon } from "@/components/token-icon";
@@ -353,14 +355,25 @@ export default function BridgePage() {
         const data = await res.json();
         const raw = data.data;
         const tokenList = raw?.details?.[0]?.tokenAssets ?? raw?.tokenAssets ?? (Array.isArray(raw) ? raw : []);
+        const nativeDecimals = CHAIN_LIST.find((c) => c.chainIndex === assetsChain)?.nativeDecimals;
         const assets: WalletToken[] = [];
         for (const t of tokenList) {
           const bal = parseFloat(t.balance ?? t.holdingAmount ?? "0");
           if (bal <= 0) continue;
+          const contract = t.tokenAddress || t.tokenContractAddress;
+          // Never guess decimals (a wrong value scales the amount and the
+          // approval): a token without them is left out of the list. The
+          // native coin may use the chain's own.
+          const isNative = !contract || String(contract).toLowerCase() === NATIVE_TOKEN_LIFI;
+          const decimals = knownDecimals(t.decimal ?? t.decimals, isNative ? nativeDecimals : null);
+          if (decimals == null) {
+            console.warn("[bridge] skipped a wallet token without known decimals", contract);
+            continue;
+          }
           assets.push({
             symbol: t.symbol ?? t.tokenSymbol ?? "?",
-            address: t.tokenAddress || t.tokenContractAddress || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            decimals: Number(t.decimal ?? t.decimals ?? 18),
+            address: contract || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            decimals,
             balance: t.balance ?? t.holdingAmount ?? "0",
             balanceUsd: t.usdValue ? String(t.usdValue) : t.tokenPrice ? String(bal * parseFloat(t.tokenPrice)) : "0",
           });
@@ -640,7 +653,9 @@ export default function BridgePage() {
       });
 
       const data = await res.json();
-      if (sendStateCode(data)) {
+      // Refused before signing (unknown contract, loose minimum, security
+      // scan): the server's reason is written for the user, show it as is.
+      if (sendStateCode(data) || (data.code === BRIDGE_REFUSED_CODE && typeof data.error === "string")) {
         setError(data.error);
         return;
       }

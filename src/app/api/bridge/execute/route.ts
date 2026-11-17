@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bridgeQuote } from "@/lib/bridge/lifi";
-import { walletContractCall } from "@/lib/okx/cli";
+import { checkLifiContracts } from "@/lib/bridge/contracts";
+import {
+  BRIDGE_REFUSED_CODE,
+  BRIDGE_SLIPPAGE,
+  checkMinReceived,
+  highRiskMessage,
+  readTokenScan,
+  readTxScan,
+  SCAN_UNAVAILABLE_MESSAGE,
+} from "@/lib/bridge/safety";
+import { securityTxScan, walletContractCall } from "@/lib/okx/cli";
+import { securityTokenScan } from "@/lib/okx/market-data";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
 import { approvalCode, approvalPromptResponseFor, releasePausedApproval } from "@/lib/okx/approval-code";
@@ -148,6 +159,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
       fromAmount,
       fromAddress,
       toAddress: fromAddress,
+      slippage: BRIDGE_SLIPPAGE,
     });
 
     const txReq = quote.transactionRequest;
@@ -187,17 +199,20 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
       );
     }
 
-    // ── STEP 1: ERC-20 approve (if bridging a non-native token) ─────────────
-    // LI.FI returns `estimate.approvalAddress` — the router/bridge contract
-    // that needs allowance to pull the fromToken from the user.
-    // Skip for native tokens (ETH/BNB/MATIC) — they don't require approval.
-    let approveTxHash: string | null = null;
     const approvalAddress = quote.estimate.approvalAddress;
-    const chainIndex = fromChain;
-    const fromTokenAddr = fromToken.toLowerCase() as `0x${string}`;
-    const ownerAddr = fromAddress.toLowerCase() as `0x${string}`;
-    const requiredAmount = BigInt(fromAmount);
-    const fromChainStr = String(fromChain);
+
+    // ── Pre-sign checks. Nothing below is signed unless all of them pass. ───
+    // 1. Allowlist: the call target and the approval spender must be LI.FI's
+    //    own contracts on this chain (lib/bridge/contracts). A wrong or
+    //    tampered quote could otherwise point the user's signature anywhere.
+    const known = checkLifiContracts(fromChain, txReq.to, approvalAddress);
+    if (!known.ok) {
+      console.error("[bridge/execute] unknown LI.FI contract", { fromChain, to: txReq.to, approvalAddress });
+      return NextResponse.json(
+        { success: false, error: known.error, code: BRIDGE_REFUSED_CODE },
+        { status: known.status }
+      );
+    }
 
     if (approvalAddress && approvalAddress.toLowerCase() !== txReq.to.toLowerCase()) {
       return NextResponse.json(
@@ -205,6 +220,83 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
         { status: 502 }
       );
     }
+
+    // 2. Minimum received: present, and within the slippage we asked LI.FI
+    //    for. A zero or loose minimum would accept any outcome on arrival.
+    const minProblem = checkMinReceived(quote.estimate?.toAmount, quote.estimate?.toAmountMin, BRIDGE_SLIPPAGE);
+    if (minProblem) {
+      return NextResponse.json(
+        { success: false, error: minProblem, code: BRIDGE_REFUSED_CODE },
+        { status: 502 }
+      );
+    }
+
+    // onchainos `--amt` expects minimal units (wei) as a whole-number string,
+    // not a decimal UI value. Normalize hex → decimal; "0" / missing → omit.
+    const rawValue = txReq.value ?? "0";
+    const amtWei =
+      rawValue && rawValue !== "0" && rawValue !== "0x0"
+        ? BigInt(rawValue).toString()
+        : "0";
+
+    // 3. Security scans, same policy as swap/execute: high risk stops it,
+    //    medium risk goes back as a warning, and a scan that fails refuses
+    //    the transaction rather than passing it. The bridge transaction is
+    //    scanned before the approval, so a flagged route leaves no allowance
+    //    behind. The destination token is scanned too when it is a contract
+    //    (native coins have nothing to scan).
+    let securityWarning: string | null = null;
+    try {
+      const [txScan, tokenScan] = await Promise.all([
+        securityTxScan({
+          from: fromAddress,
+          to: txReq.to,
+          chain: chainConfig.swapName,
+          data: txReq.data,
+          value: amtWei !== "0" ? amtWei : undefined,
+        }),
+        isNativeToken(toToken)
+          ? Promise.resolve(null)
+          : securityTokenScan({ tokens: `${toChain}:${toToken}` }),
+      ]);
+      const tx = readTxScan(txScan.data);
+      const token = tokenScan ? readTokenScan(tokenScan.data, toToken) : { level: "none" as const, reasons: [] };
+      if (tx.level === "high" || token.level === "high") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              tx.level === "high"
+                ? highRiskMessage("bridge", tx.reasons)
+                : highRiskMessage("destination token", token.reasons),
+            code: BRIDGE_REFUSED_CODE,
+            securityScan: txScan.data,
+          },
+          { status: 400 }
+        );
+      }
+      const medium = [tx, token].filter((v) => v.level === "medium").flatMap((v) => v.reasons);
+      if (tx.level === "medium" || token.level === "medium") {
+        securityWarning = `Security scan flagged medium risk: ${medium.join(", ") || "Proceed with caution."}`;
+      }
+    } catch (scanError) {
+      console.error("[bridge/execute] security scan failed", scanError);
+      return NextResponse.json(
+        { success: false, error: SCAN_UNAVAILABLE_MESSAGE, code: BRIDGE_REFUSED_CODE },
+        { status: 502 }
+      );
+    }
+
+    // ── STEP 1: ERC-20 approve (if bridging a non-native token) ─────────────
+    // LI.FI returns `estimate.approvalAddress` — the router/bridge contract
+    // that needs allowance to pull the fromToken from the user.
+    // Skip for native tokens (ETH/BNB/MATIC) — they don't require approval.
+    let approveTxHash: string | null = null;
+    const chainIndex = fromChain;
+    const fromTokenAddr = fromToken.toLowerCase() as `0x${string}`;
+    const ownerAddr = fromAddress.toLowerCase() as `0x${string}`;
+    const requiredAmount = BigInt(fromAmount);
+    const fromChainStr = String(fromChain);
 
     // From here on transactions may be signed: the quote cannot be used again.
     restoreQuote = consumeQuote(quoteId);
@@ -298,14 +390,6 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
     }
 
     // ── STEP 2: Execute the bridge transaction ──────────────────────────────
-    // onchainos `--amt` expects minimal units (wei) as a whole-number string,
-    // not a decimal UI value. Normalize hex → decimal; "0" / missing → omit.
-    const rawValue = txReq.value ?? "0";
-    const amtWei =
-      rawValue && rawValue !== "0" && rawValue !== "0x0"
-        ? BigInt(rawValue).toString()
-        : "0";
-
     // Execute via wallet contract-call (source chain).
     // IMPORTANT: skipBuilderCode=true because LI.FI calldata is third-party;
     // appending bytes could corrupt validation in the bridge router contract.
@@ -351,6 +435,7 @@ export const POST = withSession(guardDuplicates("bridge/execute", async (request
         toAmountMin: quote.estimate.toAmountMin,
         fromChain,
         toChain,
+        securityWarning,
         ...(callData?.confirming ? { status: "confirming" } : { status: "broadcast" }),
       },
     });

@@ -5,6 +5,8 @@
  * Docs: https://docs.li.fi/
  */
 
+import { BRIDGE_SLIPPAGE } from "./safety";
+
 const BASE_URL = "https://li.quest/v1";
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -180,6 +182,8 @@ export async function bridgeQuote(params: {
   fromAmount: string;
   fromAddress: string;
   toAddress?: string;
+  /** Decimal (0.005 = 0.5%). The execute route checks toAmountMin against it. */
+  slippage?: number;
 }): Promise<BridgeQuote> {
   const qs = new URLSearchParams({
     fromChain: params.fromChain,
@@ -188,6 +192,9 @@ export async function bridgeQuote(params: {
     toToken: params.toToken,
     fromAmount: params.fromAmount,
     fromAddress: params.fromAddress,
+    // Always explicit: left out, LI.FI picks a per-route slippage (up to 15%
+    // in live quotes), and the minimum received could not be checked.
+    slippage: String(params.slippage ?? BRIDGE_SLIPPAGE),
   });
   if (params.toAddress) qs.set("toAddress", params.toAddress);
 

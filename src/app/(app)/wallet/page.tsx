@@ -29,6 +29,8 @@ import { CountUp, Empty, PageHead, Panel, PillTabs, Sheet, Skeleton } from "@/co
 import type { GasStationConfirming } from "@/lib/okx/types";
 import { toast } from "sonner";
 import { userFacingError } from "@/lib/api/send-state";
+import { maxSpendable } from "@/lib/wallet/amount-guards";
+import { rememberRecipient } from "@/lib/wallet/recipients";
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const DECIMAL_AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -301,6 +303,9 @@ export default function WalletPage() {
     tokenKey: "native",
   });
   const [sending, setSending] = useState(false);
+  // What "Max" kept back for the network fee, tied to the form it was made
+  // for: once the chain, token or amount changes, the note no longer shows.
+  const [maxNote, setMaxNote] = useState<{ form: string; text: string } | null>(null);
   const sendingRef = useRef(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [gasStation, setGasStation] = useState<GasStationConfirming | null>(null);
@@ -452,6 +457,8 @@ export default function WalletPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // The assistant's send card warns about addresses this browser never sent to.
+        rememberRecipient(sendForm.recipient);
         toast.success(`Transaction sent! Hash: ${data.data?.txHash || "pending"}`);
         setSendForm({ recipient: "", amount: "", chain: "1", tokenKey: "native" });
       } else if (data.requiresGasStation) {
@@ -503,6 +510,34 @@ export default function WalletPage() {
     ? chainTokens.find((t) => t.isNative)
     : chainTokens.find((t) => t.tokenAddress === sendForm.tokenKey);
   const selectedBalance = parseFloat(selectedToken?.balance ?? "0");
+  const formKey = (value: string) => `${sendForm.chain}|${sendForm.tokenKey}|${value}`;
+  const maxNoteText = maxNote && maxNote.form === formKey(sendForm.amount) ? maxNote.text : null;
+
+  // "Max" on the native coin keeps the gas reserve swap uses (0.002 on
+  // Ethereum, 0.0005 elsewhere): sending the whole balance leaves nothing for
+  // the fee and the transfer fails. A token can use its full balance.
+  const fillMax = () => {
+    const bal = selectedToken?.balance;
+    if (!bal) return;
+    if (sendForm.tokenKey !== "native") {
+      setSendForm({ ...sendForm, amount: bal });
+      setMaxNote(null);
+      return;
+    }
+    if (!selectedChain) return;
+    const { amount: max, reserved } = maxSpendable(bal, {
+      native: true,
+      chainIndex: selectedChain.chainIndex,
+      decimals: selectedChain.nativeDecimals,
+    });
+    if (!reserved) return;
+    if (max == null) {
+      setMaxNote({ form: formKey(sendForm.amount), text: `Not enough ${selectedTokenSymbol} left after the network fee.` });
+      return;
+    }
+    setSendForm({ ...sendForm, amount: max });
+    setMaxNote({ form: formKey(max), text: `Kept ${reserved} ${selectedTokenSymbol} for the network fee.` });
+  };
 
   const spamCount = history.filter(isLikelySpam).length;
   const visibleHistory = showSpam ? history : history.filter((tx) => !isLikelySpam(tx));
@@ -964,15 +999,13 @@ export default function WalletPage() {
                     type="button"
                     className="max"
                     aria-label="Use maximum balance"
-                    onClick={() => {
-                      const bal = selectedToken?.balance;
-                      if (bal) setSendForm({ ...sendForm, amount: bal });
-                    }}
+                    onClick={fillMax}
                   >
                     Max
                   </button>
                 </div>
                 {sendForm.amount.length > 0 && !amountValid && <p className="err">Enter a valid amount</p>}
+                {maxNoteText && <p className="hint">{maxNoteText}</p>}
               </div>
 
               <div className="field">
