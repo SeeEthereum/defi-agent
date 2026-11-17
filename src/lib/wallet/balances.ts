@@ -43,7 +43,8 @@ export async function allBalances(sid: string): Promise<AllBalances> {
 export function chainSlice(all: AllBalances, chainIndex: string): { details: Array<{ tokenAssets: TokenAsset[] }>; totalValueUsd: string } {
   const assets = (all.details ?? []).flatMap((d) => d.tokenAssets ?? []).filter((a) => String(a.chainIndex) === chainIndex);
   const total = assets.reduce((sum, a) => sum + (Number(a.usdValue) || 0), 0);
-  return { details: [{ tokenAssets: assets }], totalValueUsd: total.toFixed(2) };
+  // Not rounded: a total of crumbs must read "< $0.01", not "$0.00".
+  return { details: [{ tokenAssets: assets }], totalValueUsd: String(total) };
 }
 
 /** Forget this session's balances (after a transaction). */

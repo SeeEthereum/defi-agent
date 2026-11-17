@@ -29,6 +29,9 @@ export interface ChainBalance {
     tokenAddress?: string;
     tokenPrice?: string;
     isNative?: boolean;
+    /** OKX's name: for native coins it is the chain's ("Arbitrum One"); see lib/tokens/display. */
+    tokenName?: string;
+    chainIndex?: number;
   }>;
   totalValueUsd: string;
   isLoading: boolean;
@@ -85,7 +88,8 @@ export function useAllChainBalances() {
         if (!isNaN(usdValue)) totalUsd += usdValue;
 
         if (parseFloat(balance) > 0) {
-          tokens.push({ symbol, balance, tokenAddress, tokenPrice, isNative });
+          const tokenName = typeof t.tokenName === "string" ? t.tokenName : undefined;
+          tokens.push({ symbol, balance, tokenAddress, tokenPrice, isNative, tokenName, chainIndex: chain.chainIndex });
         }
       }
 
@@ -97,7 +101,8 @@ export function useAllChainBalances() {
 
     balancesByChain[chain.chainIndex] = {
       tokens,
-      totalValueUsd: totalUsd.toFixed(2),
+      // Unrounded: lib/format decides how to show crumbs ("< $0.01").
+      totalValueUsd: String(totalUsd),
       isLoading,
       error: data?.error ?? error?.message,
     };

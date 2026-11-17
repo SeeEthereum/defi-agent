@@ -29,9 +29,9 @@ describe("balances", () => {
   it("cuts one chain out of the all-chains answer, in the per-chain shape", () => {
     expect(chainSlice(ALL, "42161")).toEqual({
       details: [{ tokenAssets: [ALL.details[0].tokenAssets[1], ALL.details[0].tokenAssets[2]] }],
-      totalValueUsd: "2.50",
+      totalValueUsd: "2.5",
     });
-    expect(chainSlice(ALL, "1")).toEqual({ details: [{ tokenAssets: [] }], totalValueUsd: "0.00" });
+    expect(chainSlice(ALL, "1")).toEqual({ details: [{ tokenAssets: [] }], totalValueUsd: "0" });
   });
 
   it("makes one onchainos call for a page's six per-chain requests", async () => {
