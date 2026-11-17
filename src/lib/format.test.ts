@@ -60,3 +60,45 @@ describe("formatCompactUsd and formatPercent", () => {
     expect(formatPercent(0)).toBe("0%");
   });
 });
+
+describe("in Italian", () => {
+  const it_ = { locale: "it" as const };
+
+  it("writes money as Italian banking apps do", () => {
+    expect(formatUsd(0, it_)).toBe("0,00 $");
+    expect(formatUsd(1234.5, it_)).toBe("1.234,50 $");
+    expect(formatUsd(999.5, it_)).toBe("999,50 $");
+    expect(formatUsd(-12.3, it_)).toBe("-12,30 $");
+    expect(formatUsd(12.3, { sign: true, locale: "it" })).toBe("+12,30 $");
+    expect(formatUsd(0.004, it_)).toBe("< 0,01 $");
+    expect(formatUsd(-0.004, it_)).toBe("> -0,01 $");
+    expect(formatUsd(1_234_567, it_)).toBe("1,23 Mln $");
+    expect(formatUsd(2_000_000_000, it_)).toBe("2 Mld $");
+    expect(formatUsd(undefined, it_)).toBe(MISSING);
+  });
+
+  it("keeps prices free of exponents, with a decimal comma", () => {
+    expect(formatPrice(91234.567, "it")).toBe("91.234,57 $");
+    expect(formatPrice(0.99968788, "it")).toBe("0,9997 $");
+    expect(formatPrice(9.37e-7, "it")).toBe("0,0₆937 $");
+    expect(formatPrice(0, "it")).toBe("0 $");
+  });
+
+  it("formats amounts, compact figures and percentages", () => {
+    expect(formatAmount("1234.567891", it_)).toBe("1.234,5679");
+    expect(formatAmount(0.5, it_)).toBe("0,5");
+    expect(formatAmount(1e-9, it_)).toBe("< 0,00000001");
+    expect(formatAmount(12_345_678_901, it_)).toBe("12,35 Mld");
+    expect(formatCompactUsd(12_400, "it")).toBe("12,4K $");
+    expect(formatCompactUsd(3_100_000, "it")).toBe("3,1 Mln $");
+    expect(formatCompactUsd(5.5, "it")).toBe("5,5 $");
+    expect(formatPercent(3.2, it_)).toBe("3,2%");
+    expect(formatPercent(-12.345, it_)).toBe("-12,3%");
+    expect(formatPercent(0.004, it_)).toBe("< 0,01%");
+  });
+
+  it("leaves English exactly as it was when no language is given", () => {
+    expect(formatUsd(1234.5)).toBe("$1,234.50");
+    expect(formatUsd(1234.5, { locale: "en" })).toBe("$1,234.50");
+  });
+});

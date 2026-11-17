@@ -63,7 +63,9 @@ const ACTIONABLE_HL_MESSAGE =
 
 export function respondBinError(error: unknown, fallback: string): NextResponse {
   console.error("[perp] route error:", error);
-  const message = error instanceof Error ? error.message : "";
+  // Same as lib/api/validation publicErrorMessage: the user needs what went
+  // wrong, not the internal command name ("onchainos wallet addresses failed: ").
+  const message = (error instanceof Error ? error.message : "").replace(/^onchainos [\w -]+ failed:\s*/i, "");
   const visible = ACTIONABLE_HL_MESSAGE.test(message);
   if (!visible) reportServerError("perp", error);
   void fallback;
@@ -71,27 +73,4 @@ export function respondBinError(error: unknown, fallback: string): NextResponse 
     { success: false, error: visible ? message : "Hyperliquid request failed" },
     { status: 500 }
   );
-}
-
-/** Friendly Italian/English messages for common HL error codes. */
-export const HL_ERROR_MESSAGES: Record<string, string> = {
-  INSUFFICIENT_BALANCE:
-    "Saldo USDC su Arbitrum insufficiente. Deposita USDC sul tuo indirizzo Arbitrum prima di riprovare.",
-  INSUFFICIENT_MARGIN:
-    "Margine insufficiente per questa posizione. Riduci la size o aumenta il deposito HL.",
-  SIGNING_FAILED:
-    "La firma del wallet è fallita. Verifica che onchainos sia autenticato (aggiorna se necessario).",
-  NOT_REGISTERED:
-    "Hyperliquid non è stato ancora configurato. Esegui prima la registrazione del wallet.",
-  MIN_NOTIONAL:
-    "L'ordine è sotto il minimo notional di $10 USDC. Aumenta la size.",
-  PRICE_OUT_OF_BAND:
-    "Prezzo limite troppo lontano dal mid. Usa un prezzo più vicino al market.",
-  REDUCE_ONLY_VIOLATION:
-    "L'ordine reduce-only non può aprire o aumentare una posizione esistente.",
-};
-
-export function friendlyMessage(errorCode?: string, fallback?: string): string {
-  if (errorCode && HL_ERROR_MESSAGES[errorCode]) return HL_ERROR_MESSAGES[errorCode];
-  return fallback ?? "Operazione fallita.";
 }

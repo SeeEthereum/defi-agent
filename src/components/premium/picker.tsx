@@ -10,6 +10,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { LineIcon } from "@/components/line-icon";
+import { useT } from "@/i18n/client";
 
 const SPRING = { type: "spring" as const, stiffness: 420, damping: 38, mass: 0.8 };
 
@@ -19,7 +20,7 @@ export function Picker({
   title,
   query,
   onQuery,
-  placeholder = "Search",
+  placeholder,
   children,
 }: {
   open: boolean;
@@ -30,6 +31,9 @@ export function Picker({
   placeholder?: string;
   children: ReactNode;
 }) {
+  const t = useT("picker");
+  const tc = useT("common");
+  const searchLabel = placeholder ?? t("search");
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -81,7 +85,7 @@ export function Picker({
           >
             <div className="picker-head">
               <h2>{title}</h2>
-              <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+              <button type="button" className="icon-btn" aria-label={tc("close")} onClick={onClose}>
                 <LineIcon name="x" size={18} />
               </button>
             </div>
@@ -94,8 +98,8 @@ export function Picker({
                   type="search"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder={placeholder}
-                  aria-label={placeholder}
+                  placeholder={searchLabel}
+                  aria-label={searchLabel}
                   value={query ?? ""}
                   onChange={(e) => onQuery(e.target.value)}
                 />

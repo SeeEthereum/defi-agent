@@ -13,6 +13,7 @@
 
 import { useSyncExternalStore } from "react";
 import { Modal } from "@/components/motion/modal";
+import { useT } from "@/i18n/client";
 
 interface Prompt {
   message: string;
@@ -53,6 +54,8 @@ function answer(accepted: boolean): void {
 }
 
 export function RiskConfirmHost() {
+  const t = useT("riskConfirm");
+  const tc = useT("common");
   const prompt = useSyncExternalStore(
     subscribe,
     () => current,
@@ -63,18 +66,15 @@ export function RiskConfirmHost() {
     <Modal open={prompt !== null} onClose={() => answer(false)}>
       <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">The wallet flagged this transaction</h2>
-          <p className="mt-1.5 text-[13px] text-muted-foreground">
-            Nothing has been signed yet. This is OKX&apos;s warning, word for word. Send only if you
-            understand it and still want to go ahead.
-          </p>
+          <h2 className="text-base font-semibold text-foreground">{t("title")}</h2>
+          <p className="mt-1.5 text-[13px] text-muted-foreground">{t("intro")}</p>
         </div>
 
         <div
           className="rounded-xl bg-loss-soft border border-loss/30 p-3 text-[13px] text-foreground whitespace-pre-wrap max-h-48 overflow-auto"
           role="alert"
         >
-          {prompt?.message || "The wallet did not say why."}
+          {prompt?.message || t("noReason")}
         </div>
 
         <div className="flex gap-2">
@@ -82,13 +82,13 @@ export function RiskConfirmHost() {
             onClick={() => answer(false)}
             className="flex-1 h-11 rounded-xl border border-border/60 bg-secondary/80 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
           >
-            Cancel
+            {tc("cancel")}
           </button>
           <button
             onClick={() => answer(true)}
             className="flex-1 h-11 rounded-xl bg-loss text-white text-sm font-medium hover:bg-loss/90 transition-colors"
           >
-            Send anyway
+            {t("sendAnyway")}
           </button>
         </div>
       </div>

@@ -188,3 +188,17 @@ Hyperliquid is a high-performance on-chain perps DEX. All positions are settled 
 ## Amount Units
 Every amount you pass is in token units, the way people write them: "0.1" for 0.1 ETH, "100" for 100 USDC. Never convert to wei or other base units: the server reads each token's decimals from its contract (they differ between chains, e.g. USDC has 6 on Arbitrum and 18 on BNB Chain) and converts. Quotes include a "readable" field with the amounts already converted back; use it when you tell the user numbers.
 `;
+
+/**
+ * The prompt for the app's language. The person's own language still wins
+ * (they may write English on the Italian app); the app's language is the
+ * default when theirs is unclear, and Italian replies use Italian numbers
+ * and the button names the Italian app shows.
+ */
+export function systemPromptFor(locale: "en" | "it"): string {
+  if (locale !== "it") return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}
+
+# Language
+The app is shown in Italian. Reply in the language the user writes in; if you cannot tell, reply in Italian. In Italian, use "tu", write numbers the Italian way ("0,5 ETH (circa 1.340 $)") and call the buttons by the names the app shows: Conferma, Annulla.`;
+}

@@ -1,0 +1,27 @@
+import type * as en from "../en/auth";
+
+export const auth: typeof en.auth = {
+  homeLabel: "albicocca, home",
+  beforeLabel: "Prima di iniziare",
+  beforeTitle: "Tre cose <soft>da sapere.</soft>",
+  beforeLead: "albicocca muove soldi veri su blockchain pubbliche. Leggi questi punti prima di avere un wallet.",
+  accept: "Ho capito, continua",
+  acceptNote: "Continuando accetti questi rischi e i termini completi qui sopra.",
+  signInLabel: "Accedi",
+  signInTitle: "Chiedi al tuo wallet. <soft>Inizia qui.</soft>",
+  signInLead: "Accedi con Google, Apple o email sulla pagina di OKX. Il wallet viene creato all'istante: niente seed phrase.",
+  preparing: "Preparo l'accesso…",
+  signInWithOkx: "Accedi con OKX",
+  newTabNote: "Apriamo OKX in una nuova scheda e completiamo qui da soli quando hai finito.",
+  waiting: "Aspetto che tu completi l'accesso…",
+  tabNote: "Dovrebbe essersi aperta una nuova scheda. Se non è così, usa il link qui sotto, oppure inquadra il codice per accedere dal telefono.",
+  qrAlt: "Codice QR per aprire il link di accesso su un altro dispositivo",
+  openPage: "Apri la pagina di accesso",
+  copyLink: "Copia il link",
+  copied: "Copiato",
+  copyFailed: "Copia non riuscita. Seleziona il link e copialo a mano.",
+  startFailed: "Non è stato possibile avviare l'accesso. Riprova.",
+  networkError: "Errore di rete. Riprova.",
+  signInFailed: "Accesso non riuscito. Riprova.",
+  cancel: "Annulla e ricomincia",
+};

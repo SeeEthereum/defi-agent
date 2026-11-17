@@ -52,6 +52,17 @@ describe("GET /api/portfolio/history", () => {
   it("refuses ranges it does not know", async () => {
     const res = await GET(await request("?range=10y"), {});
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Unknown range");
+  });
+
+  it("answers in the language the app last used (withSession localizes on the way out)", async () => {
+    const token = await mintSessionToken();
+    const req = new NextRequest("http://localhost/api/portfolio/history?range=10y", {
+      headers: { cookie: `${SESSION_COOKIE}=${token}; albicocca-lang=it` },
+    });
+    const res = await GET(req, {});
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Periodo sconosciuto", code: "invalid_request" });
   });
 
   it("says so when OKX does not name the account", async () => {

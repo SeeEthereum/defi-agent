@@ -9,6 +9,7 @@
  *   few cents of price noise on $1,000 would look like a crash.
  */
 
+import type { Locale } from "@/i18n/config";
 import type { HistoryRange, ValuePoint } from "./history";
 
 /** Below this share of the value, the axis stops zooming in. */
@@ -97,13 +98,14 @@ function decimalsOf(step: number): number {
  * A tick label with as many decimals as the step needs, and no more:
  * "$1,200", "$12.5K", "$0.055". Ticks a cent apart must not all read "$0.06".
  */
-export function formatTick(value: number, step: number, locale = "en-US"): string {
-  if (step >= 1000 && Math.abs(value) >= 1000) {
-    const decimals = decimalsOf(step / 1000);
-    return `$${(value / 1000).toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}K`;
-  }
-  const decimals = decimalsOf(step);
-  return `$${value.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+export function formatTick(value: number, step: number, locale: Locale = "en"): string {
+  const write = (n: number, decimals: number, suffix = "") => {
+    const digits = n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    // Italian: "1.200 $", "12,5K $" (lib/format writes money the same way).
+    return locale === "it" ? `${digits.replace(/[.,]/g, (c) => (c === "." ? "," : "."))}${suffix} $` : `$${digits}${suffix}`;
+  };
+  if (step >= 1000 && Math.abs(value) >= 1000) return write(value / 1000, decimalsOf(step / 1000), "K");
+  return write(value, decimalsOf(step));
 }
 
 /** Change from the first point to the last. `percent` is null from zero. */

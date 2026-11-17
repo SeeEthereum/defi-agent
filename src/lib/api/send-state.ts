@@ -7,6 +7,8 @@
  * when the same transaction is running or may already be on chain.
  */
 
+import { toEnglishApiMessage } from "@/i18n/api-messages";
+
 export const SEND_STATE_CODES = [
   "duplicate_in_flight",
   "duplicate_recent",
@@ -51,9 +53,14 @@ const SEND_STATE_PATTERNS = [
   /start again/i,
 ];
 
-/** True for a message that must be shown to the user unchanged. */
+/**
+ * True for a message that must be shown to the user unchanged. Checked on
+ * the API's English (i18n/api-messages): an Italian answer is recognised
+ * exactly like the English one.
+ */
 export function isSendStateMessage(message: string): boolean {
-  return SEND_STATE_PATTERNS.some((re) => re.test(message));
+  const english = toEnglishApiMessage(message);
+  return SEND_STATE_PATTERNS.some((re) => re.test(english));
 }
 
 /** The send-state code of a response body, if it carries one. */
@@ -78,7 +85,8 @@ export function isStaleQuote(data: unknown): boolean {
 export function userFacingError(detail: unknown, fallback: string): string {
   const message =
     typeof detail === "string" ? detail : detail instanceof Error ? detail.message : "";
-  if (/logged out/i.test(message) || /insufficient funds/i.test(message) || isSendStateMessage(message)) {
+  const english = toEnglishApiMessage(message);
+  if (/logged out/i.test(english) || /insufficient funds/i.test(english) || isSendStateMessage(message)) {
     return message;
   }
   return fallback;

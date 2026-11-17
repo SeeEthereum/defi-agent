@@ -20,6 +20,8 @@ const messageSchema = z.object({
 const schema = z
   .object({
     messages: z.array(messageSchema).min(1).max(60),
+    /** The app's language: the default for replies when the user's is unclear. */
+    locale: z.enum(["en", "it"]).optional(),
   })
   .refine((body) => body.messages.at(-1)?.role === "user", {
     message: "Last message must be from the user",
@@ -49,7 +51,7 @@ export const POST = withSession(async (request: NextRequest) => {
   let owner: string | null = null;
   let spent = false;
   try {
-    const { messages } = schema.parse(await request.json());
+    const { messages, locale } = schema.parse(await request.json());
     const question = messages[messages.length - 1].content.trim();
     if (!question) return NextResponse.json({ success: false, error: "Write a question first." }, { status: 400 });
     if (question.length > MAX_QUESTION_CHARS) {
@@ -82,7 +84,7 @@ export const POST = withSession(async (request: NextRequest) => {
       });
     }
 
-    const result = await runAiChat(trimHistory(messages));
+    const result = await runAiChat(trimHistory(messages), locale ?? "en");
     return NextResponse.json({ success: true, data: result, quota: quotaState });
   } catch (error) {
     // A failure on our side should not cost the user a question.

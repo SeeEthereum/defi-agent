@@ -23,7 +23,7 @@
  * handler. Registered browsers pick it up on their next visit.
  */
 
-const OFFLINE_REVISION = "aaaa078be3cb";
+const OFFLINE_REVISION = "9ed074cb4f7c";
 const CACHE_PREFIX = "albicocca-offline-";
 const CACHE = CACHE_PREFIX + OFFLINE_REVISION;
 const OFFLINE_URL = "/offline.html";

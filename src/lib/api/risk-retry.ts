@@ -1,3 +1,4 @@
+import { documentLocale, translateApiMessage } from "@/i18n/api-messages";
 import { RISK_CONFIRMATION_CODE, RISK_DECLINED_MESSAGE } from "./send-state";
 
 /**
@@ -36,7 +37,7 @@ export async function confirmRiskIfAsked(
   const accepted = await ask(typeof data.error === "string" ? data.error : "");
   if (!accepted) {
     return Response.json(
-      { success: false, code: "risk_declined", error: RISK_DECLINED_MESSAGE },
+      { success: false, code: "risk_declined", error: translateApiMessage(RISK_DECLINED_MESSAGE, documentLocale()) },
       { status: 400 }
     );
   }

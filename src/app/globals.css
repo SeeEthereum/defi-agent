@@ -693,6 +693,7 @@
 }
 .theme-switch button:hover { color: var(--foreground); }
 .theme-switch button[aria-checked="true"] { background: var(--primary); color: var(--primary-foreground); }
+.lang-switch button { width: 34px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; }
 
 /* Entrance for the AI empty state; ends on the visible state. */
 .ai-in { animation: ai-fade-up 0.7s var(--ease-out) both; }

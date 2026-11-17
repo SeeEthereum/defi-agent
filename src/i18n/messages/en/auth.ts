@@ -1,0 +1,27 @@
+/** The sign-in page: the risks to accept, then OKX's sign-in. */
+
+export const auth = {
+  homeLabel: "albicocca, home",
+  beforeLabel: "Before you start",
+  beforeTitle: "Three things <soft>to know.</soft>",
+  beforeLead: "albicocca moves real money on public chains. Read these before you get a wallet.",
+  accept: "I understand, continue",
+  acceptNote: "By continuing you accept these risks and the full terms above.",
+  signInLabel: "Sign in",
+  signInTitle: "Ask your wallet. <soft>Start here.</soft>",
+  signInLead: "Sign in with Google, Apple or email on OKX's page. A wallet is created for you on the spot: no seed phrase.",
+  preparing: "Preparing sign-in…",
+  signInWithOkx: "Sign in with OKX",
+  newTabNote: "We open OKX in a new tab and finish here automatically once you're done.",
+  waiting: "Waiting for you to finish signing in…",
+  tabNote: "A new tab should have opened. If it didn't, use the link below, or scan the code to sign in on your phone.",
+  qrAlt: "QR code to open the sign-in link on another device",
+  openPage: "Open sign-in page",
+  copyLink: "Copy link",
+  copied: "Copied",
+  copyFailed: "Could not copy. Select the link and copy it manually.",
+  startFailed: "Could not start sign-in. Please try again.",
+  networkError: "Network error. Please try again.",
+  signInFailed: "Sign-in failed. Please try again.",
+  cancel: "Cancel and start over",
+};

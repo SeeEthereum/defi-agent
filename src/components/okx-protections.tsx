@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { Panel, Skeleton } from "@/components/premium";
+import { useFormat, useT, type Formatters } from "@/i18n/client";
 import type { SecurityPolicy } from "@/lib/okx/security-policy";
 
 interface PolicyAnswer {
@@ -17,41 +18,47 @@ interface PolicyAnswer {
   settingsUrl: string;
 }
 
-function usd(value: string | null): string {
-  if (value === null) return "Not set";
+type Translate = ReturnType<typeof useT<"protections">>;
+
+function usd(value: string | null, t: Translate, f: Formatters): string {
+  if (value === null) return t("notSet");
   const n = Number(value);
-  return Number.isFinite(n) ? n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }) : "Not set";
+  return Number.isFinite(n) ? f.usd(n) : t("notSet");
 }
 
-function withUsed(limit: string | null, used: string | null): string {
-  if (limit === null) return "Not set";
-  return used !== null ? `${usd(limit)} a day, ${usd(used)} used today` : `${usd(limit)} a day`;
+function withUsed(limit: string | null, used: string | null, t: Translate, f: Formatters): string {
+  if (limit === null) return t("notSet");
+  return used !== null
+    ? t("perDayUsed", { limit: usd(limit, t, f), used: usd(used, t, f) })
+    : t("perDay", { limit: usd(limit, t, f) });
 }
 
-function rows(p: SecurityPolicy): Array<{ label: string; value: string; on: boolean }> {
+function rows(p: SecurityPolicy, t: Translate, f: Formatters): Array<{ label: string; value: string; on: boolean }> {
   return [
-    { label: "Per transaction", value: usd(p.singleTxLimit), on: p.singleTxLimit !== null },
-    { label: "Transfers", value: withUsed(p.dailyTransferTxLimit, p.dailyTransferTxUsed), on: p.dailyTransferTxLimit !== null },
-    { label: "Trades", value: withUsed(p.dailyTradeTxLimit, p.dailyTradeTxUsed), on: p.dailyTradeTxLimit !== null },
+    { label: t("perTransaction"), value: usd(p.singleTxLimit, t, f), on: p.singleTxLimit !== null },
+    { label: t("transfers"), value: withUsed(p.dailyTransferTxLimit, p.dailyTransferTxUsed, t, f), on: p.dailyTransferTxLimit !== null },
+    { label: t("trades"), value: withUsed(p.dailyTradeTxLimit, p.dailyTradeTxUsed, t, f), on: p.dailyTradeTxLimit !== null },
     {
-      label: "Approval code by email",
-      value: p.doubleConfirmation === true ? "On" : p.doubleConfirmation === false ? "Off" : "Not set",
+      label: t("approvalCode"),
+      value: p.doubleConfirmation === true ? t("on") : p.doubleConfirmation === false ? t("off") : t("notSet"),
       on: p.doubleConfirmation === true,
     },
     {
-      label: "Allowed addresses only",
+      label: t("allowedOnly"),
       value:
         p.whitelist === null
-          ? "Not reported"
+          ? t("notReported")
           : p.whitelist.enabled
-            ? `On, ${p.whitelist.addressCount} address${p.whitelist.addressCount === 1 ? "" : "es"}`
-            : "Not set",
+            ? t("whitelistOn", { count: p.whitelist.addressCount })
+            : t("notSet"),
       on: p.whitelist?.enabled === true,
     },
   ];
 }
 
 export function OkxProtections() {
+  const t = useT("protections");
+  const f = useFormat();
   const [answer, setAnswer] = useState<PolicyAnswer | null>(null);
 
   useEffect(() => {
@@ -68,17 +75,17 @@ export function OkxProtections() {
   }, []);
 
   const policy = answer?.policy;
-  const since = answer?.savedAt ? new Date(answer.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null;
+  const since = answer?.savedAt ? f.date(answer.savedAt, { day: "numeric", month: "short" }) : null;
 
   return (
     <Panel
       index={2}
-      title="Protection set at OKX"
-      sub={since ? `As of your sign-in on ${since}. Only you can change it, on OKX.` : "Only you can change it, on OKX."}
+      title={t("title")}
+      sub={since ? t("subSince", { date: since }) : t("sub")}
       action={
         answer ? (
           <a className="chip" href={answer.settingsUrl} target="_blank" rel="noopener noreferrer">
-            Change at OKX
+            {t("change")}
           </a>
         ) : null
       }
@@ -86,13 +93,13 @@ export function OkxProtections() {
       {!answer ? (
         <Skeleton height={120} />
       ) : !policy ? (
-        <p className="sub">Shown after your next sign-in.</p>
+        <p className="sub">{t("afterSignIn")}</p>
       ) : policy.status === "unavailable" ? (
-        <p className="sub">OKX did not report it at sign-in. Check it at OKX.</p>
+        <p className="sub">{t("unavailable")}</p>
       ) : (
         <>
           <ul className="rows">
-            {rows(policy).map((r) => (
+            {rows(policy, t, f).map((r) => (
               <li key={r.label}>
                 <div className="row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", minHeight: 48 }}>
                   <span className="t">{r.label}</span>
@@ -103,8 +110,7 @@ export function OkxProtections() {
           </ul>
           {policy.singleTxLimit === null && policy.doubleConfirmation !== true && (
             <p className="sub" style={{ marginTop: 12 }}>
-              This server signs for you while you are signed in. A limit at OKX caps what any single transaction can
-              move, whatever happens here; the approval code covers token approvals, which limits do not.
+              {t("serverNote")}
             </p>
           )}
         </>

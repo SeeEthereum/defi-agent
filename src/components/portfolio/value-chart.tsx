@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import useSWR from "swr";
 import { Empty, Panel, Segmented, Skeleton } from "@/components/premium";
-import { formatPercent, formatUsd } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/client";
 import type { HistoryRange, ValuePoint } from "@/lib/portfolio/history";
 import {
   change,
@@ -27,18 +27,17 @@ import {
   valueTicks,
 } from "@/lib/portfolio/chart";
 
-const LOCALE = "en-US";
 const PLOT_H = 180;
 const AXIS_H = 26;
 const PAD_TOP = 10;
 const PAD_RIGHT = 10;
 
-const RANGE_OPTIONS: Array<{ value: HistoryRange; label: string }> = [
-  { value: "1d", label: "1D" },
-  { value: "1w", label: "1W" },
-  { value: "1m", label: "1M" },
-  { value: "all", label: "All" },
-];
+const RANGE_KEYS = [
+  ["1d", "rangeDay"],
+  ["1w", "rangeWeek"],
+  ["1m", "rangeMonth"],
+  ["all", "rangeAll"],
+] as const;
 
 interface HistoryData {
   range: HistoryRange;
@@ -54,23 +53,32 @@ async function fetchHistory(url: string): Promise<HistoryData> {
   return body.data;
 }
 
-const timeFormat = new Intl.DateTimeFormat(LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const dayFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric" });
-const monthFormat = new Intl.DateTimeFormat(LOCALE, { month: "short" });
-const monthYearFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", year: "numeric" });
-const fullFormat = new Intl.DateTimeFormat(LOCALE, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const dateFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric", year: "numeric" });
+const H23 = { hourCycle: "h23" } as const;
+const DATE: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
 
-/** When a reading was taken, as precise as its range: hours, or days for "All". */
-function readingTime(p: ValuePoint, isNow: boolean, range: HistoryRange): string {
-  if (isNow) return "Now";
-  return range === "all" ? dateFormat.format(p.t) : fullFormat.format(p.t);
-}
-
-function axisLabel(t: number, unit: "hour" | "day" | "month"): string {
-  if (unit === "hour") return timeFormat.format(t);
-  if (unit === "day") return dayFormat.format(t);
-  return new Date(t).getMonth() === 0 ? monthYearFormat.format(t) : monthFormat.format(t);
+/** Times in the page's language: readings (as precise as their range) and axis labels. */
+function useTimeText() {
+  const f = useFormat();
+  const t = useT("chart");
+  return useMemo(
+    () => ({
+      /** When a reading was taken: hours, or days for "All". */
+      reading: (p: ValuePoint, isNow: boolean, range: HistoryRange) =>
+        isNow
+          ? t("now")
+          : range === "all"
+            ? f.date(p.t, DATE)
+            : f.date(p.t, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", ...H23 }),
+      axis: (time: number, unit: "hour" | "day" | "month") =>
+        unit === "hour"
+          ? f.date(time, { hour: "2-digit", minute: "2-digit", ...H23 })
+          : unit === "day"
+            ? f.date(time, { month: "short", day: "numeric" })
+            : f.date(time, new Date(time).getMonth() === 0 ? { month: "short", year: "numeric" } : { month: "short" }),
+      date: (time: number) => f.date(time, DATE),
+    }),
+    [f, t]
+  );
 }
 
 function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
@@ -89,10 +97,13 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
 function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRange; nowT: number }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
+  const f = useFormat();
+  const t = useT("chart");
+  const when = useTimeText();
 
   const domain = valueDomain(series);
   const { ticks: yTicks, step } = valueTicks(domain, 3);
-  const yLabels = yTicks.map((v) => formatTick(v, step, LOCALE));
+  const yLabels = yTicks.map((v) => formatTick(v, step, f.locale));
   const gutter = Math.max(...yLabels.map((l) => l.length), 3) * 6.6 + 10;
 
   const t0 = series[0].t;
@@ -121,7 +132,7 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
   // About one date label per 64px: "Nov 17" is ~45px wide.
   const { ticks: xTicks, unit } = timeTicks(t0, t1, Math.max(2, Math.floor((width - gutter - PAD_RIGHT) / 64)));
   const point = active !== null ? series[active] : null;
-  const readout = point ? `${formatUsd(point.usd)}, ${readingTime(point, point.t === nowT, range)}` : "";
+  const readout = point ? `${f.usd(point.usd)}, ${when.reading(point, point.t === nowT, range)}` : "";
 
   const onPointer = (e: PointerEvent<SVGSVGElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
@@ -144,7 +155,7 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
   };
 
   const first = series[0];
-  const summary = `Value from ${readingTime(first, false, range)}: ${formatUsd(first.usd)}, now ${formatUsd(last.usd)}.`;
+  const summary = t("summary", { from: when.reading(first, false, range), first: f.usd(first.usd), last: f.usd(last.usd) });
 
   return (
     <div
@@ -152,7 +163,7 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
       className="vchart"
       tabIndex={0}
       role="group"
-      aria-label={`${summary} Use the left and right arrow keys to read each point.`}
+      aria-label={`${summary} ${t("keys")}`}
       onKeyDown={onKey}
       onBlur={() => setActive(null)}
     >
@@ -174,9 +185,9 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
               </text>
             </g>
           ))}
-          {xTicks.map((t) => (
-            <text key={t} x={x(t)} y={PLOT_H + 18} textAnchor="middle" className="vchart-tick">
-              {axisLabel(t, unit)}
+          {xTicks.map((time) => (
+            <text key={time} x={x(time)} y={PLOT_H + 18} textAnchor="middle" className="vchart-tick">
+              {when.axis(time, unit)}
             </text>
           ))}
 
@@ -227,8 +238,8 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
           aria-hidden="true"
           style={{ left: Math.min(Math.max(x(point.t), 70), width - 70) }}
         >
-          <strong className="num">{formatUsd(point.usd)}</strong>
-          <span>{readingTime(point, point.t === nowT, range)}</span>
+          <strong className="num">{f.usd(point.usd)}</strong>
+          <span>{when.reading(point, point.t === nowT, range)}</span>
         </div>
       )}
       <p className="sr-only" aria-live="polite">
@@ -239,22 +250,25 @@ function Plot({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRan
 }
 
 function TableView({ series, range, nowT }: { series: ValuePoint[]; range: HistoryRange; nowT: number }) {
+  const f = useFormat();
+  const t = useT("chart");
+  const when = useTimeText();
   return (
     <details className="vchart-table">
-      <summary>Show as a table</summary>
+      <summary>{t("table")}</summary>
       <div className="vchart-table-scroll">
         <table>
           <thead>
             <tr>
-              <th scope="col">When</th>
-              <th scope="col">Total value</th>
+              <th scope="col">{t("when")}</th>
+              <th scope="col">{t("value")}</th>
             </tr>
           </thead>
           <tbody>
             {[...series].reverse().map((p) => (
               <tr key={p.t}>
-                <td>{readingTime(p, p.t === nowT, range)}</td>
-                <td className="num">{formatUsd(p.usd)}</td>
+                <td>{when.reading(p, p.t === nowT, range)}</td>
+                <td className="num">{f.usd(p.usd)}</td>
               </tr>
             ))}
           </tbody>
@@ -265,6 +279,9 @@ function TableView({ series, range, nowT }: { series: ValuePoint[]; range: Histo
 }
 
 export function ValueChart({ index }: { index?: number }) {
+  const f = useFormat();
+  const t = useT("chart");
+  const when = useTimeText();
   const [range, setRange] = useState<HistoryRange>("1w");
   // Minutes east of UTC, so the server cuts days at this viewer's midnight.
   const offset = -new Date().getTimezoneOffset();
@@ -282,44 +299,41 @@ export function ValueChart({ index }: { index?: number }) {
   return (
     <Panel
       index={index}
-      title="Value over time"
-      sub="All six chains, in US dollars"
-      action={<Segmented id="value-range" label="Time range" value={range} options={RANGE_OPTIONS} onChange={setRange} />}
+      title={t("title")}
+      sub={t("sub")}
+      action={
+        <Segmented
+          id="value-range"
+          label={t("range")}
+          value={range}
+          options={RANGE_KEYS.map(([value, key]) => ({ value, label: t(key) }))}
+          onChange={setRange}
+        />
+      }
     >
       {!data && isLoading ? (
         <Skeleton height={PLOT_H + AXIS_H + 40} />
       ) : !data && error ? (
-        <Empty icon="bar-chart" title="History unavailable" text="Your value history could not be loaded. It will try again by itself." />
+        <Empty icon="bar-chart" title={t("unavailableTitle")} text={t("unavailableText")} />
       ) : data && !enough ? (
         !data.since || new Date(data.since).toDateString() === new Date().toDateString() ? (
-          <Empty
-            icon="bar-chart"
-            title="Your chart starts today"
-            text="albicocca saves your total about once an hour while you use the app. Come back later to see it move."
-          />
+          <Empty icon="bar-chart" title={t("startsTodayTitle")} text={t("startsTodayText")} />
         ) : (
-          <Empty
-            icon="bar-chart"
-            title="No readings in this period"
-            text={`albicocca saves your total about once an hour while you use the app. Your readings go back to ${dateFormat.format(data.since)}: choose a longer period to see them.`}
-          />
+          <Empty icon="bar-chart" title={t("noReadingsTitle")} text={t("noReadingsText", { date: when.date(data.since) })} />
         )
       ) : data ? (
         <div style={{ opacity: isValidating && data.range !== range ? 0.5 : 1, transition: "opacity 0.2s" }}>
           {delta && (
             <p className="vchart-head">
               <span className={`num ${delta.usd > 0 ? "text-gain-ink" : delta.usd < 0 ? "text-loss-ink" : ""}`}>
-                {formatUsd(delta.usd, { sign: true })}
-                {delta.percent !== null && ` (${formatPercent(delta.percent, { sign: true })})`}
+                {f.usd(delta.usd, { sign: true })}
+                {delta.percent !== null && ` (${f.percent(delta.percent, { sign: true })})`}
               </span>{" "}
-              <span className="muted">since {readingTime(series[0], false, shownRange)}</span>
+              <span className="muted">{t("since", { when: when.reading(series[0], false, shownRange) })}</span>
             </p>
           )}
           <Plot series={series} range={shownRange} nowT={data.current.t} />
-          <p className="vchart-foot">
-            Recorded while you use albicocca, about once an hour; dotted stretches had no readings. Changes include money
-            sent in or out, not only price moves.
-          </p>
+          <p className="vchart-foot">{t("foot")}</p>
           <TableView series={series} range={shownRange} nowT={data.current.t} />
         </div>
       ) : null}

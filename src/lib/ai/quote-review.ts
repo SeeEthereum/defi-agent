@@ -5,13 +5,29 @@
  * quote route for the final quote and shows it from the response (output,
  * minimum received, price impact or fees, route), with the quote id the
  * execute route will hold the transaction to. Pure functions, used by the
- * assistant page.
+ * assistant page, which passes the words and the language (QuoteText):
+ * labels from the "quoteReview" messages, numbers as lib/format writes
+ * them in that language.
  */
 
-import { bridgeCost, formatBridgeCost, formatCostShare } from "@/lib/bridge/cost";
+import { bridgeCost, type BridgeCost } from "@/lib/bridge/cost";
 import { getChainBySwapName } from "@/lib/chains";
 import { formatAmount, formatPercent, formatUsd, MISSING } from "@/lib/format";
 import { cleanSymbol, displayToken } from "@/lib/tokens/display";
+import type { Locale } from "@/i18n/config";
+import type { At, Paths, Vars } from "@/i18n/translate";
+import type { Messages } from "@/i18n/messages/en";
+
+/** The card's words and language: useT("quoteReview") and useFormat().locale on the page. */
+export interface QuoteText {
+  t: (key: Paths<At<Messages, "quoteReview">>, vars?: Vars) => string;
+  locale: Locale;
+}
+
+/** A plain decimal ("0.5") with the language's decimal mark ("0,5"). */
+function decimalMark(value: string, locale: Locale): string {
+  return locale === "it" ? value.replace(".", ",") : value;
+}
 
 /** The server keeps a quote for 60 s; the card stops offering it a little earlier. */
 export const REVIEW_TTL_MS = 55_000;
@@ -72,9 +88,9 @@ function floorToShown(base: bigint, decimals: number): bigint {
 }
 
 /** Base units as people read them: "2,512.3456", "0.000005", "< 0.00000001". */
-export function readable(base: string, decimals: number): string {
+export function readable(base: string, decimals: number, locale: Locale = "en"): string {
   if (!validBase(base, decimals)) return MISSING;
-  return formatAmount(exactAmount(floorToShown(BigInt(base), decimals).toString(), decimals));
+  return formatAmount(exactAmount(floorToShown(BigInt(base), decimals).toString(), decimals), { locale });
 }
 
 /** A token's symbol as people know it ("USD₮0" → "USDT", the chain's own coin for native), else the card's. */
@@ -99,9 +115,27 @@ export function minusPercent(base: string, percent: string): string {
 }
 
 /** " (about $2,512.35)" after an amount, or "" when the value is unknown or a crumb. */
-function aboutUsd(value: number): string {
+function aboutUsd(value: number, { t, locale }: QuoteText): string {
   if (!Number.isFinite(value) || value <= 0) return "";
-  return value < 0.01 ? " (less than $0.01)" : ` (about ${formatUsd(value)})`;
+  return value < 0.01 ? t("lessThanUsd", { usd: formatUsd(0.01, { locale }) }) : t("aboutUsd", { usd: formatUsd(value, { locale }) });
+}
+
+/** Total fees and gas in dollars, as lib/bridge/cost judges them, in the card's language. */
+function costText(cost: BridgeCost, { t, locale }: QuoteText): string {
+  if (cost.usd == null) return t("costNotGiven");
+  if (cost.usd >= 0.01) {
+    const dollars = formatUsd(cost.usd, { locale });
+    return cost.partial ? t("costAtLeast", { usd: dollars }) : dollars;
+  }
+  if (cost.partial) return t("costNotFullyPriced");
+  return cost.usd > 0 ? t("costLessThan", { usd: formatUsd(0.01, { locale }) }) : formatUsd(0, { locale });
+}
+
+/** "11%" or "2.4%" when the cost is at least 1% of the amount sent; otherwise null. */
+function costShare(cost: BridgeCost, locale: Locale): string | null {
+  if (cost.shareOfAmount == null || cost.shareOfAmount < 0.01) return null;
+  const pct = cost.shareOfAmount * 100;
+  return `${decimalMark(pct < 10 ? pct.toFixed(1) : String(Math.round(pct)), locale)}%`;
 }
 
 function quoteIdOf(data: Obj): string | null {
@@ -121,7 +155,8 @@ export function swapQuoteBody(params: Obj): Obj {
 }
 
 /** The final swap quote as card rows. Null when the response has no usable quote. */
-export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteReview | null {
+export function swapReview(data: Obj, params: Obj, text: QuoteText, now = Date.now()): QuoteReview | null {
+  const { t, locale } = text;
   const quoteId = quoteIdOf(data);
   const toAmount = str(data.toTokenAmount);
   const toToken = obj(data.toToken);
@@ -133,25 +168,28 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
   const toSymbol = symbolOf(toToken, chainIndex, params.toSymbol);
   const fromSymbol = symbolOf(fromToken, chainIndex, params.fromSymbol);
   const slippage = str(params.slippage) ?? "0.5";
-  const received = readable(toAmount, toDecimals);
+  const received = readable(toAmount, toDecimals, locale);
   const unitPrice = Number(toToken.tokenUnitPrice);
   // The dollar value from the exact amount, not the rounded one on screen.
   const receivedUsd = Number.isFinite(unitPrice) && unitPrice > 0
-    ? aboutUsd(Number(exactAmount(toAmount, toDecimals)) * unitPrice)
+    ? aboutUsd(Number(exactAmount(toAmount, toDecimals)) * unitPrice, text)
     : "";
 
   const rows = [
-    { label: "You pay", value: `${String(params.amountDisplay ?? "")} ${fromSymbol}`.trim() },
-    { label: "You receive", value: `${received} ${toSymbol}${receivedUsd}`.trim() },
+    { label: t("youPay"), value: `${decimalMark(String(params.amountDisplay ?? ""), locale)} ${fromSymbol}`.trim() },
+    { label: t("youReceive"), value: `${received} ${toSymbol}${receivedUsd}`.trim() },
     {
-      label: "Minimum received",
-      value: `${readable(minusPercent(toAmount, slippage), toDecimals)} ${toSymbol} (slippage ${slippage}%)`,
+      label: t("minimumReceived"),
+      value: t("withSlippage", {
+        amount: `${readable(minusPercent(toAmount, slippage), toDecimals, locale)} ${toSymbol}`,
+        slippage: decimalMark(slippage, locale),
+      }),
     },
   ];
 
   const impactRaw = Number(data.priceImpactPercentage ?? data.priceImpactPercent);
   const impact = Number.isFinite(impactRaw) ? Math.abs(impactRaw) : null;
-  if (impact != null) rows.push({ label: "Price impact", value: formatPercent(impact) });
+  if (impact != null) rows.push({ label: t("priceImpact"), value: formatPercent(impact, { locale }) });
 
   const router = obj((data.dexRouterList as unknown[] | undefined)?.[0]);
   const protocol = obj(
@@ -159,7 +197,7 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
       router.dexProtocol
   );
   const dexName = str(protocol.dexName);
-  if (dexName) rows.push({ label: "Route", value: dexName });
+  if (dexName) rows.push({ label: t("route"), value: dexName });
 
   return {
     quoteId,
@@ -167,11 +205,11 @@ export function swapReview(data: Obj, params: Obj, now = Date.now()): QuoteRevie
     rows,
     blocked:
       impact != null && impact > IMPACT_BLOCK
-        ? `Price impact is ${formatPercent(impact, { decimals: 1 })}: this trade would lose too much value. Try a smaller amount.`
+        ? t("blockedImpact", { impact: formatPercent(impact, { decimals: 1, locale }) })
         : null,
     warning:
       impact != null && impact >= IMPACT_WARN && impact <= IMPACT_BLOCK
-        ? `High price impact (${formatPercent(impact, { decimals: 1 })}): you get noticeably less than the market price.`
+        ? t("warnImpact", { impact: formatPercent(impact, { decimals: 1, locale }) })
         : null,
   };
 }
@@ -188,7 +226,8 @@ export function bridgeQuoteQuery(params: Obj): URLSearchParams {
 }
 
 /** The final bridge quote as card rows. Null when the response has no usable quote. */
-export function bridgeReview(data: Obj, params: Obj, now = Date.now()): QuoteReview | null {
+export function bridgeReview(data: Obj, params: Obj, text: QuoteText, now = Date.now()): QuoteReview | null {
+  const { t, locale } = text;
   const quoteId = quoteIdOf(data);
   const action = obj(data.action);
   const estimate = obj(data.estimate);
@@ -206,20 +245,23 @@ export function bridgeReview(data: Obj, params: Obj, now = Date.now()): QuoteRev
     (estimate.gasCosts as { amountUSD?: string }[] | undefined) ?? [],
     str(estimate.fromAmountUSD) ?? undefined
   );
-  const share = formatCostShare(cost);
+  const share = costShare(cost, locale);
   const seconds = Number(estimate.executionDuration);
   const tool = str(obj(data.toolDetails).name) ?? str(data.tool);
 
   const rows = [
-    { label: "You send", value: `${String(params.amountDisplay ?? "")} ${fromSymbol}`.trim() },
-    { label: "You receive", value: `${readable(toAmount, toDecimals)} ${toSymbol}`.trim() },
-    { label: "Minimum received", value: `${readable(toAmountMin, toDecimals)} ${toSymbol}`.trim() },
-    { label: "Fees and gas", value: share ? `${formatBridgeCost(cost)} (${share} of the amount)` : formatBridgeCost(cost) },
+    { label: t("youSend"), value: `${decimalMark(String(params.amountDisplay ?? ""), locale)} ${fromSymbol}`.trim() },
+    { label: t("youReceive"), value: `${readable(toAmount, toDecimals, locale)} ${toSymbol}`.trim() },
+    { label: t("minimumReceived"), value: `${readable(toAmountMin, toDecimals, locale)} ${toSymbol}`.trim() },
+    { label: t("feesAndGas"), value: share ? t("feesShare", { cost: costText(cost, text), share }) : costText(cost, text) },
   ];
   if (Number.isFinite(seconds) && seconds > 0) {
-    rows.push({ label: "Time", value: seconds < 90 ? `About ${Math.round(seconds)} s` : `About ${Math.round(seconds / 60)} min` });
+    rows.push({
+      label: t("time"),
+      value: seconds < 90 ? t("aboutSeconds", { count: Math.round(seconds) }) : t("aboutMinutes", { count: Math.round(seconds / 60) }),
+    });
   }
-  if (tool) rows.push({ label: "Provider", value: tool });
+  if (tool) rows.push({ label: t("provider"), value: tool });
 
   return {
     quoteId,
@@ -228,7 +270,7 @@ export function bridgeReview(data: Obj, params: Obj, now = Date.now()): QuoteRev
     blocked: null,
     warning:
       cost.shareOfAmount != null && cost.shareOfAmount >= 0.05
-        ? `Fees and gas take ${share} of the amount. A larger transfer, or another chain, costs less in proportion.`
+        ? t("warnFees", { share: share ?? "" })
         : null,
   };
 }

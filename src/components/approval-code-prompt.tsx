@@ -12,6 +12,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { Modal } from "@/components/motion/modal";
+import { useT } from "@/i18n/client";
 
 interface Prompt {
   id: number;
@@ -56,6 +57,8 @@ function answer(code: string | null): void {
 }
 
 function CodeForm({ prompt }: { prompt: Prompt }) {
+  const t = useT("approvalCode");
+  const tc = useT("common");
   const [code, setCode] = useState("");
   const [resend, setResend] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null });
   const ready = /^\d{6}$/.test(code);
@@ -69,9 +72,9 @@ function CodeForm({ prompt }: { prompt: Prompt }) {
         body: JSON.stringify({ action: "resend" }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
-      setResend({ busy: false, note: res.ok ? "A new code is on its way." : (data?.error ?? "The code could not be sent.") });
+      setResend({ busy: false, note: res.ok ? t("newCodeSent") : (data?.error ?? t("sendFailed")) });
     } catch {
-      setResend({ busy: false, note: "The code could not be sent." });
+      setResend({ busy: false, note: t("sendFailed") });
     }
   }
 
@@ -84,15 +87,14 @@ function CodeForm({ prompt }: { prompt: Prompt }) {
       }}
     >
       <div>
-        <h2 className="text-base font-semibold text-foreground">Enter the code from OKX</h2>
+        <h2 className="text-base font-semibold text-foreground">{t("title")}</h2>
         <p className="mt-1.5 text-[13px] text-muted-foreground">
-          {prompt.message || "OKX sent a 6-digit code to the email of your account."} Nothing is sent until the
-          code is right. This check is on because you turned on approval verification in OKX.
+          {prompt.message || t("defaultMessage")} {t("note")}
         </p>
       </div>
 
       <label className="block">
-        <span className="sr-only">6-digit code</span>
+        <span className="sr-only">{t("codeLabel")}</span>
         <input
           autoFocus
           inputMode="numeric"
@@ -118,7 +120,7 @@ function CodeForm({ prompt }: { prompt: Prompt }) {
         disabled={resend.busy}
         className="text-[13px] text-muted-foreground underline underline-offset-2 disabled:opacity-60"
       >
-        {resend.busy ? "Sending…" : "Send a new code"}
+        {resend.busy ? t("sending") : t("sendNew")}
       </button>
       {resend.note && <p className="text-[13px] text-muted-foreground">{resend.note}</p>}
 
@@ -128,14 +130,14 @@ function CodeForm({ prompt }: { prompt: Prompt }) {
           onClick={() => answer(null)}
           className="flex-1 h-11 rounded-xl border border-border/60 bg-secondary/80 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
         >
-          Cancel
+          {tc("cancel")}
         </button>
         <button
           type="submit"
           disabled={!ready}
           className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
-          Confirm
+          {tc("confirm")}
         </button>
       </div>
     </form>

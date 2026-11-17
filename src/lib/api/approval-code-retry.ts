@@ -1,3 +1,4 @@
+import { documentLocale, translateApiMessage } from "@/i18n/api-messages";
 import { APPROVAL_CODE_CODE, RISK_DECLINED_MESSAGE } from "./send-state";
 
 /**
@@ -50,7 +51,7 @@ export async function enterApprovalCodeIfAsked(
     const code = await ask({ message, error });
     if (code === null) {
       await dropHeldApproval(send);
-      return Response.json({ success: false, code: "risk_declined", error: RISK_DECLINED_MESSAGE }, { status: 400 });
+      return Response.json({ success: false, code: "risk_declined", error: translateApiMessage(RISK_DECLINED_MESSAGE, documentLocale()) }, { status: 400 });
     }
     const retry = await send(input, { ...init, body: JSON.stringify({ ...body, approvalCode: code }) });
     const answer = retry.status === 400 ? await codeOf(retry) : null;
@@ -62,7 +63,7 @@ export async function enterApprovalCodeIfAsked(
   }
   await dropHeldApproval(send);
   return Response.json(
-    { success: false, code: "risk_declined", error: "Too many attempts. Nothing was sent. Start again." },
+    { success: false, code: "risk_declined", error: translateApiMessage("Too many attempts. Nothing was sent. Start again.", documentLocale()) },
     { status: 400 }
   );
 }

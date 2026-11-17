@@ -8,7 +8,7 @@ import type {
 import { toResponseInputItems } from "openai/lib/responses/ResponseInputItems";
 import { z } from "zod";
 import { AI_TOOLS } from "./tools";
-import { SYSTEM_PROMPT } from "./system-prompt";
+import { systemPromptFor } from "./system-prompt";
 import { MAIN_EFFORT, MAIN_MODEL } from "./models";
 import { walletBalance, walletAddresses, walletHistory, securityApprovals, securityScanMyTokens, gasStationStatus } from "@/lib/okx/cli";
 import { tokenSearch, securityTokenScan, securityDappScan, marketPrice, signalList, gatewayGas, leaderboardList, addressTrackerActivities } from "@/lib/okx/market-data";
@@ -444,11 +444,11 @@ export interface AiResponse {
   }>;
 }
 
-function createResponse(input: ResponseInputItem[], withTools: boolean): Promise<Response> {
+function createResponse(input: ResponseInputItem[], withTools: boolean, instructions: string): Promise<Response> {
   return getOpenAI().responses.create(
     {
       model: MAIN_MODEL,
-      instructions: SYSTEM_PROMPT,
+      instructions,
       input,
       reasoning: { effort: MAIN_EFFORT },
       max_output_tokens: MAX_OUTPUT_TOKENS,
@@ -477,8 +477,10 @@ function serializeToolResult(result: unknown): string {
 }
 
 export async function runAiChat(
-  messages: Array<{ role: "user" | "assistant"; content: string }>
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  locale: "en" | "it" = "en"
 ): Promise<AiResponse> {
+  const instructions = systemPromptFor(locale);
   let userAddress: string | undefined;
   try {
     userAddress = await sessionEvmAddress();
@@ -489,7 +491,7 @@ export async function runAiChat(
   const input: ResponseInputItem[] = messages.map((m) => ({ role: m.role, content: m.content }));
   const proposedActions: AiResponse["proposedActions"] = [];
 
-  let response = await createResponse(input, true);
+  let response = await createResponse(input, true, instructions);
 
   // Agentic loop: keep going while the model wants to use tools
   let toolRounds = 0;
@@ -505,7 +507,7 @@ export async function runAiChat(
         role: "developer",
         content: "Tool budget exhausted. Answer now with the information you already have; do not call more tools.",
       });
-      response = await createResponse(input, false);
+      response = await createResponse(input, false, instructions);
       break;
     }
     toolRounds += 1;
@@ -543,7 +545,7 @@ export async function runAiChat(
       input.push({ type: "function_call_output", call_id: toolCall.call_id, output: serializeToolResult(result) });
     }
 
-    response = await createResponse(input, true);
+    response = await createResponse(input, true, instructions);
   }
 
   let text = response.output_text ?? "";

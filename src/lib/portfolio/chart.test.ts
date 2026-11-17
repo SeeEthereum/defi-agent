@@ -79,6 +79,10 @@ describe("value chart geometry", () => {
     expect(formatTick(20000, 10000)).toBe("$20K");
     expect(formatTick(0, 10000)).toBe("$0");
     expect(formatTick(1.5, 0.5)).toBe("$1.5");
+    // Italian, as lib/format writes money.
+    expect(formatTick(1200, 100, "it")).toBe("1.200 $");
+    expect(formatTick(12500, 2500, "it")).toBe("12,5K $");
+    expect(formatTick(0.055, 0.005, "it")).toBe("0,055 $");
   });
 
   it("measures the change from the first point to the last", () => {

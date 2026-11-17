@@ -14,6 +14,8 @@
  * closed instead of falling back to a shared wallet.
  */
 
+import { localizeResponse, translateApiMessage } from "@/i18n/api-messages";
+import { localeFromRequest } from "@/i18n/server";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
@@ -213,11 +215,18 @@ export function withSession<Ctx = unknown>(
     const session = await sessionFromRequest(request);
     if (!session) {
       return NextResponse.json(
-        { success: false, error: "Session expired. Reload the page.", code: "no_session" },
+        {
+          success: false,
+          error: translateApiMessage("Session expired. Reload the page.", localeFromRequest(request)),
+          code: "no_session",
+        },
         { status: 401 }
       );
     }
     scheduleAbandonedSessionSweep();
-    return storage.run(session, () => handler(request, context));
+    const response = await storage.run(session, () => handler(request, context));
+    // The answer's messages in the visitor's language (i18n/api-messages):
+    // the handler worked in English, only the words shown change.
+    return localizeResponse(response, localeFromRequest(request));
   };
 }

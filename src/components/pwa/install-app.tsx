@@ -11,6 +11,7 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import { Modal } from "@/components/motion/modal";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
+import { useT } from "@/i18n/client";
 import {
   currentInstallRoute,
   heldInstallPrompt,
@@ -70,6 +71,7 @@ export function InstallAppItem({
   onSelect?: () => void;
 }) {
   const route = useInstallRoute();
+  const t = useT("pwa");
   if (route === "installed" || route === "none") return null;
   return (
     <button
@@ -82,7 +84,7 @@ export function InstallAppItem({
       }}
     >
       <LineIcon name="install" size={iconSize} />
-      Install app
+      {t("install")}
     </button>
   );
 }
@@ -99,13 +101,14 @@ function Step({ icon, children }: { icon: LineIconName; children: ReactNode }) {
 }
 
 function Steps({ route }: { route: StepsRoute }) {
+  const t = useT("pwa");
   if (route === "safari-mac") {
     return (
       <>
-        <h2 className="text-base font-semibold text-foreground">Add albicocca to your Dock</h2>
+        <h2 className="text-base font-semibold text-foreground">{t("dockTitle")}</h2>
         <ol className="space-y-3">
-          <Step icon="file">In the menu bar, choose File, then Add to Dock.</Step>
-          <Step icon="check">Click Add. albicocca opens in its own window, from the Dock or Launchpad.</Step>
+          <Step icon="file">{t("dockStep1")}</Step>
+          <Step icon="check">{t("dockStep2")}</Step>
         </ol>
       </>
     );
@@ -113,39 +116,32 @@ function Steps({ route }: { route: StepsRoute }) {
   if (route === "android-menu") {
     return (
       <>
-        <h2 className="text-base font-semibold text-foreground">Install albicocca</h2>
+        <h2 className="text-base font-semibold text-foreground">{t("androidTitle")}</h2>
         <ol className="space-y-3">
-          <Step icon="dots">Open the browser menu: the three dots next to the address bar.</Step>
-          <Step icon="install">Choose Install app, or Add to Home screen.</Step>
-          <Step icon="check">Confirm. albicocca opens from its own icon, without the browser bars.</Step>
+          <Step icon="dots">{t("androidStep1")}</Step>
+          <Step icon="install">{t("androidStep2")}</Step>
+          <Step icon="check">{t("androidStep3")}</Step>
         </ol>
       </>
     );
   }
   return (
     <>
-      <h2 className="text-base font-semibold text-foreground">Add albicocca to your Home Screen</h2>
-      {route === "ios-in-app" && (
-        <p className="text-[13px] text-muted-foreground">
-          The browser inside this app cannot add websites to the Home Screen. Open this page in Safari first: look
-          for Open in Safari in its menu, often behind the three dots.
-        </p>
-      )}
+      <h2 className="text-base font-semibold text-foreground">{t("iosTitle")}</h2>
+      {route === "ios-in-app" && <p className="text-[13px] text-muted-foreground">{t("iosInApp")}</p>}
       <ol className="space-y-3">
-        <Step icon="share">Tap the Share button: in Safari&apos;s toolbar, or in the address bar in Chrome.</Step>
-        <Step icon="add-square">Scroll down and choose Add to Home Screen.</Step>
-        <Step icon="check">Tap Add. albicocca now opens from its own icon, without the browser bars.</Step>
+        <Step icon="share">{t("iosStep1")}</Step>
+        <Step icon="add-square">{t("iosStep2")}</Step>
+        <Step icon="check">{t("iosStep3")}</Step>
       </ol>
-      <p className="text-[13px] text-muted-foreground">
-        If the app asks you to sign in again, that is expected: iPhone and iPad keep an installed app&apos;s data
-        apart from the browser&apos;s.
-      </p>
+      <p className="text-[13px] text-muted-foreground">{t("iosNote")}</p>
     </>
   );
 }
 
 /** Mounted once by the app layout. */
 export function InstallStepsHost() {
+  const tc = useT("common");
   const route = useSyncExternalStore(
     subscribeShown,
     () => shown,
@@ -161,7 +157,7 @@ export function InstallStepsHost() {
             onClick={() => setShown(null)}
             className="h-11 w-full rounded-xl border border-border/60 bg-secondary/80 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
           >
-            Done
+            {tc("done")}
           </button>
         </div>
       )}

@@ -68,12 +68,31 @@
     </svg>
     <span aria-hidden="true">cca</span>
   </span>
-  <h1>You're offline</h1>
-  <p>albicocca needs a connection to show your wallet and to sign anything. Check your Wi-Fi or mobile data.</p>
-  <button type="button" id="retry">Try again</button>
-  <p class="note">This page reloads by itself when the connection is back.</p>
+  <h1 data-t="title">You're offline</h1>
+  <p data-t="body">albicocca needs a connection to show your wallet and to sign anything. Check your Wi-Fi or mobile data.</p>
+  <button type="button" id="retry" data-t="retry">Try again</button>
+  <p class="note" data-t="note">This page reloads by itself when the connection is back.</p>
 </main>
 <script>
+  // Italian when the page that could not load was Italian (/it/…), else the
+  // language last used (the app's cookie), else the browser's.
+  (function () {
+    var it = {
+      title: "Sei offline",
+      body: "albicocca ha bisogno della connessione per mostrarti il wallet e per firmare qualsiasi cosa. Controlla il Wi-Fi o la rete dati.",
+      retry: "Riprova",
+      note: "La pagina si ricarica da sola quando torna la connessione.",
+      doc: "Offline · albicocca"
+    };
+    var path = location.pathname;
+    var cookie = (document.cookie.match(/(?:^|; )albicocca-lang=(en|it)/) || [])[1];
+    var lang = /^\/it(\/|$)/.test(path) ? "it" : /^\/en(\/|$)/.test(path) ? "en" : cookie || ((navigator.language || "").slice(0, 2) === "it" ? "it" : "en");
+    if (lang !== "it") return;
+    document.documentElement.lang = "it";
+    document.title = it.doc;
+    var nodes = document.querySelectorAll("[data-t]");
+    for (var i = 0; i < nodes.length; i++) nodes[i].textContent = it[nodes[i].getAttribute("data-t")];
+  })();
   // Served by the service worker in place of the page that could not load,
   // so a reload asks for that page again.
   document.getElementById("retry").addEventListener("click", function () { location.reload(); });
