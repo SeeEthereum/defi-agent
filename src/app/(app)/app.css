@@ -195,6 +195,8 @@
   & .note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; background: var(--shell); border: 1px solid var(--border); color: var(--text-2); }
   & .note.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--warn-ink); }
   & .note.loss { background: var(--loss-soft); border-color: color-mix(in srgb, var(--loss) 30%, transparent); color: var(--loss-ink); }
+  & .idle-note { margin: 0 0 16px; }
+  & .idle-note a { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 
   /* entrance for blocks (CSS, ends visible; stopped by reduced motion) */
   @media (prefers-reduced-motion: no-preference) {

@@ -10,6 +10,8 @@ interface AuthState {
   accountName: string | null;
   accountCount: number;
   walletAddress: string | null;
+  /** "idle" when the server signed this browser out after 30 minutes without activity. */
+  signedOutReason: "idle" | null;
   isLoading: boolean;
   mutate: () => void;
 }
@@ -21,6 +23,7 @@ const AuthContext = createContext<AuthState>({
   accountName: null,
   accountCount: 0,
   walletAddress: null,
+  signedOutReason: null,
   isLoading: true,
   mutate: () => {},
 });
@@ -47,6 +50,7 @@ export function useAuthState(): AuthState {
     accountName: data?.accountName ?? null,
     accountCount: data?.accountCount ?? 0,
     walletAddress: addrData?.data?.evm?.[0]?.address ?? null,
+    signedOutReason: !authenticated && data?.signedOutReason === "idle" ? "idle" : null,
     isLoading,
     mutate,
   };

@@ -3,6 +3,7 @@ import { walletLoginInit } from "@/lib/okx/cli";
 import { canStartLogin, startLoginPoll } from "@/lib/okx/login-session";
 import { currentSession, withSession } from "@/lib/session/session";
 import { rateLimit } from "@/lib/api/rate-limit";
+import { markActive } from "@/lib/session/activity";
 import { clientIp } from "@/lib/api/client-ip";
 import { apiError } from "@/lib/api/validation";
 
@@ -59,6 +60,7 @@ export const POST = withSession(async (request: NextRequest) => {
     }
 
     startLoginPoll(authSessionId, loginUrl);
+    markActive(currentSession());
 
     return NextResponse.json({ success: true, data: { loginUrl, authSessionId } });
   } catch (error) {

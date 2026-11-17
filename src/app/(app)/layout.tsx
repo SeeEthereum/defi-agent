@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { AppMasthead } from "@/components/shell/app-masthead";
@@ -81,6 +82,41 @@ function useSessionGuard() {
   }, []);
 }
 
+/** Send a heartbeat at most this often while the person is using the app. */
+const HEARTBEAT_EVERY_MS = 5 * 60_000;
+const ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+/** Outside the effect, so a re-run (sign-in state, React's dev double run) does not beat again. */
+let lastHeartbeatAt = 0;
+
+/**
+ * Tell the server the person is here (clicks, keys, scrolling, coming back
+ * to the tab), so their session is not signed out for inactivity. Polling
+ * in the background never counts: an open, unattended tab does not keep
+ * the server's signing credential alive.
+ */
+function useActivityHeartbeat(authenticated: boolean) {
+  useEffect(() => {
+    if (!authenticated) return;
+    const beat = () => {
+      const now = Date.now();
+      if (now - lastHeartbeatAt < HEARTBEAT_EVERY_MS) return;
+      lastHeartbeatAt = now;
+      void fetch("/api/auth/activity", { method: "POST" }).catch(() => {});
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+    const options = { capture: true, passive: true };
+    for (const name of ACTIVITY_EVENTS) window.addEventListener(name, beat, options);
+    document.addEventListener("visibilitychange", onVisible);
+    beat();
+    return () => {
+      for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, beat, options);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [authenticated]);
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const authState = useAuthState();
   const router = useRouter();
@@ -88,6 +124,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const accepted = useSyncExternalStore(subscribeToStorage, getAcceptedClient, getAcceptedServer);
 
   useSessionGuard();
+  useActivityHeartbeat(authState.authenticated);
 
   useEffect(() => {
     // Only redirect on a definitive "declined" — `null` means we haven't
@@ -118,6 +155,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <AppMasthead />
           <main id="main" tabIndex={-1}>
             <div className="wrap">
+              {authState.signedOutReason === "idle" && (
+                <p className="note warn idle-note" role="status">
+                  <span>
+                    You were signed out after 30 minutes without activity, so the server no longer holds
+                    your session. <Link href="/auth">Sign in again</Link> to continue.
+                  </span>
+                </p>
+              )}
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={pathname}

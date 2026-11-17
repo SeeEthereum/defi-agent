@@ -264,7 +264,7 @@ export default function WelcomePage() {
                       Your keys stay <span className="soft">in the&nbsp;enclave.</span>
                     </h2>
                     <p className="sec-lead">
-                      {t("Your private key is generated inside OKX's secure enclave and never leaves it: nobody can read it, not the assistant and not us. While you are signed in, our server keeps a session that can ask the enclave to sign, and we use it only for what you confirm. Sign out and that session is deleted.")}
+                      {t("Your private key is generated inside OKX's secure enclave and never leaves it: nobody can read it, not the assistant and not us. While you are signed in, our server keeps a session that can ask the enclave to sign, and we use it only for what you confirm. Sign out, or stay away for 30 minutes, and that session is deleted.")}
                     </p>
                   </div>
                   <ul className="points">

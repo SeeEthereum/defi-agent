@@ -21,6 +21,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { currentSession } from "@/lib/session/session";
+import { markActive } from "@/lib/session/activity";
 import { IN_FLIGHT_MESSAGE, recentMessage, UNKNOWN_OUTCOME_MESSAGE } from "./send-state";
 
 /** Default time a successful request stays blocked as a repeat. */
@@ -134,6 +135,8 @@ export function guardDuplicates<Ctx = unknown>(
   const recentMs = options.recentMs ?? RECENT_MS;
 
   return async (request: NextRequest, context: Ctx): Promise<Response> => {
+    // Sending a transaction is activity, whatever the page's heartbeat did.
+    markActive(currentSession());
     const text = await request.clone().text();
     const key = `${currentSession().sid}|${scope}|${bodyHash(text)}`;
     const now = Date.now();

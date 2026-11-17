@@ -53,3 +53,7 @@ services:
       # Optional overrides; defaults are gpt-6.1-sol and gpt-6-luna.
       # - key: OPENAI_MODEL
       # - key: OPENAI_GUARD_MODEL
+      # Optional: sign-out after this many idle minutes (default 30; 0 = off)
+      # - key: IDLE_SIGNOUT_MINUTES
+      # Optional: onchainos processes running at once (default 6)
+      # - key: ONCHAINOS_MAX_PROCESSES

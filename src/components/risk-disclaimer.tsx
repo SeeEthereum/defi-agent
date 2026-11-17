@@ -202,7 +202,8 @@ export const RISK_CARDS: Card[] = [
             </strong>{" "}
             It lets the server ask the enclave to sign, and the application uses
             it only for transactions you confirm. Someone who took control of
-            that server could misuse it. Signing out deletes it from the&nbsp;server.
+            that server could misuse it. Signing out deletes it from the server, and so do
+            30 minutes without&nbsp;activity.
           </>
         ),
       },

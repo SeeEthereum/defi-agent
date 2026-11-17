@@ -4,6 +4,17 @@ import type { WalletStatus } from "@/lib/okx/types";
 import { currentSession, withSession } from "@/lib/session/session";
 import { ownerKey } from "@/lib/session/identity";
 import { getLabels } from "@/lib/accounts/labels";
+import { clearIdleSignOut, wasSignedOutIdle } from "@/lib/session/activity";
+
+/** Why a browser that was signed in is not any more, when the server knows. */
+function signedOutReason(loggedIn: boolean): "idle" | null {
+  const sid = currentSession().sid;
+  if (loggedIn) {
+    clearIdleSignOut(sid);
+    return null;
+  }
+  return wasSignedOutIdle(sid) ? "idle" : null;
+}
 
 export const GET = withSession(async () => {
   try {
@@ -27,6 +38,7 @@ export const GET = withSession(async () => {
       accountId: data.currentAccountId || null,
       accountName,
       accountCount: data.accountCount || 0,
+      signedOutReason: signedOutReason(Boolean(data.loggedIn)),
     });
   } catch {
     return NextResponse.json({
@@ -36,6 +48,7 @@ export const GET = withSession(async () => {
       accountId: null,
       accountName: null,
       accountCount: 0,
+      signedOutReason: signedOutReason(false),
     });
   }
 });
