@@ -22,10 +22,11 @@ import { currentSession } from "@/lib/session/session";
 
 /**
  * Calls one session may have running or waiting at once. A page load needs
- * a handful; a script looping a route would otherwise queue without end,
- * each waiter holding a request open.
+ * a handful (balances for every chain are one shared call: lib/wallet/
+ * balances), and two open tabs stay well under this; a script looping a
+ * route would otherwise queue without end, each waiter holding a request open.
  */
-export const MAX_QUEUED_PER_SESSION = 12;
+export const MAX_QUEUED_PER_SESSION = 24;
 
 export const SESSION_BUSY_MESSAGE =
   "Too many wallet requests at once from this browser. Wait a few seconds and try again.";

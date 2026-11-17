@@ -21,6 +21,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { currentSession } from "@/lib/session/session";
+import { invalidateBalances } from "@/lib/wallet/balances";
 import { markActive } from "@/lib/session/activity";
 import { IN_FLIGHT_MESSAGE, recentMessage, UNKNOWN_OUTCOME_MESSAGE } from "./send-state";
 
@@ -173,6 +174,8 @@ export function guardDuplicates<Ctx = unknown>(
     const at = Date.now();
     const result = await readResult(res);
     if (result.success) {
+      // Funds may have moved: the next balance request asks OKX again.
+      invalidateBalances(currentSession().sid);
       if (recentMs > 0) {
         entries.set(key, { state: "done", at, until: at + recentMs, txHash: result.txHash });
       } else {

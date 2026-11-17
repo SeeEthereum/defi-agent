@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletBalance } from "@/lib/okx/cli";
-import { withSession } from "@/lib/session/session";
+import { currentSession, withSession } from "@/lib/session/session";
+import { allBalances, chainSlice } from "@/lib/wallet/balances";
 import { z } from "zod";
 import {
   apiError,
@@ -24,6 +25,12 @@ export const GET = withSession(async (request: NextRequest) => {
 
     const all = searchParams.get("all") === "true";
     const force = searchParams.get("force") === "true";
+
+    // A plain per-chain request is cut from one all-chains call (lib/wallet/balances).
+    if (parsed.chain !== undefined && !parsed.tokenAddress && !all && !force) {
+      const data = chainSlice(await allBalances(currentSession().sid), String(parsed.chain));
+      return NextResponse.json({ success: true, data });
+    }
 
     const result = await walletBalance(
       parsed.chain !== undefined ? String(parsed.chain) : undefined,
