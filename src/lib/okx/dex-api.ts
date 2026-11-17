@@ -25,6 +25,20 @@ async function dexGet<T = unknown>(path: string, params: Record<string, string>)
   return data[0];
 }
 
+/**
+ * OKX's `priceImpactProtectionPercent` is a percentage: "0.9" means 0.9 %,
+ * not 90 % (checked 2026-11-17: a 1.08 % trade gets code 82112 "higher
+ * than 0.9%"). We used to send "0.9" everywhere, so any quote or swap that
+ * moved the price by more than 0.9 % failed outright, and the warning the
+ * app shows from 3 % was never reached.
+ *
+ * Quotes ask with the ceiling off, so the page sees the real impact and
+ * judges it (warn from 3 %, refuse above 10 %); the swap itself carries the
+ * same 10 % ceiling, so OKX refuses it too if the market moved in between.
+ */
+export const QUOTE_IMPACT_PROTECTION = "100";
+export const SWAP_IMPACT_PROTECTION = "10";
+
 // ── Public API functions ──────────────────────────────────────────────────────
 
 export interface DexQuoteResult {
@@ -80,9 +94,7 @@ export async function dexQuote(params: {
     p.slippagePercent = params.slippagePercent ?? "0.5";
   }
 
-  if (params.priceImpactProtectionPercent) {
-    p.priceImpactProtectionPercent = params.priceImpactProtectionPercent;
-  }
+  p.priceImpactProtectionPercent = params.priceImpactProtectionPercent ?? QUOTE_IMPACT_PROTECTION;
 
   return dexGet<DexQuoteResult>("dex/aggregator/quote", p);
 }
@@ -156,9 +168,7 @@ export async function dexSwap(params: {
     p.slippagePercent = params.slippagePercent ?? "0.5";
   }
 
-  if (params.priceImpactProtectionPercent) {
-    p.priceImpactProtectionPercent = params.priceImpactProtectionPercent;
-  }
+  p.priceImpactProtectionPercent = params.priceImpactProtectionPercent ?? SWAP_IMPACT_PROTECTION;
 
   return dexGet<DexSwapResult>("dex/aggregator/swap", p);
 }

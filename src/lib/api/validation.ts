@@ -96,6 +96,8 @@ const SAFE_MESSAGE_PATTERNS = [
   /was not sent/i,
   /nothing else was sent/i,
   /start again/i,
+  // OKX refusing a swap that moves the price too much (code 82112).
+  /value difference from this transaction/i,
 ];
 
 /**

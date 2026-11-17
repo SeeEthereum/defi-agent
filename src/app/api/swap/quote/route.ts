@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dexQuote } from "@/lib/okx/dex-api";
+import { dexQuote, QUOTE_IMPACT_PROTECTION } from "@/lib/okx/dex-api";
 import { z } from "zod";
 import { normalizeAddress } from "@/lib/utils";
 import { getChainBySwapName } from "@/lib/chains";
@@ -60,7 +60,7 @@ export const POST = withSession(async (request: NextRequest) => {
       amount,
       autoSlippage: autoSlippage ?? false,
       slippagePercent: slippage,
-      priceImpactProtectionPercent: priceImpactProtection ?? "0.9",
+      priceImpactProtectionPercent: priceImpactProtection ?? QUOTE_IMPACT_PROTECTION,
     });
 
     const fingerprint = quoteFingerprint(["swap", chainIndex, fromTokenNorm, toTokenNorm, amount]);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dexSwap } from "@/lib/okx/dex-api";
+import { dexSwap, SWAP_IMPACT_PROTECTION } from "@/lib/okx/dex-api";
 import { walletContractCall, securityTxScan } from "@/lib/okx/cli";
 import { gasStationResponseFor } from "@/lib/okx/gas-station";
 import { acknowledgeRisk, forceAfterConsent, riskResponseFor } from "@/lib/okx/risk-confirmation";
@@ -86,7 +86,7 @@ export const POST = withSession(guardDuplicates("swap/execute", async (request: 
       userWalletAddress: wallet,
       autoSlippage: autoSlippage ?? false,
       slippagePercent: slippage ?? "0.5",
-      priceImpactProtectionPercent: "0.9",
+      priceImpactProtectionPercent: SWAP_IMPACT_PROTECTION,
     });
 
     const tx = swapResult?.tx;
