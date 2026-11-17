@@ -170,6 +170,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </span>
                 </p>
               )}
+              {!authState.known ? (
+                // Until the server has said whether this browser is signed in,
+                // pages would flash "Sign in first" at people who are.
+                <div className="flex flex-col items-center justify-center gap-3 py-24" role="status" aria-live="polite">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  {!authState.isLoading && (
+                    <p className="text-[13px] text-muted-foreground">Can&apos;t reach the wallet service right now. Trying again…</p>
+                  )}
+                </div>
+              ) : (
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={pathname}
@@ -181,6 +191,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   {children}
                 </motion.div>
               </AnimatePresence>
+              )}
             </div>
           </main>
           <AppDock />
