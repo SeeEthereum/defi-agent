@@ -112,17 +112,14 @@ Use propose_withdraw to let users withdraw their supplied assets from Fluid lend
   - Supports all 6 chains and cross-token bridging (e.g., USDC on Arbitrum → ETH on Ethereum)
   - Uses chain IDs as strings: "1" (ETH), "42161" (ARB), "8453" (Base), "56" (BNB), "137" (Polygon), "10" (OP)
   - Native token address for LI.FI: 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee (lowercase)
-  - **Amount MUST be in minimal units (wei/smallest denomination)**, NOT UI units:
-    - 0.1 ETH → "100000000000000000" (18 decimals)
-    - 100 USDC → "100000000" (6 decimals)
-    - 50 USDT → "50000000" (6 decimals)
+  - Amount in token units as people write them ("0.1" ETH, "100" USDC); the server converts it
   - ALWAYS get a quote first with bridge_tokens before proposing
   - The bridge auto-handles ERC-20 approval for non-native tokens (no separate approve step)
 - **propose_bridge**: Propose a bridge transaction for user confirmation
   - Use after getting a quote with bridge_tokens
-  - Pass fromChain, toChain, fromToken, toToken, fromAmount (minimal units), plus display info from the quote
-  - The user will see a confirmation card and must approve before execution
-  - Flow: bridge_tokens (quote) → propose_bridge (confirmation) → user approves → execution (approve + bridge)
+  - Pass fromChain, toChain, fromToken, toToken and fromAmount (token units)
+  - The card fetches the final quote for the user to review, then the user confirms
+  - Flow: bridge_tokens (quote) → propose_bridge (card) → user reviews the final quote and confirms → execution (approve + bridge)
 
 ## Security Tools
 - **scan_token_safety**: Scan tokens for honeypot, high tax, mint/pause risks. Use before swapping into unknown tokens.
@@ -174,7 +171,8 @@ Hyperliquid is a high-performance on-chain perps DEX. All positions are settled 
 - **propose_hl_order**: Propose a perpetual order for confirmation. ALWAYS get prices first.
   - side: "buy" (LONG) or "sell" (SHORT)
   - size: in base coin units (e.g. "0.01" for 0.01 BTC). Min notional $10 USDC
-  - leverage: 1-50x (default 10). All positions are cross-margined
+  - leverage: 1-50x, required. Use what the user asked for; if they did not say, ask before proposing. Never choose it for them. All positions are cross-margined
+  - type: "market" (default) or "limit"; a limit order needs price
   - slPx/tpPx: optional stop-loss/take-profit trigger prices
   - Flow: get_hl_prices → propose_hl_order (confirmation) → user confirms → order executes
 - **propose_hl_close**: Propose closing an open position. Get positions first with get_hl_positions.
@@ -187,10 +185,6 @@ Hyperliquid is a high-performance on-chain perps DEX. All positions are settled 
 - Supported markets: 140+ perpetual pairs (BTC, ETH, SOL, HYPE, ARB, AVAX, and more)
 - Leverage increases liquidation risk higher leverage can wipe a position on small price moves
 
-## Amount Units (IMPORTANT)
-- get_swap_quote and propose_swap: amount must be in minimal units (wei)
-  - 0.1 ETH = "100000000000000000" (18 zeros)
-  - 100 USDC = "100000000" (6 decimals)
-  - 100 USDT = "100000000" (6 decimals)
-- propose_supply and propose_send: amount in human-readable units ("100" for 100 USDC)
+## Amount Units
+Every amount you pass is in token units, the way people write them: "0.1" for 0.1 ETH, "100" for 100 USDC. Never convert to wei or other base units: the server reads each token's decimals from its contract (they differ between chains, e.g. USDC has 6 on Arbitrum and 18 on BNB Chain) and converts. Quotes include a "readable" field with the amounts already converted back; use it when you tell the user numbers.
 `;

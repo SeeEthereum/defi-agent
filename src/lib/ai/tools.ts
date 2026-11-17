@@ -72,7 +72,7 @@ export const AI_TOOLS: Tool[] = [
         amount: {
           type: "string",
           description:
-            "Amount in minimal units (wei/smallest denomination). E.g. \"1000000\" for 1 USDC (6 decimals), \"100000000000000000\" for 0.1 ETH (18 decimals).",
+            "Amount as people write it, in token units (e.g. \"0.1\" for 0.1 ETH, \"250\" for 250 USDC). The server reads the token's decimals on-chain and converts it; never convert to wei yourself.",
         },
         chain: {
           type: "string",
@@ -111,7 +111,7 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "propose_swap",
     description:
-      "Propose a swap of ANY token pair via OKX DEX aggregator (0 commission, best price across 500+ DEX sources). Supports all ERC-20 tokens, not just stablecoins. Creates an action card for user confirmation. Does NOT execute automatically.",
+      "Propose a swap of ANY token pair via OKX DEX aggregator (0 commission, best price across 500+ DEX sources). Supports all ERC-20 tokens, not just stablecoins. Creates an action card; the card fetches the final quote (output, minimum received, price impact) for the user to review before they confirm. Does NOT execute automatically.",
     input_schema: {
       type: "object",
       properties: {
@@ -127,7 +127,7 @@ export const AI_TOOLS: Tool[] = [
         amount: {
           type: "string",
           description:
-            "Amount in minimal units (wei). E.g. \"100000000000000000\" for 0.1 ETH.",
+            "Amount as people write it, in token units (e.g. \"0.1\" for 0.1 ETH, \"250\" for 250 USDC). The server reads the token's decimals on-chain and converts it; never convert to wei yourself.",
         },
         chain: {
           type: "string",
@@ -447,7 +447,7 @@ export const AI_TOOLS: Tool[] = [
         amount: {
           type: "string",
           description:
-            "Amount in minimal units (wei/smallest denomination). E.g. '100000000000000000' for 0.1 ETH (18 decimals), '100000000' for 100 USDC (6 decimals).",
+            "Amount as people write it, in token units (e.g. \"0.1\" for 0.1 ETH, \"250\" for 250 USDC). The server reads the token's decimals on-chain and converts it; never convert to wei yourself.",
         },
       },
       required: ["fromChain", "toChain", "fromToken", "toToken", "amount"],
@@ -456,7 +456,7 @@ export const AI_TOOLS: Tool[] = [
   {
     name: "propose_bridge",
     description:
-      "Propose a cross-chain bridge transfer for user confirmation. Use bridge_tokens first to get a quote, then propose_bridge to create the action card. The user must confirm before execution.",
+      "Propose a cross-chain bridge transfer for user confirmation. Use bridge_tokens first to get a quote, then propose_bridge to create the action card. The card fetches the final quote (output, minimum, fees, time) for the user to review, and the user must confirm before execution.",
     input_schema: {
       type: "object",
       properties: {
@@ -479,25 +479,8 @@ export const AI_TOOLS: Tool[] = [
         },
         fromAmount: {
           type: "string",
-          description: "Amount in minimal units (wei)",
-        },
-        fromTokenSymbol: {
-          type: "string",
-          description: "Source token symbol for display (e.g. 'USDC')",
-        },
-        toTokenSymbol: {
-          type: "string",
-          description: "Destination token symbol for display (e.g. 'ETH')",
-        },
-        estimatedOutput: {
-          type: "string",
           description:
-            "Estimated output amount in human-readable form from the quote",
-        },
-        bridge: {
-          type: "string",
-          description:
-            "Bridge provider name from the quote (e.g. 'stargate', 'across')",
+            "Amount as people write it, in token units (e.g. \"0.1\" for 0.1 ETH, \"250\" for 250 USDC). The server reads the token's decimals on-chain and converts it; never convert to wei yourself.",
         },
       },
       required: [
@@ -595,15 +578,16 @@ export const AI_TOOLS: Tool[] = [
         type: {
           type: "string",
           enum: ["market", "limit"],
-          description: "Order type. Default: 'market'.",
+          description: "Order type. Default: 'market'. A limit order needs price.",
         },
         price: {
           type: "string",
-          description: "Limit price in USDC. Only for limit orders.",
+          description: "Limit price in USDC. Required for limit orders.",
         },
         leverage: {
           type: "number",
-          description: "Cross leverage multiplier (1–50). Default: 10.",
+          description:
+            "Cross leverage multiplier (1–50). Required: use the leverage the user asked for; if they did not say, ask them before proposing. Never pick one for them.",
         },
         slPx: {
           type: "string",
@@ -618,7 +602,7 @@ export const AI_TOOLS: Tool[] = [
           description: "Current mark price from get_hl_prices, for display in the confirmation card.",
         },
       },
-      required: ["coin", "side", "size"],
+      required: ["coin", "side", "size", "leverage"],
     },
   },
   {

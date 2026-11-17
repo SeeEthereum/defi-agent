@@ -327,6 +327,10 @@
   & .act-rows dt { color: var(--muted-foreground); }
   & .act-rows dd { margin: 0; text-align: right; font-family: var(--font-geist-mono), var(--font-system-mono); font-size: 13px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
   & .act-rows dd.missing { color: var(--warn-ink); font-family: inherit; letter-spacing: 0; }
+  & .act-quote-head { margin: 16px 0 2px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand); }
+  & .act-quote-head.is-expired, & .act-quote.is-expired { color: var(--muted-foreground); opacity: 0.55; }
+  & .act-note { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; background: color-mix(in oklab, var(--warn) 14%, transparent); color: var(--warn-ink); }
+  & .act-note.is-blocked { background: var(--loss-soft); color: var(--loss-ink); }
   & .act-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
   & .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: app-spin 0.8s linear infinite; }
 

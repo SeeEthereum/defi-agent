@@ -20,10 +20,10 @@ import { CHAINS, getChainBySwapName } from "@/lib/chains";
 import {
   evmAddress,
   decimalAmount,
-  baseUnitAmount,
   chainId,
   sessionEvmAddress,
 } from "@/lib/api/validation";
+import { AmountError, fromBaseUnits, toBaseUnits, tokenInfo } from "./token-amount";
 
 const MAX_TOOL_ROUNDS = 6;
 const OPENAI_TIMEOUT_MS = 90_000;
@@ -41,26 +41,25 @@ const proposeSendSchema = z.object({
   contractToken: evmAddress.optional(),
 });
 
+// Amounts arrive as people write them ("1.5"); the server converts them
+// with the token's on-chain decimals (lib/ai/token-amount).
 const proposeSwapSchema = z.object({
   fromToken: evmAddress,
   toToken: evmAddress,
-  amount: baseUnitAmount,
+  amount: decimalAmount,
   chain: z.string().min(1),
   slippage: z.string().optional(),
   gasLevel: z.enum(["slow", "average", "fast"]).optional(),
   mevProtection: z.boolean().optional(),
 });
 
+// No model-written output or provider: the card shows the live quote.
 const proposeBridgeSchema = z.object({
   fromChain: chainId,
   toChain: chainId,
   fromToken: evmAddress,
   toToken: evmAddress,
-  fromAmount: baseUnitAmount,
-  fromTokenSymbol: z.string().optional(),
-  toTokenSymbol: z.string().optional(),
-  estimatedOutput: z.string().optional(),
-  bridge: z.string().optional(),
+  fromAmount: decimalAmount,
 });
 
 const proposeFluidSchema = z.object({
@@ -69,15 +68,24 @@ const proposeFluidSchema = z.object({
   chainIndex: chainId,
 });
 
-const proposeHlOrderSchema = z.object({
-  coin: hlCoin,
-  side: z.enum(["buy", "sell"]),
-  size: decimalAmount,
-  price: decimalAmount.optional(),
-  leverage: z.coerce.number().int().min(1).max(50).optional(),
-  slPx: decimalAmount.optional(),
-  tpPx: decimalAmount.optional(),
-});
+const proposeHlOrderSchema = z
+  .object({
+    coin: hlCoin,
+    side: z.enum(["buy", "sell"]),
+    size: decimalAmount,
+    type: z.enum(["market", "limit"]).default("market"),
+    price: decimalAmount.optional(),
+    // No default: leverage multiplies the liquidation risk, so the user
+    // chooses it and the card shows it.
+    leverage: z.coerce.number({ error: "leverage is required: ask the user" }).int().min(1).max(50),
+    slPx: decimalAmount.optional(),
+    tpPx: decimalAmount.optional(),
+    currentPrice: decimalAmount.optional(),
+  })
+  .refine((o) => o.type !== "limit" || o.price !== undefined, {
+    message: "a limit order needs a price",
+    path: ["price"],
+  });
 
 const proposeHlCloseSchema = z.object({
   coin: hlCoin,
@@ -142,7 +150,19 @@ function getOpenAI() {
   return _openai;
 }
 
-async function executeToolCall(
+/** Chain, token info and base-unit amount of a swap the model described. */
+async function swapAmounts(chain: string, fromToken: string, toToken: string, amount: string) {
+  const chainCfg = getChainBySwapName(chain);
+  if (!chainCfg) throw new AmountError(`Unsupported chain: ${chain}`);
+  const [from, to] = await Promise.all([
+    tokenInfo(chainCfg.chainIndex, fromToken),
+    tokenInfo(chainCfg.chainIndex, toToken),
+  ]);
+  return { chainIndex: chainCfg.chainIndex, from, to, base: toBaseUnits(amount, from.decimals) };
+}
+
+/** Exported for tests. */
+export async function executeToolCall(
   name: string,
   input: Record<string, unknown>,
   userAddress?: string
@@ -177,16 +197,22 @@ async function executeToolCall(
       return getUserPositions(userAddress as `0x${string}`);
     }
     case "get_swap_quote": {
-      const chain = input.chain as string;
-      const chainCfg = getChainBySwapName(chain);
-      if (!chainCfg) return { error: `Unsupported chain: ${chain}` };
+      const fromToken = normalizeAddress(String(input.fromToken ?? ""));
+      const toToken = normalizeAddress(String(input.toToken ?? ""));
+      const amounts = await swapAmounts(String(input.chain ?? ""), fromToken, toToken, String(input.amount ?? ""));
       const quote = await dexQuote({
-        chainIndex: String(chainCfg.chainIndex),
-        fromTokenAddress: normalizeAddress(input.fromToken as string),
-        toTokenAddress: normalizeAddress(input.toToken as string),
-        amount: input.amount as string,
+        chainIndex: String(amounts.chainIndex),
+        fromTokenAddress: fromToken,
+        toTokenAddress: toToken,
+        amount: amounts.base,
       });
-      return quote;
+      return {
+        ...quote,
+        readable: {
+          pay: `${input.amount} ${amounts.from.symbol}`,
+          receive: `${fromBaseUnits(quote.toTokenAmount, amounts.to.decimals)} ${amounts.to.symbol}`,
+        },
+      };
     }
     case "search_token": {
       const query = input.query as string;
@@ -200,12 +226,21 @@ async function executeToolCall(
         params: validated.params,
         message: "Supply proposal ready for your confirmation.",
       };
-    case "propose_swap":
+    case "propose_swap": {
+      const p = validated.params;
+      const amounts = await swapAmounts(String(p.chain), String(p.fromToken), String(p.toToken), String(p.amount));
       return {
         action: "swap",
-        params: validated.params,
-        message: "Swap proposal ready for your confirmation.",
+        params: {
+          ...p,
+          amount: amounts.base,
+          amountDisplay: p.amount,
+          fromSymbol: amounts.from.symbol,
+          toSymbol: amounts.to.symbol,
+        },
+        message: "Swap proposal ready. The card fetches the final quote before anything is signed.",
       };
+    }
     case "propose_send":
       return {
         action: "send",
@@ -291,28 +326,46 @@ async function executeToolCall(
       const result = await addressTrackerActivities({ trackerType, walletAddress, chain, tradeType });
       return result.data;
     }
-    case "propose_bridge":
+    case "propose_bridge": {
+      const p = validated.params;
+      const fromChain = Number(p.fromChain);
+      const toChain = Number(p.toChain);
+      const [from, to] = await Promise.all([
+        tokenInfo(fromChain, String(p.fromToken)),
+        tokenInfo(toChain, String(p.toToken)),
+      ]);
       return {
         action: "bridge",
-        params: validated.params,
-        message: "Bridge proposal ready for your confirmation.",
+        params: {
+          ...p,
+          fromChain: String(fromChain),
+          toChain: String(toChain),
+          fromAmount: toBaseUnits(String(p.fromAmount), from.decimals),
+          amountDisplay: p.fromAmount,
+          fromSymbol: from.symbol,
+          toSymbol: to.symbol,
+        },
+        message: "Bridge proposal ready. The card fetches the final quote before anything is signed.",
       };
+    }
     case "bridge_tokens": {
       if (!userAddress) return { error: "No wallet address available" };
-      const fromChain = input.fromChain as string;
-      const toChain = input.toChain as string;
-      const fromToken = input.fromToken as string;
-      const toToken = input.toToken as string;
-      const amount = input.amount as string;
+      const fromChain = String(input.fromChain ?? "");
+      const toChain = String(input.toChain ?? "");
+      const fromToken = String(input.fromToken ?? "").toLowerCase();
+      const toToken = String(input.toToken ?? "").toLowerCase();
+      const from = await tokenInfo(Number(fromChain), fromToken);
+      const fromAmount = toBaseUnits(String(input.amount ?? ""), from.decimals);
       try {
         const quote = await bridgeQuote({
           fromChain,
           toChain,
           fromToken,
           toToken,
-          fromAmount: amount,
+          fromAmount,
           fromAddress: userAddress,
         });
+        const outDecimals = quote.action.toToken.decimals;
         return {
           bridge: quote.tool,
           fromToken: quote.action.fromToken,
@@ -320,6 +373,11 @@ async function executeToolCall(
           fromAmount: quote.estimate.fromAmount,
           toAmount: quote.estimate.toAmount,
           toAmountMin: quote.estimate.toAmountMin,
+          readable: {
+            send: `${input.amount} ${from.symbol}`,
+            receive: `${fromBaseUnits(quote.estimate.toAmount, outDecimals)} ${quote.action.toToken.symbol}`,
+            receiveAtLeast: `${fromBaseUnits(quote.estimate.toAmountMin, outDecimals)} ${quote.action.toToken.symbol}`,
+          },
           executionDuration: quote.estimate.executionDuration,
           feeCosts: quote.estimate.feeCosts,
           gasCosts: quote.estimate.gasCosts,
@@ -463,8 +521,13 @@ export async function runAiChat(
       try {
         result = await executeToolCall(toolCall.name, args, userAddress);
       } catch (error) {
-        console.error("[ai/tool]", toolCall.name, error);
-        result = { error: "tool failed" };
+        if (error instanceof AmountError) {
+          // The model can fix these itself (wrong token, too many decimals).
+          result = { error: error.message };
+        } else {
+          console.error("[ai/tool]", toolCall.name, error);
+          result = { error: "tool failed" };
+        }
       }
 
       // Collect proposed actions

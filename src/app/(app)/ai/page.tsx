@@ -7,11 +7,19 @@ import useSWR from "swr";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { formatUnits } from "viem";
 import { getChainByIndex, getChainBySwapName, CHAINS } from "@/lib/chains";
 import { cn } from "@/lib/utils";
 import { Empty, Sheet } from "@/components/premium";
 import { isStaleQuote, sendStateCode } from "@/lib/api/send-state";
+import {
+  bridgeQuoteQuery,
+  bridgeReview,
+  reviewExpired,
+  REVIEW_TTL_MS,
+  swapQuoteBody,
+  swapReview,
+  type QuoteReview,
+} from "@/lib/ai/quote-review";
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -43,14 +51,6 @@ function hasParam(value: unknown): boolean {
   return value != null && value !== "";
 }
 
-function readQuoteId(payload: unknown): string | undefined {
-  if (typeof payload !== "object" || payload == null) return undefined;
-  const source = Array.isArray(payload) ? payload[0] : payload;
-  if (typeof source !== "object" || source == null) return undefined;
-  const id = (source as Record<string, unknown>).quoteId;
-  return typeof id === "string" && id.length > 0 ? id : undefined;
-}
-
 function actionParamsReady(action: ProposedAction): boolean {
   const p = action.params ?? {};
   switch (action.action) {
@@ -70,7 +70,13 @@ function actionParamsReady(action: ProposedAction): boolean {
     case "withdraw":
       return hasParam(p.fTokenSymbol) && hasParam(p.amount) && hasParam(p.chainIndex);
     case "hl_order":
-      return hasParam(p.coin) && hasParam(p.side) && hasParam(p.size);
+      return (
+        hasParam(p.coin) &&
+        hasParam(p.side) &&
+        hasParam(p.size) &&
+        hasParam(p.leverage) &&
+        (p.type !== "limit" || hasParam(p.price))
+      );
     case "hl_close":
       return hasParam(p.coin);
     default:
@@ -94,27 +100,6 @@ const TOKEN_MAP: Record<string, string> = {
 function tokenSymbol(addr?: string): string {
   if (!addr) return "token";
   return TOKEN_MAP[addr.toLowerCase()] ?? addr.slice(0, 6) + "…" + addr.slice(-4);
-}
-
-// Decimals of the tokens in TOKEN_MAP, so swap and bridge amounts (sent in
-// minimal units) can be shown as people read them. Unknown tokens keep the raw value.
-const TOKEN_DECIMALS: Record<string, number> = {
-  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": 18,
-  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6,
-  "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,
-  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6,
-  "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,
-  "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,
-  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 18,
-  "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": 18,
-  "0x4200000000000000000000000000000000000006": 18,
-};
-
-function minimalToDisplay(raw: unknown, addr: unknown, symbol: string): string {
-  const value = String(raw);
-  const decimals = typeof addr === "string" ? TOKEN_DECIMALS[addr.toLowerCase()] : undefined;
-  if (decimals == null || !/^\d+$/.test(value)) return `${value} ${symbol}`;
-  return `${formatUnits(BigInt(value), decimals)} ${symbol}`;
 }
 
 function shortAddr(addr: string): string {
@@ -173,8 +158,32 @@ function useCountdown(iso: string | null): { left: number; label: string } {
 }
 
 interface ProposedAction {
+  /** Client-side id, so a card keeps its quote review when others are removed. */
+  id: string;
   action: string;
   params: Record<string, unknown>;
+}
+
+/** Swaps and bridges show the final quote before Confirm signs anything. */
+function needsQuoteReview(action: ProposedAction): boolean {
+  return action.action === "swap" || action.action === "bridge";
+}
+
+/**
+ * Seconds left on a quote review, ticking while one is shown. Until the
+ * first tick for a new review, the clock reading belongs to an older one,
+ * so the full validity is shown instead.
+ */
+function useSecondsLeft(expiresAt: number | null): number {
+  const [clock, setClock] = useState<{ for: number | null; now: number }>({ for: null, now: 0 });
+  useEffect(() => {
+    if (expiresAt == null) return;
+    const id = window.setInterval(() => setClock({ for: expiresAt, now: Date.now() }), 1000);
+    return () => window.clearInterval(id);
+  }, [expiresAt]);
+  if (expiresAt == null) return 0;
+  if (clock.for !== expiresAt) return Math.ceil(REVIEW_TTL_MS / 1000);
+  return Math.max(0, Math.ceil((expiresAt - clock.now) / 1000));
 }
 
 // ── Action Card ──────────────────────────────────────────────────────────────
@@ -183,15 +192,22 @@ const MISSING = "Not set";
 
 function ActionCard({
   action,
+  review,
+  reviewing,
+  onReview,
   onConfirm,
   onReject,
   executing,
 }: {
   action: ProposedAction;
+  review: QuoteReview | null;
+  reviewing: boolean;
+  onReview: () => void;
   onConfirm: () => void;
   onReject: () => void;
   executing: boolean;
 }) {
+  const secondsLeft = useSecondsLeft(review?.expiresAt ?? null);
   const rows: { label: string; value: string }[] = [];
   let title = "";
   let icon: LineIconName = "swap";
@@ -199,13 +215,14 @@ function ActionCard({
   if (action.action === "swap") {
     const p = action.params;
     const chain = getChainBySwapName(p.chain as string);
-    const fromSymbol = tokenSymbol(p.fromToken as string | undefined);
-    const toSymbol = tokenSymbol(p.toToken as string | undefined);
+    // Symbols and the amount come from the server (read on-chain), not the model.
+    const fromSymbol = (p.fromSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
+    const toSymbol = (p.toSymbol as string) || tokenSymbol(p.toToken as string | undefined);
     title = "Token swap";
     icon = "swap";
     rows.push({
       label: "Amount",
-      value: hasParam(p.amount) ? minimalToDisplay(p.amount, p.fromToken, fromSymbol) : MISSING,
+      value: hasParam(p.amountDisplay) ? `${p.amountDisplay} ${fromSymbol}` : MISSING,
     });
     rows.push({ label: "From", value: fromSymbol });
     rows.push({ label: "To", value: toSymbol });
@@ -240,20 +257,18 @@ function ActionCard({
     const p = action.params;
     const fromChain = getChainByIndex(Number(p.fromChain));
     const toChain = getChainByIndex(Number(p.toChain));
-    const fromSymbol = (p.fromTokenSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
-    const toSymbol = (p.toTokenSymbol as string) || tokenSymbol(p.toToken as string | undefined);
+    const fromSymbol = (p.fromSymbol as string) || tokenSymbol(p.fromToken as string | undefined);
+    const toSymbol = (p.toSymbol as string) || tokenSymbol(p.toToken as string | undefined);
     title = "Bridge";
     icon = "bridge";
     rows.push({ label: "From chain", value: fromChain?.name ?? (hasParam(p.fromChain) ? String(p.fromChain) : MISSING) });
     rows.push({ label: "To chain", value: toChain?.name ?? (hasParam(p.toChain) ? String(p.toChain) : MISSING) });
     rows.push({
       label: "Amount",
-      value: hasParam(p.fromAmount) ? minimalToDisplay(p.fromAmount, p.fromToken, fromSymbol) : MISSING,
+      value: hasParam(p.amountDisplay) ? `${p.amountDisplay} ${fromSymbol}` : MISSING,
     });
     rows.push({ label: "From token", value: fromSymbol });
     rows.push({ label: "To token", value: toSymbol });
-    if (p.estimatedOutput) rows.push({ label: "Estimated output", value: String(p.estimatedOutput) });
-    if (p.bridge) rows.push({ label: "Provider", value: String(p.bridge) });
   } else if (action.action === "withdraw") {
     const p = action.params;
     const chain = getChainByIndex(p.chainIndex as number);
@@ -270,7 +285,8 @@ function ActionCard({
     rows.push({ label: "Market", value: hasParam(p.coin) ? `${p.coin}-PERP` : MISSING });
     rows.push({ label: "Side", value: side ?? MISSING });
     rows.push({ label: "Size", value: hasParam(p.size) ? `${p.size} ${hasParam(p.coin) ? p.coin : ""}`.trim() : MISSING });
-    if (p.type) rows.push({ label: "Type", value: String(p.type).toUpperCase() });
+    rows.push({ label: "Type", value: p.type === "limit" ? "Limit" : "Market" });
+    if (p.type === "limit") rows.push({ label: "Limit price", value: hasParam(p.price) ? `$${p.price}` : MISSING });
     rows.push({ label: "Leverage", value: hasParam(p.leverage) ? `${p.leverage}×` : MISSING });
     if (p.currentPrice) rows.push({ label: "Mark price", value: `$${parseFloat(String(p.currentPrice)).toLocaleString("en-US")}` });
     if (p.slPx) rows.push({ label: "Stop loss", value: `$${p.slPx}` });
@@ -287,6 +303,35 @@ function ActionCard({
   }
 
   const ready = actionParamsReady(action);
+  const reviewed = needsQuoteReview(action);
+  const expired = review != null && secondsLeft === 0;
+  const verb = action.action === "bridge" ? "bridge" : "swap";
+
+  let subtitle = ready ? "Waiting for your confirmation" : "Some details are missing";
+  if (ready && reviewed) {
+    subtitle = !review
+      ? "Get the final quote, then confirm"
+      : expired
+        ? "The quote expired: get a new one"
+        : `Final quote, valid for ${secondsLeft} s`;
+  }
+
+  let primary: { label: string; onClick: () => void; disabled: boolean };
+  if (!reviewed) {
+    primary = { label: "Confirm", onClick: onConfirm, disabled: executing || !ready };
+  } else if (!review || expired) {
+    primary = {
+      label: review ? "Get a new quote" : "Get final quote",
+      onClick: onReview,
+      disabled: executing || reviewing || !ready,
+    };
+  } else {
+    primary = {
+      label: `Confirm ${verb}`,
+      onClick: onConfirm,
+      disabled: executing || reviewing || review.blocked != null,
+    };
+  }
 
   return (
     <div className="bezel act">
@@ -297,7 +342,7 @@ function ActionCard({
           </span>
           <div>
             <div className="t">{title}</div>
-            <div className="sub">{ready ? "Waiting for your confirmation" : "Some details are missing"}</div>
+            <div className="sub" role="status">{subtitle}</div>
           </div>
         </div>
 
@@ -310,18 +355,37 @@ function ActionCard({
           ))}
         </dl>
 
+        {review && (
+          <>
+            <h3 className={cn("act-quote-head", expired && "is-expired")}>Final quote</h3>
+            <dl className={cn("act-rows act-quote", expired && "is-expired")}>
+              {review.rows.map((row) => (
+                <div key={row.label}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {(review.blocked ?? review.warning) && (
+              <p className={cn("act-note", review.blocked && "is-blocked")} role="alert">
+                {review.blocked ?? review.warning}
+              </p>
+            )}
+          </>
+        )}
+
         <div className="act-btns">
           <button type="button" className="btn btn--sm" onClick={onReject} disabled={executing}>
             Reject
           </button>
-          <button type="button" className="btn btn--sm btn--primary" onClick={onConfirm} disabled={executing || !ready}>
-            {executing ? (
+          <button type="button" className="btn btn--sm btn--primary" onClick={primary.onClick} disabled={primary.disabled}>
+            {executing || reviewing ? (
               <>
                 <span className="spin" aria-hidden="true" />
-                Executing…
+                {executing ? "Executing…" : "Getting quote…"}
               </>
             ) : (
-              "Confirm"
+              primary.label
             )}
           </button>
         </div>
@@ -441,6 +505,8 @@ export default function AiPage() {
   const [loading, setLoading] = useState(false);
   const [proposedActions, setProposedActions] = useState<ProposedAction[]>([]);
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
+  const [reviews, setReviews] = useState<Record<string, QuoteReview>>({});
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -504,7 +570,10 @@ export default function AiPage() {
           if (data.data.proposedActions?.length) {
             setProposedActions((prev) => [
               ...prev,
-              ...data.data.proposedActions,
+              ...(data.data.proposedActions as Omit<ProposedAction, "id">[]).map((a) => ({
+                ...a,
+                id: crypto.randomUUID(),
+              })),
             ]);
           }
         } else if (data.code === "quota_exhausted") {
@@ -535,7 +604,51 @@ export default function AiPage() {
     sendMessage(input);
   };
 
+  const say = (content: string) => setMessages((prev) => [...prev, { role: "assistant", content }]);
+
+  const dropReview = (id: string) =>
+    setReviews((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+  /** Fetch the final quote for a swap or bridge card and show it on the card. */
+  const reviewQuote = async (action: ProposedAction): Promise<QuoteReview | null> => {
+    setReviewingId(action.id);
+    try {
+      const res =
+        action.action === "swap"
+          ? await fetch("/api/swap/quote", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(swapQuoteBody(action.params)),
+            })
+          : await fetch(`/api/bridge/quote?${bridgeQuoteQuery(action.params).toString()}`);
+      const data = await res.json();
+      const review = data.success
+        ? action.action === "swap"
+          ? swapReview(data.data ?? {}, action.params)
+          : bridgeReview(data.data ?? {}, action.params)
+        : null;
+      if (!review) {
+        dropReview(action.id);
+        say(data.error ? `Could not get a quote: ${data.error}` : "Could not get a quote, try again");
+        return null;
+      }
+      setReviews((prev) => ({ ...prev, [action.id]: review }));
+      return review;
+    } catch {
+      say("Could not get a quote, try again");
+      return null;
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   const executeAction = async (action: ProposedAction, idx: number) => {
+    const review = reviews[action.id] ?? null;
+    if (needsQuoteReview(action) && (!review || reviewExpired(review) || review.blocked)) return;
     setExecutingIndex(idx);
     let endpoint = "";
     let body: Record<string, unknown> = {};
@@ -618,36 +731,12 @@ export default function AiPage() {
             }
           }
         }
-        // Step 2: Quote, then execute with the issued quote id
-        const swapQuoteBody: Record<string, unknown> = {
-          fromToken: action.params.fromToken,
-          toToken: action.params.toToken,
-          amount: action.params.amount,
-          chain: action.params.chain,
-        };
-        if (hasParam(action.params.slippage)) {
-          swapQuoteBody.slippage = action.params.slippage;
-        }
-        let swapQuoteId: string | undefined;
-        try {
-          const quoteRes = await fetch("/api/swap/quote", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(swapQuoteBody),
-          });
-          const quoteData = await quoteRes.json();
-          if (quoteData.success) {
-            swapQuoteId = readQuoteId(quoteData.data);
-          }
-        } catch {
-          swapQuoteId = undefined;
-        }
-        if (!swapQuoteId) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "Could not get a quote, try again" },
-          ]);
+        // The approval can outlast the quote the user reviewed: show a new
+        // one instead of signing against numbers they have not seen.
+        if (review && reviewExpired(review)) {
+          say("The approval is confirmed, but the quote expired while it was waiting. Check the new quote on the card and confirm again.");
           setExecutingIndex(null);
+          await reviewQuote(action);
           return;
         }
         endpoint = "/api/swap/execute";
@@ -659,7 +748,7 @@ export default function AiPage() {
           slippage: action.params.slippage,
           gasLevel: action.params.gasLevel,
           mevProtection: action.params.mevProtection,
-          quoteId: swapQuoteId,
+          quoteId: review?.quoteId,
         };
         break;
       }
@@ -686,32 +775,7 @@ export default function AiPage() {
               chainIndex: action.params.chainIndex,
             };
         break;
-      case "bridge": {
-        const qs = new URLSearchParams({
-          fromChain: String(action.params.fromChain),
-          toChain: String(action.params.toChain),
-          fromToken: String(action.params.fromToken),
-          toToken: String(action.params.toToken),
-          fromAmount: String(action.params.fromAmount),
-        });
-        let bridgeQuoteId: string | undefined;
-        try {
-          const quoteRes = await fetch(`/api/bridge/quote?${qs.toString()}`);
-          const quoteData = await quoteRes.json();
-          if (quoteData.success) {
-            bridgeQuoteId = readQuoteId(quoteData.data);
-          }
-        } catch {
-          bridgeQuoteId = undefined;
-        }
-        if (!bridgeQuoteId) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "Could not get a quote, try again" },
-          ]);
-          setExecutingIndex(null);
-          return;
-        }
+      case "bridge":
         endpoint = "/api/bridge/execute";
         body = {
           fromChain: action.params.fromChain,
@@ -719,19 +783,18 @@ export default function AiPage() {
           fromToken: action.params.fromToken,
           toToken: action.params.toToken,
           fromAmount: action.params.fromAmount,
-          quoteId: bridgeQuoteId,
+          quoteId: review?.quoteId,
         };
         break;
-      }
       case "hl_order":
         endpoint = "/api/perp/order";
         body = {
           coin: action.params.coin,
           side: action.params.side,
           size: action.params.size,
-          type: action.params.type ?? "market",
+          type: action.params.type,
           price: action.params.price,
-          leverage: action.params.leverage ?? 10,
+          leverage: action.params.leverage,
           slPx: action.params.slPx,
           tpPx: action.params.tpPx,
           confirm: true,
@@ -758,12 +821,14 @@ export default function AiPage() {
       });
       const data = await res.json();
 
-      if (isStaleQuote(data) && (action.action === "swap" || action.action === "bridge")) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Price moved, ask me again for a fresh quote" },
-        ]);
-        setProposedActions((prev) => prev.filter((_, i) => i !== idx));
+      if (isStaleQuote(data) && needsQuoteReview(action)) {
+        // Nothing was signed. Keep the card and show the new numbers.
+        say("The price moved since the quote. Here is a new one on the card: check it and confirm again.");
+        await reviewQuote(action);
+        return;
+      }
+      if (data.requiresGasStation) {
+        say("There is not enough native coin for gas on this chain. Open the Swap page to pay gas with a stablecoin (Gas Station), then try again.");
         return;
       }
 
@@ -782,6 +847,7 @@ export default function AiPage() {
         { role: "assistant", content: resultMsg },
       ]);
       setProposedActions((prev) => prev.filter((_, i) => i !== idx));
+      dropReview(action.id);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -952,7 +1018,7 @@ export default function AiPage() {
 
         {proposedActions.map((action, i) => (
           <motion.li
-            key={`act-${i}`}
+            key={action.id}
             className="msg assistant"
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -961,8 +1027,14 @@ export default function AiPage() {
             <AssistantMark />
             <ActionCard
               action={action}
+              review={reviews[action.id] ?? null}
+              reviewing={reviewingId === action.id}
+              onReview={() => void reviewQuote(action)}
               onConfirm={() => executeAction(action, i)}
-              onReject={() => setProposedActions((prev) => prev.filter((_, idx) => idx !== i))}
+              onReject={() => {
+                setProposedActions((prev) => prev.filter((_, idx) => idx !== i));
+                dropReview(action.id);
+              }}
               executing={executingIndex === i}
             />
           </motion.li>
