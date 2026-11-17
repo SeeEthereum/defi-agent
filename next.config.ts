@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
     // Tags Sentry events with the deployed commit (Render sets it at build).
     NEXT_PUBLIC_SENTRY_RELEASE: process.env.RENDER_GIT_COMMIT ?? "",
   },
+  turbopack: {
+    // Turbopack's own debug IDs (Next 16.4) add their snippet at the top of
+    // each server chunk but offset the source map by one line too few, so
+    // Sentry could not map a single server frame ("Invalid location in
+    // sourcemap"). With them off, @sentry/nextjs injects its own debug IDs
+    // after the build and shifts the maps to match.
+    debugIds: false,
+  },
   experimental: {
     // Render restores .next/cache between deploys, and a warm Turbopack
     // build cache once shipped the previous global stylesheet with new

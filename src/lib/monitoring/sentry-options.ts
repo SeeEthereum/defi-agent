@@ -11,7 +11,7 @@
  */
 
 import type { BrowserOptions, NodeOptions } from "@sentry/nextjs";
-import { scrubEvent } from "./scrub";
+import { scrubDeep, scrubEvent } from "./scrub";
 
 export const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN || undefined;
 
@@ -44,7 +44,9 @@ export function sentryOptions(): BrowserOptions & NodeOptions {
     },
     tracesSampleRate: tracesSampleRate(),
     beforeSend: (event) => scrubEvent(event),
-    beforeSendTransaction: (event) => scrubEvent(event),
+    // Sentry 11 streams spans (traceLifecycle "stream"), so spans, not
+    // transactions, are the unit to scrub if tracing is ever turned on.
+    beforeSendSpan: (span) => scrubDeep(span),
     beforeBreadcrumb: (breadcrumb) => scrubEvent(breadcrumb),
   };
 }
