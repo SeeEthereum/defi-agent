@@ -12,6 +12,42 @@ doc tracks two things:
 
 ---
 
+## 2026-11-17 — Upgrade v4.6.0 → v4.6.11
+
+Audit: source diff of the 35 commits (cli/src), plus OKX's docs. Details
+in the header of `scripts/install-onchainos.sh`; the binary is now checked
+against a pinned SHA-256 before install.
+
+What changed for us:
+
+- **The CLI no longer signs with an API key.** A signed-in session uses
+  its own login; anything else is anonymous, and OKX meters anonymous
+  market calls (x402). Public market data moved to OKX's REST API with our
+  key (`src/lib/okx/openapi.ts`, `market-data.ts`), which also fixed
+  "Not logged in" on every market page for signed-out visitors.
+- **Market API quota (fee page, read 2026-11-17):** free per key and month,
+  100,000 basic + 100,000 premium calls (the CLI's own notice still says
+  1,000,000 basic: we use the lower figure); then $0.0001 / $0.0002 per
+  call. Tiers per path come from `GET /api/v6/dex/market/config` (free).
+  Ours: price, candles, search, hot-token = basic; signal list,
+  leaderboard, portfolio overview / recent-pnl = premium; tracker,
+  security, gas = not metered. The client spends at most a daily share
+  and never pays. Paid plans: Starter $99 (2M / 600K), Growth $199.
+- **Approval verification** ("doubleConfirmation", user setting at OKX):
+  token approvals wait for an emailed 6-digit code
+  (`wallet approval-code verify|resend|cancel`). Handled end to end:
+  `src/lib/okx/approval-code.ts`, the code dialog, and the swap / Earn /
+  bridge / revoke routes. OKX's spending limits do not cover approvals.
+- **Security policy** in the login result: limits, whitelist, approval
+  verification. Saved at sign-in and shown on the wallet page. Only the
+  user can change it, on OKX; the CLI only reads it.
+- Hyperliquid signer: `sign-message --force` now only skips backend risk
+  warnings; kept (orders are confirmed in our own UI).
+
+Also in this round, unrelated to the CLI version: each session's
+`machine-identity` (the key to `keyring.enc`) is sealed with a key derived
+from SESSION_SECRET between calls (`src/lib/session/keyring-seal.ts`).
+
 ## 2026-09-16 — Per-session ONCHAINOS_HOME
 
 Each browser session owns a private onchainos home at
