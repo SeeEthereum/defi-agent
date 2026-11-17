@@ -11,7 +11,7 @@
  */
 
 import type { BrowserOptions, NodeOptions } from "@sentry/nextjs";
-import { scrubDeep } from "./scrub";
+import { scrubEvent } from "./scrub";
 
 export const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN || undefined;
 
@@ -43,8 +43,8 @@ export function sentryOptions(): BrowserOptions & NodeOptions {
       stackFrameVariables: false,
     },
     tracesSampleRate: tracesSampleRate(),
-    beforeSend: (event) => scrubDeep(event),
-    beforeSendTransaction: (event) => scrubDeep(event),
-    beforeBreadcrumb: (breadcrumb) => scrubDeep(breadcrumb),
+    beforeSend: (event) => scrubEvent(event),
+    beforeSendTransaction: (event) => scrubEvent(event),
+    beforeBreadcrumb: (breadcrumb) => scrubEvent(breadcrumb),
   };
 }

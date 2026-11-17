@@ -23,6 +23,22 @@ export function scrubString(value: string): string {
   return out;
 }
 
+/**
+ * Top-level event fields the SDK fills with build metadata, never with user
+ * data. `release` is the deployed commit SHA: 40 hex characters that the
+ * long-token pattern would otherwise turn into "[token]".
+ */
+const KEEP = ["release", "dist", "environment"] as const;
+
+/** Scrub a Sentry event or breadcrumb, keeping its build metadata intact. */
+export function scrubEvent<T extends object>(event: T): T {
+  const out = scrubDeep(event) as Record<string, unknown>;
+  for (const key of KEEP) {
+    if (key in event) out[key] = (event as Record<string, unknown>)[key];
+  }
+  return out as T;
+}
+
 /** Deep copy of `value` with every string scrubbed. Cycles are cut. */
 export function scrubDeep<T>(value: T, seen = new WeakSet<object>()): T {
   if (typeof value === "string") return scrubString(value) as T;

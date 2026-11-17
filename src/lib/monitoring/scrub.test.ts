@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scrubDeep, scrubString } from "./scrub";
+import { scrubDeep, scrubEvent, scrubString } from "./scrub";
 
 const ADDRESS = "0xd858a1b2c3d4e5f60718293a4b5c6d7e8f909580";
 const HASH = "0x" + "ab".repeat(32);
@@ -39,6 +39,19 @@ describe("scrubDeep", () => {
     expect(out.exception.values[0].stacktrace.frames[0].lineno).toBe(12);
     expect(out.breadcrumbs[0].data.url).toBe("/api/portfolio/pnl?address=[address]");
     expect(event.message).toContain(ADDRESS);
+  });
+
+  it("keeps the release (a 40-character commit SHA) and environment as they are", () => {
+    const event = {
+      release: "d5d9fdb2370dea277a9782594fb9b5add32f3182",
+      environment: "production",
+      message: `failed for ${ADDRESS}`,
+    };
+    expect(scrubEvent(event)).toEqual({
+      release: "d5d9fdb2370dea277a9782594fb9b5add32f3182",
+      environment: "production",
+      message: "failed for [address]",
+    });
   });
 
   it("survives cycles", () => {
